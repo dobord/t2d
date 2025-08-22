@@ -13,20 +13,21 @@ option(T2D_BUILD_TESTS "Build internal test executables" ON)
 ## We intentionally avoid FetchContent here to pin revisions through submodule SHAs
 ## and enable reproducible builds & offline CI.
 
-# Suppress building tests/tools/examples for bundled third_party libs where possible
-set(YAML_CPP_BUILD_TESTS OFF CACHE BOOL "Disable yaml-cpp tests" FORCE)
-set(YAML_CPP_BUILD_TOOLS OFF CACHE BOOL "Disable yaml-cpp tools" FORCE)
-set(YAML_CPP_BUILD_CONTRIB ON CACHE BOOL "Enable yaml-cpp contrib" FORCE)
-set(YAML_CPP_INSTALL OFF CACHE BOOL "Disable yaml-cpp install targets" FORCE)
+## Force-disable third_party tests/examples/tools/docs for lean build
+set(YAML_CPP_BUILD_TESTS OFF CACHE BOOL "yaml-cpp tests disabled" FORCE)
+set(YAML_CPP_BUILD_TOOLS OFF CACHE BOOL "yaml-cpp tools disabled" FORCE)
+set(YAML_CPP_BUILD_CONTRIB ON CACHE BOOL "yaml-cpp contrib enabled" FORCE)
+set(YAML_CPP_INSTALL OFF CACHE BOOL "yaml-cpp install targets disabled" FORCE)
 
-set(LIBCORO_BUILD_TESTS OFF CACHE BOOL "Disable libcoro tests" FORCE)
-set(LIBCORO_BUILD_EXAMPLES OFF CACHE BOOL "Disable libcoro examples" FORCE)
-set(LIBCORO_FEATURE_TLS OFF CACHE BOOL "Disable TLS in libcoro for now" FORCE)
+set(LIBCORO_BUILD_TESTS OFF CACHE BOOL "libcoro tests disabled" FORCE)
+set(LIBCORO_BUILD_EXAMPLES OFF CACHE BOOL "libcoro examples disabled" FORCE)
+set(LIBCORO_FEATURE_TLS OFF CACHE BOOL "libcoro TLS disabled for now" FORCE)
+set(CARES_BUILD_TOOLS OFF CACHE BOOL "c-ares tools disabled" FORCE)
 
-set(BOX2D_UNIT_TESTS OFF CACHE BOOL "Disable box2d unit tests" FORCE)
-set(BOX2D_SAMPLES OFF CACHE BOOL "Disable box2d samples" FORCE)
-set(BOX2D_BENCHMARKS OFF CACHE BOOL "Disable box2d benchmarks" FORCE)
-set(BOX2D_DOCS OFF CACHE BOOL "Disable box2d docs" FORCE)
+set(BOX2D_UNIT_TESTS OFF CACHE BOOL "box2d unit tests disabled" FORCE)
+set(BOX2D_SAMPLES OFF CACHE BOOL "box2d samples disabled" FORCE)
+set(BOX2D_BENCHMARKS OFF CACHE BOOL "box2d benchmarks disabled" FORCE)
+set(BOX2D_DOCS OFF CACHE BOOL "box2d docs disabled" FORCE)
 
 add_subdirectory(third_party/yaml-cpp)
 add_subdirectory(third_party/libcoro)
@@ -61,10 +62,19 @@ endif()
 find_program(CLANG_FORMAT_BIN clang-format)
 if(CLANG_FORMAT_BIN)
   file(GLOB_RECURSE ALL_CXX_SOURCE_FILES CONFIGURE_DEPENDS src/*.cpp src/*.hpp src/*.h include/*.hpp include/*.h)
-  add_custom_target(format
-    COMMAND ${CLANG_FORMAT_BIN} -i ${ALL_CXX_SOURCE_FILES}
-    WORKING_DIRECTORY ${CMAKE_CURRENT_SOURCE_DIR}
-    COMMENT "Formatting C/C++ sources with clang-format")
+  # Avoid target name collision if a third_party submodule already defined 'format'
+  if(NOT TARGET format)
+    add_custom_target(format
+      COMMAND ${CLANG_FORMAT_BIN} -i ${ALL_CXX_SOURCE_FILES}
+      WORKING_DIRECTORY ${CMAKE_CURRENT_SOURCE_DIR}
+      COMMENT "Formatting C/C++ sources with clang-format")
+  else()
+    add_custom_target(t2d_format
+      COMMAND ${CLANG_FORMAT_BIN} -i ${ALL_CXX_SOURCE_FILES}
+      WORKING_DIRECTORY ${CMAKE_CURRENT_SOURCE_DIR}
+      COMMENT "Formatting t2d C/C++ sources with clang-format (dependency already defines 'format')")
+    message(STATUS "Dependency already defines target 'format'; added 't2d_format' for project sources.")
+  endif()
 endif()
 
 add_executable(t2d_test_client
