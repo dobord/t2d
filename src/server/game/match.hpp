@@ -1,16 +1,19 @@
 #pragma once
-#include <vector>
-#include <memory>
+#include "game.pb.h"
+#include "server/matchmaking/session_manager.hpp"
+
+#include <coro/coro.hpp>
+#include <coro/io_scheduler.hpp>
+
 #include <chrono>
 #include <cstdint>
-#include <coro/io_scheduler.hpp>
-#include <coro/coro.hpp>
-#include "server/matchmaking/session_manager.hpp"
-#include "game.pb.h"
+#include <memory>
+#include <vector>
 
 namespace t2d::game {
 
-struct TankStateSimple {
+struct TankStateSimple
+{
     uint32_t entity_id;
     float x{0};
     float y{0};
@@ -20,16 +23,29 @@ struct TankStateSimple {
     uint32_t ammo{10};
 };
 
-struct MatchContext {
+struct MatchContext
+{
     std::string match_id;
     uint32_t tick_rate{30};
     std::vector<std::shared_ptr<t2d::mm::Session>> players;
     std::vector<TankStateSimple> tanks; // parallel by index to players for prototype
     uint64_t server_tick{0};
     uint32_t last_full_snapshot_tick{0};
+    uint32_t snapshot_interval_ticks{5};
+    uint32_t full_snapshot_interval_ticks{30};
     // Cache of last sent tank states for delta computation
     std::vector<TankStateSimple> last_sent_tanks;
-    struct ProjectileSimple { uint32_t id; float x; float y; float vx; float vy; uint32_t owner; };
+
+    struct ProjectileSimple
+    {
+        uint32_t id;
+        float x;
+        float y;
+        float vx;
+        float vy;
+        uint32_t owner;
+    };
+
     std::vector<ProjectileSimple> projectiles;
     uint32_t next_projectile_id{1};
     // Removed entities since last full snapshot (for delta)
@@ -37,9 +53,20 @@ struct MatchContext {
     std::vector<uint32_t> removed_tanks_since_full; // future (on disconnect / destroy)
 };
 
-inline float movement_speed() { return 2.0f; } // units per second (prototype)
-inline float turn_speed_deg() { return 90.0f; } // degrees per second
-inline float turret_turn_speed_deg() { return 120.0f; }
+inline float movement_speed()
+{
+    return 2.0f;
+} // units per second (prototype)
+
+inline float turn_speed_deg()
+{
+    return 90.0f;
+} // degrees per second
+
+inline float turret_turn_speed_deg()
+{
+    return 120.0f;
+}
 
 coro::task<void> run_match(std::shared_ptr<coro::io_scheduler> scheduler, std::shared_ptr<MatchContext> ctx);
 

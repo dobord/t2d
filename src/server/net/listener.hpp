@@ -1,9 +1,10 @@
 #pragma once
 
-#include <memory>
-#include <cstdint>
-#include <coro/io_scheduler.hpp>
 #include <coro/coro.hpp>
+#include <coro/io_scheduler.hpp>
+
+#include <cstdint>
+#include <memory>
 
 namespace t2d::net {
 

@@ -59,6 +59,8 @@ Following these rules keeps coroutine lifetimes explicit, avoids scheduler misma
 - All modifications to C/C++ files (*.c, *.cc, *.cpp, *.cxx, *.h, *.hpp) must be auto-formatted with `clang-format` using the root `.clang-format` file.
 - Before finalizing a git commit: run `cmake --build <build_dir> --target format` (or manually `clang-format -i` for the changed files) and ensure `scripts/check_format.sh` passes without errors.
 - Non-formatted changes must not be committed.
+- Pre-build rule: Before invoking any CMake build (`cmake --build`) in local or automated workflows, first run the formatting target (`cmake --build <build_dir> --target format`) or apply `clang-format -i` to all changed C/C++ files. Builds should assume code is already formatted; do not rely on post-build formatting.
+- CMake files should be formatted with `cmake-format` (target `format_cmake` if available, or `format_all` to include both C++ and CMake). If `cmake-format` is not installed, do not commit manual reflow that diverges from existing style.
 
 ## Android build & deployment (APK install) guidance
 To avoid intermittent install failures caused by relative working directories, always use the absolute path when installing an APK via `adb install -r`.
