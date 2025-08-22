@@ -10,6 +10,9 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
+        with:
+          submodules: recursive  # ensure third_party submodules (yaml-cpp, libcoro, box2d) are present
+          fetch-depth: 0         # full history (optional, helps with future versioning)
       - name: Install deps
         run: sudo apt-get update && sudo apt-get install -y protobuf-compiler libprotobuf-dev cmake g++ ninja-build
       - name: Configure
