@@ -32,6 +32,9 @@ struct MatchContext {
     struct ProjectileSimple { uint32_t id; float x; float y; float vx; float vy; uint32_t owner; };
     std::vector<ProjectileSimple> projectiles;
     uint32_t next_projectile_id{1};
+    // Removed entities since last full snapshot (for delta)
+    std::vector<uint32_t> removed_projectiles_since_full;
+    std::vector<uint32_t> removed_tanks_since_full; // future (on disconnect / destroy)
 };
 
 inline float movement_speed() { return 2.0f; } // units per second (prototype)

@@ -51,6 +51,14 @@ coro::task<void> run_matchmaker(std::shared_ptr<coro::io_scheduler> scheduler, M
 			uint32_t eid = 1;
 			for(auto &s : group) {
 				t2d::game::TankStateSimple tank{eid++};
+				// Deterministic initial placement prototype: first (real) player at origin, bots offset on -X looking towards origin
+				if(s->is_bot) {
+					// place bot at -1,0 facing east (0 degrees) so projectiles travel toward player tank at origin
+					tank.x = -1.0f; tank.y = 0.0f; tank.hull_angle = 0.0f; tank.turret_angle = 0.0f;
+				} else {
+					// player stays at origin
+					tank.x = 0.0f; tank.y = 0.0f; tank.hull_angle = 0.0f; tank.turret_angle = 0.0f;
+				}
 				ctx->tanks.push_back(tank);
 				t2d::ServerMessage smsg;
 				auto *ms = smsg.mutable_match_start();

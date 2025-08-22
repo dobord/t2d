@@ -30,7 +30,7 @@ coro::task<void> run_match(std::shared_ptr<coro::io_scheduler> scheduler, std::s
                 input.turn_dir = 0.2f;
                 input.move_dir = 0.5f;
                 // fire every ~2 seconds
-                if(ctx->server_tick % (ctx->tick_rate * 2) == 0) {
+                if(ctx->server_tick == 1 || ctx->server_tick % (ctx->tick_rate * 2) == 0) {
                     input.fire = true;
                 }
                 t2d::mm::Session::InputState upd = input;
@@ -56,6 +56,54 @@ coro::task<void> run_match(std::shared_ptr<coro::io_scheduler> scheduler, std::s
         for(auto &p : ctx->projectiles) {
             p.x += p.vx * dt;
             p.y += p.vy * dt;
+        }
+        // Collision detection (very naive circle overlap) -> DamageEvent
+        {
+            const float hit_radius = 0.3f; // prototype radius
+            const uint32_t damage_amount = 25;
+            // Collect indices to remove after processing to avoid iterator invalidation
+            std::vector<size_t> remove_indices;
+            for(size_t pi = 0; pi < ctx->projectiles.size(); ++pi) {
+                auto &proj = ctx->projectiles[pi];
+                bool hit = false;
+                for(auto &tank : ctx->tanks) {
+                    if(tank.entity_id == proj.owner) continue; // no self-hit prototype
+                    float dx = proj.x - tank.x;
+                    float dy = proj.y - tank.y;
+                    float dist2 = dx*dx + dy*dy;
+                    if(dist2 <= hit_radius * hit_radius && tank.hp > 0) {
+                        // Apply damage
+                        if(tank.hp <= damage_amount) tank.hp = 0; else tank.hp -= damage_amount;
+                        // Emit DamageEvent
+                        t2d::ServerMessage ev;
+                        auto *d = ev.mutable_damage();
+                        d->set_victim_id(tank.entity_id);
+                        d->set_attacker_id(proj.owner);
+                        d->set_amount(damage_amount);
+                        d->set_remaining_hp(tank.hp);
+                        std::cout << "[match] DamageEvent victim=" << tank.entity_id << " attacker=" << proj.owner << " hp=" << tank.hp << std::endl;
+                        for(auto &pl : ctx->players) t2d::mm::instance().push_message(pl, ev);
+                        // If destroyed emit TankDestroyed (entity removal handled in later epic)
+                        if(tank.hp == 0) {
+                            t2d::ServerMessage tdmsg;
+                            auto *td = tdmsg.mutable_destroyed();
+                            td->set_victim_id(tank.entity_id);
+                            td->set_attacker_id(proj.owner);
+                            for(auto &pl : ctx->players) t2d::mm::instance().push_message(pl, tdmsg);
+                        }
+                        hit = true;
+                        break; // stop checking tanks for this projectile
+                    }
+                }
+                if(hit) remove_indices.push_back(pi);
+            }
+            if(!remove_indices.empty()) {
+                // Remove in reverse order
+                for(auto it = remove_indices.rbegin(); it != remove_indices.rend(); ++it) {
+                    ctx->removed_projectiles_since_full.push_back(ctx->projectiles[*it].id);
+                    ctx->projectiles.erase(ctx->projectiles.begin() + *it);
+                }
+            }
         }
         if(ctx->server_tick % 5 == 0) {
             bool send_full = (ctx->server_tick - ctx->last_full_snapshot_tick >= 30);
@@ -121,7 +169,13 @@ coro::task<void> run_match(std::shared_ptr<coro::io_scheduler> scheduler, std::s
                     ps->set_vx(p.vx);
                     ps->set_vy(p.vy);
                 }
+                for(auto id : ctx->removed_projectiles_since_full) delta->add_removed_projectiles(id);
                 for(auto &pl : ctx->players) t2d::mm::instance().push_message(pl, sm);
+            }
+            if(send_full) {
+                // Clear removed lists after full snapshot baseline
+                ctx->removed_projectiles_since_full.clear();
+                ctx->removed_tanks_since_full.clear();
             }
         }
         if(ctx->server_tick > ctx->tick_rate * 10) {

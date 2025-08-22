@@ -81,6 +81,8 @@ message DeltaSnapshot {
   uint32 base_tick = 2;   // last full snapshot tick (or 0 baseline)
   repeated TankState tanks = 3;        // changed/new tanks
   repeated ProjectileState projectiles = 4; // new projectiles (no per-tick motion updates yet omitted for bandwidth)
+  repeated uint32 removed_tanks = 5;        // entity_ids removed since base
+  repeated uint32 removed_projectiles = 6;  // projectile ids removed since base
 }
 
 message DamageEvent {

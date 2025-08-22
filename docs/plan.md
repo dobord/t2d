@@ -107,8 +107,8 @@ The following epics are required to reach fully automated builds (server + Andro
 - [ ] Ammo crate pickups via AABB contact listener
 
 ## 4. Incremental Roadmap (Proposed Order)
-1. [ ] Damage & collision events (with tests)
-2. [ ] Entity removal / disconnect deltas
+1. [x] Damage & collision events (with tests) // basic projectile->tank damage + events implemented
+2. [~] Entity removal / disconnect deltas (projectile removals implemented; tank removals pending)
 3. [ ] Snapshot interval config + size metrics
 4. [ ] Structured logging + metrics counters
 5. [ ] OAuth auth strategy abstraction

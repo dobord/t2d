@@ -170,4 +170,14 @@ if(T2D_BUILD_TESTS)
   )
   target_link_libraries(t2d_e2e_delta_snapshots PRIVATE t2d_proto libcoro yaml-cpp)
   target_include_directories(t2d_e2e_delta_snapshots PRIVATE src)
+  add_executable(t2d_e2e_damage_event
+    tests/e2e_damage_event.cpp
+    src/server/matchmaking/matchmaker.cpp
+    src/server/matchmaking/session_manager.cpp
+    src/server/net/listener.cpp
+    src/common/framing.cpp
+    src/server/game/match.cpp
+  )
+  target_link_libraries(t2d_e2e_damage_event PRIVATE t2d_proto libcoro yaml-cpp)
+  target_include_directories(t2d_e2e_damage_event PRIVATE src)
 endif()
