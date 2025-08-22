@@ -1,0 +1,137 @@
+syntax = "proto3";
+package t2d;
+
+// Protocol versioning constant (bump on breaking changes)
+// Version is also embedded in handshake messages.
+
+message AuthRequest {
+  string oauth_token = 1;
+  string client_version = 2;
+}
+
+message AuthResponse {
+  bool success = 1;
+  string session_id = 2; // present if success
+  string reason = 3;     // error message if failed
+}
+
+message QueueJoinRequest {
+  string session_id = 1;
+}
+
+message QueueStatusUpdate {
+  uint32 position = 1;
+  uint32 players_in_queue = 2;
+  uint32 needed_for_match = 3;
+  uint32 timeout_seconds_left = 4; // until bots fill
+}
+
+message MatchStart {
+  string match_id = 1;
+  uint32 tick_rate = 2;
+  uint32 seed = 3; // RNG seed for deterministic elements
+}
+
+// Player input (authoritative server model)
+message InputCommand {
+  string session_id = 1;
+  uint32 client_tick = 2;
+  float move_dir = 3;  // -1..1 forward/back
+  float turn_dir = 4;  // -1..1 rotate hull
+  float turret_turn = 5; // -1..1 rotate turret
+  bool fire = 6;
+}
+
+message TankState {
+  uint32 entity_id = 1;
+  float x = 2;
+  float y = 3;
+  float hull_angle = 4;
+  float turret_angle = 5;
+  uint32 hp = 6;
+  uint32 ammo = 7;
+}
+
+message ProjectileState {
+  uint32 projectile_id = 1;
+  float x = 2;
+  float y = 3;
+  float vx = 4;
+  float vy = 5;
+}
+
+message AmmoBoxState {
+  uint32 box_id = 1;
+  float x = 2;
+  float y = 3;
+  bool active = 4;
+}
+
+message StateSnapshot {
+  uint32 server_tick = 1;
+  repeated TankState tanks = 2;
+  repeated ProjectileState projectiles = 3;
+  repeated AmmoBoxState ammo_boxes = 4;
+}
+
+// Delta snapshot sends only changed/new entities since a base tick.
+// For prototype we send only changed tank/projectile states; deletions omitted.
+message DeltaSnapshot {
+  uint32 server_tick = 1; // current tick of this delta
+  uint32 base_tick = 2;   // last full snapshot tick (or 0 baseline)
+  repeated TankState tanks = 3;        // changed/new tanks
+  repeated ProjectileState projectiles = 4; // new projectiles (no per-tick motion updates yet omitted for bandwidth)
+}
+
+message DamageEvent {
+  uint32 victim_id = 1;
+  uint32 attacker_id = 2;
+  uint32 amount = 3;
+  uint32 remaining_hp = 4;
+}
+
+message TankDestroyed {
+  uint32 victim_id = 1;
+  uint32 attacker_id = 2; // 0 if environment
+}
+
+message KillFeedUpdate {
+  repeated TankDestroyed events = 1;
+}
+
+message Heartbeat {
+  string session_id = 1;
+  uint64 time_ms = 2;
+}
+
+message HeartbeatResponse {
+  string session_id = 1;
+  uint64 client_time_ms = 2; // echoed back
+  uint64 server_time_ms = 3; // server receive time
+  uint64 delta_ms = 4;       // server_time_ms - client_time_ms
+}
+
+// Container for server -> client stream (oneof for extensibility)
+message ServerMessage {
+  oneof payload {
+    AuthResponse auth_response = 1;
+    QueueStatusUpdate queue_status = 2;
+    MatchStart match_start = 3;
+    StateSnapshot snapshot = 4;
+    DamageEvent damage = 5;
+    KillFeedUpdate kill_feed = 6;
+    TankDestroyed destroyed = 7;
+  HeartbeatResponse heartbeat_resp = 8;
+  DeltaSnapshot delta_snapshot = 9;
+  }
+}
+
+// Container for client -> server stream
+message ClientMessage {
+  oneof payload {
+    AuthRequest auth_request = 1;
+    QueueJoinRequest queue_join = 2;
+    InputCommand input = 3;
+    Heartbeat heartbeat = 4;
+  }
+}

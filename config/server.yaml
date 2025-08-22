@@ -1,0 +1,13 @@
+# Server runtime configuration
+version: 1
+max_players_per_match: 16
+max_parallel_matches: 8
+queue_soft_limit: 256
+fill_timeout_seconds: 180  # after this waiting match fills with bots
+tick_rate: 30
+snapshot_interval_ticks: 3  # every 3 ticks send incremental snapshot
+full_snapshot_interval_ticks: 30
+bot_difficulty: 1  # 0 = dummy, 1 = basic
+listen_port: 40000
+heartbeat_timeout_seconds: 30
+matchmaker_poll_ms: 200

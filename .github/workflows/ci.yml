@@ -1,0 +1,27 @@
+name: CI
+on:
+  push:
+    branches: [ main, master ]
+  pull_request:
+    branches: [ main, master ]
+
+jobs:
+  build-test:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Install deps
+        run: sudo apt-get update && sudo apt-get install -y protobuf-compiler libprotobuf-dev cmake g++ ninja-build
+      - name: Configure
+        run: cmake -S . -B build -DCMAKE_BUILD_TYPE=Release -DT2D_BUILD_TESTS=ON
+      - name: Build
+        run: cmake --build build --parallel
+      - name: Run tests
+        run: |
+          set -e
+          ./build/t2d_unit_session_manager
+          ./build/t2d_unit_framing
+          ./build/t2d_unit_heartbeat_timeout
+          ./build/t2d_e2e_match_start
+          ./build/t2d_e2e_input_move
+          ./build/t2d_e2e_heartbeat
