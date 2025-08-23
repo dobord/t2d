@@ -62,8 +62,8 @@ Third-party tests/examples/tools are force-disabled (yaml-cpp, libcoro, box2d, c
 High-level, non-binding plan (subject to change). Earlier items are higher priority. Contribution proposals should reference which item they target or justify new items.
 
 ### Short Term (Prototype Hardening)
-- Implement optional snapshot compression (zlib; config flag disabled by default)
-- Add basic auth adapter abstraction implementation (token verification stub -> pluggable OAuth)
+- [x] Implement optional snapshot compression (zlib; config flag disabled by default)
+- [x] Add basic auth adapter abstraction implementation (token verification stub -> pluggable OAuth)
 - Improve matchmaking: lobby countdown + dynamic bot fill pacing
 - Deterministic snapshot diff validation test (encode → apply → state equivalence)
 - Metrics: histogram for tick duration, gauge for connected players per match
