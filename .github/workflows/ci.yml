@@ -39,6 +39,9 @@ jobs:
       - name: Run tests
         working-directory: build
         run: ctest --output-on-failure -T Test
+      - name: Format check (Linux only)
+        if: runner.os == 'Linux'
+        run: bash scripts/format_check.sh || (echo "Run formatting target locally" && exit 1)
       - name: Upload server binary
         if: runner.os != 'Windows'
         uses: actions/upload-artifact@v4
@@ -53,6 +56,23 @@ jobs:
           name: t2d_desktop_client-${{ matrix.triplet }}
           path: build/t2d_desktop_client*
           if-no-files-found: warn
+      - name: Package server (Linux only)
+        if: runner.os == 'Linux'
+        run: |
+          bash scripts/package_server.sh
+          ls -l dist
+      - name: Upload server package (Linux only)
+        if: runner.os == 'Linux'
+        uses: actions/upload-artifact@v4
+        with:
+          name: t2d_server_package-${{ matrix.triplet }}
+          path: dist/t2d_server.tar.gz*
+          if-no-files-found: warn
+      - name: Build Docker image (Linux only)
+        if: runner.os == 'Linux'
+        run: |
+          docker build -t t2d/server:ci .
+          docker image ls t2d/server:ci
 
   verify-dependencies:
     runs-on: ubuntu-latest

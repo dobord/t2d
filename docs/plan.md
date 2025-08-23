@@ -34,9 +34,9 @@ All documentation in this repository is maintained in English (see repository st
 The following epics are required to reach fully automated builds (server + Android + Desktop + WebAssembly clients) with distributable artifacts and quality gates.
 
 ### 3.1 Gameplay & Server Core Hardening (Pre‑Artifact Stability)
-- [ ] Damage & hit detection (projectile ↔ tank overlap) with DamageEvent / TankDestroyed / KillFeedUpdate (basic implemented; kill feed pending)
+- [x] Damage & hit detection (projectile ↔ tank overlap) with DamageEvent / TankDestroyed / KillFeedUpdate (implemented + batching)
 - [x] Ammo & reload rules; match end / victory condition (basic timer reload + winner detection implemented)
-- [ ] Graceful disconnect broadcast + entity removal deltas
+- [x] Graceful disconnect broadcast + entity removal deltas
 - [ ] Snapshot compression / size optimization (quantization, thresholding, optional zstd)
 - [ ] Configurable snapshot & delta intervals (expose existing constants to config fully)
 - [ ] Box2D physics integration (server authoritative movement, turret rotation, projectile collision)
@@ -52,7 +52,7 @@ The following epics are required to reach fully automated builds (server + Andro
 - [ ] Deterministic replay harness (optional early metrics mode)
 
 ### 3.3 CI Pipeline Enhancements
-- [ ] Matrix builds (Linux / Windows / macOS) for server & desktop client
+- [x] Matrix builds (Linux / Windows / macOS) for server & desktop client
 - [ ] Android build job (NDK + Gradle) producing APK artifact
 - [ ] WebAssembly client build job (Docker image + wasm bundle artifact)
 - [ ] Separate build stages: server | clients | tests
@@ -63,7 +63,7 @@ The following epics are required to reach fully automated builds (server + Andro
 - [ ] Version stamping from git tag into `T2D_VERSION`
 - [ ] Release workflow (tag push) publishing all platform artifacts + changelog
 - [ ] Signed release artifacts (optional GPG) later
- - [ ] Dependency pin & verification job (compare vendored versions vs docs & .env)
+- [x] Dependency pin & verification job (compare vendored versions vs docs & .env)
 
 ### 3.4 Observability & Operational Readiness
 - [x] Structured logging (JSON lines) + log level from config

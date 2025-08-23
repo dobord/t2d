@@ -45,6 +45,7 @@ coro::task<void> run_match(std::shared_ptr<coro::io_scheduler> scheduler, std::s
                         if (tank.alive) {
                             tank.alive = false;
                             ctx->removed_tanks_since_full.push_back(tank.entity_id);
+                            ctx->kill_feed_events.emplace_back(tank.entity_id, 0);
                             t2d::ServerMessage tdmsg;
                             auto *td = tdmsg.mutable_destroyed();
                             td->set_victim_id(tank.entity_id);
@@ -157,6 +158,7 @@ coro::task<void> run_match(std::shared_ptr<coro::io_scheduler> scheduler, std::s
                         if (tank.hp == 0) {
                             tank.alive = false;
                             ctx->removed_tanks_since_full.push_back(tank.entity_id);
+                            ctx->kill_feed_events.emplace_back(tank.entity_id, proj.owner);
                             t2d::ServerMessage tdmsg;
                             auto *td = tdmsg.mutable_destroyed();
                             td->set_victim_id(tank.entity_id);
@@ -275,6 +277,19 @@ coro::task<void> run_match(std::shared_ptr<coro::io_scheduler> scheduler, std::s
                 ctx->removed_projectiles_since_full.clear();
                 ctx->removed_tanks_since_full.clear();
             }
+        }
+        // Emit aggregated KillFeedUpdate if any events occurred this tick
+        if (!ctx->kill_feed_events.empty()) {
+            t2d::ServerMessage kfmsg;
+            auto *kf = kfmsg.mutable_kill_feed();
+            for (auto &e : ctx->kill_feed_events) {
+                auto *ev = kf->add_events();
+                ev->set_victim_id(e.first);
+                ev->set_attacker_id(e.second);
+            }
+            for (auto &pl : ctx->players)
+                t2d::mm::instance().push_message(pl, kfmsg);
+            ctx->kill_feed_events.clear();
         }
         // Victory condition: only one (or zero) alive non-bot tank remains OR time limit reached
         if (!ctx->match_over) {

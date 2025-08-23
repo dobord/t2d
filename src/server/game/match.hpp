@@ -58,6 +58,8 @@ struct MatchContext
     uint32_t max_ammo{10};
     bool match_over{false};
     uint32_t winner_entity{0};
+    // Aggregated kill feed events for batching per tick (victim, attacker)
+    std::vector<std::pair<uint32_t, uint32_t>> kill_feed_events;
 };
 
 inline float movement_speed()

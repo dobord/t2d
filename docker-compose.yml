@@ -1,0 +1,12 @@
+version: '3.8'
+services:
+  t2d_server:
+    build: .
+    image: t2d/server:dev
+    restart: unless-stopped
+    environment:
+      - T2D_LOG_LEVEL=info
+    ports:
+      - "40000:40000"
+    volumes:
+      - ./config:/app/config:ro
