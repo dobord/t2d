@@ -28,6 +28,9 @@ struct Session : public std::enable_shared_from_this<Session>
     uint32_t tank_entity_id{0}; // entity id inside the match (0 if not in a match)
     std::chrono::steady_clock::time_point queue_join_time{};
     std::chrono::steady_clock::time_point last_heartbeat{}; // updated on heartbeat
+    // When a lobby countdown has started for the group this player is in (earliest join triggered)
+    // Not persisted; recalculated by matchmaker each poll.
+    std::chrono::steady_clock::time_point lobby_countdown_start{}; // 0 if not in countdown yet
 
     struct InputState
     {

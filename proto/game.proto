@@ -24,7 +24,11 @@ message QueueStatusUpdate {
   uint32 position = 1;
   uint32 players_in_queue = 2;
   uint32 needed_for_match = 3;
-  uint32 timeout_seconds_left = 4; // until bots fill
+  uint32 timeout_seconds_left = 4; // until bots fill (legacy; equal to lobby_countdown if provided)
+  // New fields (prototype): remaining seconds until lobby auto-start (bot fill or full group)
+  uint32 lobby_countdown = 5; // 0 if unknown/not started
+  // Dynamic bot pacing: how many bots would be added if countdown expired now (hint to client UI)
+  uint32 projected_bot_fill = 6; // 0 if none
 }
 
 message MatchStart {

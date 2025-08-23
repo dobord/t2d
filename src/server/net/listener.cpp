@@ -142,10 +142,13 @@ static coro::task<void> connection_loop(
                 }
             } else if (cmsg.has_queue_join()) {
                 auto *qs = smsg.mutable_queue_status();
+                // Populate minimal queue status; refined periodic updates will be pushed by matchmaker loop in future.
                 qs->set_position(1);
                 qs->set_players_in_queue(1);
                 qs->set_needed_for_match(16);
                 qs->set_timeout_seconds_left(180);
+                qs->set_lobby_countdown(180);
+                qs->set_projected_bot_fill(15);
                 if (session->authenticated) {
                     t2d::mm::instance().enqueue(session);
                 }

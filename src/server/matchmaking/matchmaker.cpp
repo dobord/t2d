@@ -42,13 +42,16 @@ coro::task<void> run_matchmaker(std::shared_ptr<coro::io_scheduler> scheduler, M
         co_await scheduler->yield_for(std::chrono::milliseconds(cfg.poll_interval_ms));
         auto queued = mgr.snapshot_queue();
         t2d::metrics::runtime().queue_depth.store(queued.size(), std::memory_order_relaxed);
-        // If not enough real players but timeout exceeded for earliest player, fill with bots
-        if (!queued.empty() && queued.size() < cfg.max_players) {
-            // find earliest join time
-            auto earliest = queued.front()->queue_join_time;
+        // Determine earliest join order and compute countdown time left for display.
+        std::chrono::steady_clock::time_point earliest{};
+        if (!queued.empty()) {
+            earliest = queued.front()->queue_join_time;
             for (auto &q : queued)
                 if (q->queue_join_time < earliest)
                     earliest = q->queue_join_time;
+        }
+        // If not enough real players but timeout exceeded for earliest player, fill with bots
+        if (!queued.empty() && queued.size() < cfg.max_players) {
             auto waited =
                 std::chrono::duration_cast<std::chrono::seconds>(std::chrono::steady_clock::now() - earliest).count();
             if (waited >= cfg.fill_timeout_seconds) {
@@ -57,6 +60,7 @@ coro::task<void> run_matchmaker(std::shared_ptr<coro::io_scheduler> scheduler, M
                 queued = mgr.snapshot_queue();
             }
         }
+        // TODO: push periodic QueueStatusUpdate messages with lobby_countdown & projected bot fill.
         if (queued.size() >= cfg.max_players) {
             // form match using first max_players
             std::vector<std::shared_ptr<Session>> group(queued.begin(), queued.begin() + cfg.max_players);
