@@ -121,7 +121,8 @@ add_library(t2d_proto STATIC ${T2D_PROTO_SRCS} ${T2D_PROTO_HDRS})
 target_include_directories(t2d_proto PUBLIC ${CMAKE_CURRENT_BINARY_DIR})
 target_link_libraries(t2d_proto PUBLIC protobuf::libprotobuf)
 
-# Derive version from git (fallback to 0.0.0) and pass to targets
+# Derive version from git (fallback to 0.0.0) and pass to targets.
+# Expose: T2D_VERSION (describe), T2D_GIT_SHA (short), T2D_BUILD_DIRTY (0/1), T2D_BUILD_DATE (UTC ISO8601)
 find_package(Git QUIET)
 if (GIT_FOUND)
     execute_process(
@@ -129,12 +130,41 @@ if (GIT_FOUND)
         WORKING_DIRECTORY ${CMAKE_CURRENT_SOURCE_DIR}
         OUTPUT_VARIABLE GIT_DESCRIBE_VERSION
         OUTPUT_STRIP_TRAILING_WHITESPACE ERROR_QUIET)
+    execute_process(
+        COMMAND ${GIT_EXECUTABLE} rev-parse --short HEAD
+        WORKING_DIRECTORY ${CMAKE_CURRENT_SOURCE_DIR}
+        OUTPUT_VARIABLE GIT_SHA
+        OUTPUT_STRIP_TRAILING_WHITESPACE ERROR_QUIET)
+    execute_process(
+        COMMAND ${GIT_EXECUTABLE} diff --quiet --name-only
+        WORKING_DIRECTORY ${CMAKE_CURRENT_SOURCE_DIR}
+        RESULT_VARIABLE GIT_DIFF_RESULT
+        OUTPUT_QUIET ERROR_QUIET)
 endif ()
 if (NOT GIT_DESCRIBE_VERSION)
     set(GIT_DESCRIBE_VERSION "0.0.0-unknown")
 endif ()
-message(STATUS "T2D version: ${GIT_DESCRIBE_VERSION}")
+if (NOT GIT_SHA)
+    set(GIT_SHA "unknown")
+endif ()
+if (GIT_DIFF_RESULT EQUAL 0)
+    set(GIT_DIRTY 0)
+else ()
+    # If describe already contains -dirty keep that semantic but also numeric flag
+    set(GIT_DIRTY 1)
+endif ()
+string(TIMESTAMP BUILD_TIMESTAMP "%Y-%m-%dT%H:%M:%SZ" UTC)
+message(
+    STATUS
+        "T2D version: ${GIT_DESCRIBE_VERSION} (sha: ${GIT_SHA} dirty: ${GIT_DIRTY} date: ${BUILD_TIMESTAMP})"
+)
 set(T2D_VERSION_STR ${GIT_DESCRIBE_VERSION})
+
+# Central interface target for version compile definitions so every binary / test shares consistent values
+add_library(t2d_version INTERFACE)
+target_compile_definitions(
+    t2d_version INTERFACE T2D_VERSION="${T2D_VERSION_STR}" T2D_GIT_SHA="${GIT_SHA}"
+                          T2D_BUILD_DIRTY=${GIT_DIRTY} T2D_BUILD_DATE="${BUILD_TIMESTAMP}")
 
 if (T2D_BUILD_SERVER)
     add_executable(
@@ -156,7 +186,7 @@ if (T2D_BUILD_SERVER)
         target_link_libraries(t2d_server PRIVATE ZLIB::ZLIB)
         target_compile_definitions(t2d_server PRIVATE T2D_HAS_ZLIB=1)
     endif ()
-    target_compile_definitions(t2d_server PRIVATE T2D_VERSION="${T2D_VERSION_STR}")
+    target_link_libraries(t2d_server PRIVATE t2d_version)
 endif ()
 
 if (T2D_BUILD_CLIENT)
@@ -164,7 +194,7 @@ if (T2D_BUILD_CLIENT)
     add_executable(t2d_desktop_client src/client/desktop_client.cpp src/common/framing.cpp)
     target_link_libraries(t2d_desktop_client PRIVATE t2d_proto libcoro)
     target_include_directories(t2d_desktop_client PRIVATE src)
-    target_compile_definitions(t2d_desktop_client PRIVATE T2D_VERSION="${T2D_VERSION_STR}")
+    target_link_libraries(t2d_desktop_client PRIVATE t2d_version)
 endif ()
 
 # Formatting target placeholder (user can integrate clang-format config later)
@@ -250,30 +280,30 @@ if (T2D_BUILD_TESTS)
                                  tests/unit_session_manager.cpp)
     target_link_libraries(t2d_unit_session_manager PRIVATE t2d_proto libcoro yaml-cpp)
     target_include_directories(t2d_unit_session_manager PRIVATE src)
-    target_compile_definitions(t2d_unit_session_manager PRIVATE T2D_VERSION="${T2D_VERSION_STR}")
+    target_link_libraries(t2d_unit_session_manager PRIVATE t2d_version)
 
     add_executable(t2d_unit_framing src/common/framing.cpp tests/unit_framing.cpp)
     target_link_libraries(t2d_unit_framing PRIVATE t2d_proto libcoro)
     target_include_directories(t2d_unit_framing PRIVATE src)
-    target_compile_definitions(t2d_unit_framing PRIVATE T2D_VERSION="${T2D_VERSION_STR}")
+    target_link_libraries(t2d_unit_framing PRIVATE t2d_version)
 
     add_executable(t2d_unit_heartbeat_timeout src/server/matchmaking/session_manager.cpp
                                               tests/unit_heartbeat_timeout.cpp)
     target_link_libraries(t2d_unit_heartbeat_timeout PRIVATE t2d_proto libcoro yaml-cpp)
     target_include_directories(t2d_unit_heartbeat_timeout PRIVATE src)
-    target_compile_definitions(t2d_unit_heartbeat_timeout PRIVATE T2D_VERSION="${T2D_VERSION_STR}")
+    target_link_libraries(t2d_unit_heartbeat_timeout PRIVATE t2d_version)
 
     add_executable(t2d_unit_snapshot_delta tests/unit_snapshot_delta.cpp)
     target_link_libraries(t2d_unit_snapshot_delta PRIVATE t2d_proto)
     target_include_directories(t2d_unit_snapshot_delta PRIVATE src)
-    target_compile_definitions(t2d_unit_snapshot_delta PRIVATE T2D_VERSION="${T2D_VERSION_STR}")
+    target_link_libraries(t2d_unit_snapshot_delta PRIVATE t2d_version)
     add_executable(t2d_unit_snapshot_replay tests/unit_snapshot_replay.cpp)
     target_link_libraries(t2d_unit_snapshot_replay PRIVATE t2d_proto)
     target_include_directories(t2d_unit_snapshot_replay PRIVATE src)
-    target_compile_definitions(t2d_unit_snapshot_replay PRIVATE T2D_VERSION="${T2D_VERSION_STR}")
+    target_link_libraries(t2d_unit_snapshot_replay PRIVATE t2d_version)
     add_executable(t2d_unit_framing_fuzz tests/unit_framing_fuzz.cpp)
     target_include_directories(t2d_unit_framing_fuzz PRIVATE src)
-    target_compile_definitions(t2d_unit_framing_fuzz PRIVATE T2D_VERSION="${T2D_VERSION_STR}")
+    target_link_libraries(t2d_unit_framing_fuzz PRIVATE t2d_version)
 
     add_executable(
         t2d_e2e_match_start
@@ -286,7 +316,7 @@ if (T2D_BUILD_TESTS)
         tests/e2e_match_start.cpp)
     target_link_libraries(t2d_e2e_match_start PRIVATE t2d_proto libcoro yaml-cpp box2d)
     target_include_directories(t2d_e2e_match_start PRIVATE src)
-    target_compile_definitions(t2d_e2e_match_start PRIVATE T2D_VERSION="${T2D_VERSION_STR}")
+    target_link_libraries(t2d_e2e_match_start PRIVATE t2d_version)
 
     add_executable(
         t2d_e2e_input_move
@@ -299,7 +329,7 @@ if (T2D_BUILD_TESTS)
         tests/e2e_input_move.cpp)
     target_link_libraries(t2d_e2e_input_move PRIVATE t2d_proto libcoro yaml-cpp box2d)
     target_include_directories(t2d_e2e_input_move PRIVATE src)
-    target_compile_definitions(t2d_e2e_input_move PRIVATE T2D_VERSION="${T2D_VERSION_STR}")
+    target_link_libraries(t2d_e2e_input_move PRIVATE t2d_version)
 
     add_executable(
         t2d_e2e_heartbeat
@@ -312,7 +342,7 @@ if (T2D_BUILD_TESTS)
         tests/e2e_heartbeat.cpp)
     target_link_libraries(t2d_e2e_heartbeat PRIVATE t2d_proto libcoro yaml-cpp box2d)
     target_include_directories(t2d_e2e_heartbeat PRIVATE src)
-    target_compile_definitions(t2d_e2e_heartbeat PRIVATE T2D_VERSION="${T2D_VERSION_STR}")
+    target_link_libraries(t2d_e2e_heartbeat PRIVATE t2d_version)
 
     add_executable(
         t2d_e2e_bot_fill
@@ -325,7 +355,7 @@ if (T2D_BUILD_TESTS)
         tests/e2e_bot_fill.cpp)
     target_link_libraries(t2d_e2e_bot_fill PRIVATE t2d_proto libcoro yaml-cpp box2d)
     target_include_directories(t2d_e2e_bot_fill PRIVATE src)
-    target_compile_definitions(t2d_e2e_bot_fill PRIVATE T2D_VERSION="${T2D_VERSION_STR}")
+    target_link_libraries(t2d_e2e_bot_fill PRIVATE t2d_version)
     add_executable(
         t2d_e2e_bot_projectile
         src/common/framing.cpp
@@ -337,7 +367,7 @@ if (T2D_BUILD_TESTS)
         tests/e2e_bot_projectile.cpp)
     target_link_libraries(t2d_e2e_bot_projectile PRIVATE t2d_proto libcoro yaml-cpp box2d)
     target_include_directories(t2d_e2e_bot_projectile PRIVATE src)
-    target_compile_definitions(t2d_e2e_bot_projectile PRIVATE T2D_VERSION="${T2D_VERSION_STR}")
+    target_link_libraries(t2d_e2e_bot_projectile PRIVATE t2d_version)
     add_executable(
         t2d_e2e_delta_snapshots
         src/common/framing.cpp
@@ -349,7 +379,7 @@ if (T2D_BUILD_TESTS)
         tests/e2e_delta_snapshots.cpp)
     target_link_libraries(t2d_e2e_delta_snapshots PRIVATE t2d_proto libcoro yaml-cpp box2d)
     target_include_directories(t2d_e2e_delta_snapshots PRIVATE src)
-    target_compile_definitions(t2d_e2e_delta_snapshots PRIVATE T2D_VERSION="${T2D_VERSION_STR}")
+    target_link_libraries(t2d_e2e_delta_snapshots PRIVATE t2d_version)
     add_executable(
         t2d_e2e_damage_event
         src/common/framing.cpp
@@ -361,7 +391,7 @@ if (T2D_BUILD_TESTS)
         tests/e2e_damage_event.cpp)
     target_link_libraries(t2d_e2e_damage_event PRIVATE t2d_proto libcoro yaml-cpp box2d)
     target_include_directories(t2d_e2e_damage_event PRIVATE src)
-    target_compile_definitions(t2d_e2e_damage_event PRIVATE T2D_VERSION="${T2D_VERSION_STR}")
+    target_link_libraries(t2d_e2e_damage_event PRIVATE t2d_version)
 
     add_executable(
         t2d_e2e_damage_multi
@@ -374,7 +404,7 @@ if (T2D_BUILD_TESTS)
         tests/e2e_damage_multi.cpp)
     target_link_libraries(t2d_e2e_damage_multi PRIVATE t2d_proto libcoro yaml-cpp box2d)
     target_include_directories(t2d_e2e_damage_multi PRIVATE src)
-    target_compile_definitions(t2d_e2e_damage_multi PRIVATE T2D_VERSION="${T2D_VERSION_STR}")
+    target_link_libraries(t2d_e2e_damage_multi PRIVATE t2d_version)
 
     add_executable(
         t2d_e2e_kill_feed
@@ -387,7 +417,7 @@ if (T2D_BUILD_TESTS)
         tests/e2e_kill_feed.cpp)
     target_link_libraries(t2d_e2e_kill_feed PRIVATE t2d_proto libcoro yaml-cpp box2d)
     target_include_directories(t2d_e2e_kill_feed PRIVATE src)
-    target_compile_definitions(t2d_e2e_kill_feed PRIVATE T2D_VERSION="${T2D_VERSION_STR}")
+    target_link_libraries(t2d_e2e_kill_feed PRIVATE t2d_version)
 
     # Register tests with CTest (only if BUILD_TESTING enabled)
     set(T2D_TEST_TARGETS

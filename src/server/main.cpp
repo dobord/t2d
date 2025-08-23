@@ -162,7 +162,12 @@ int main(int argc, char **argv)
         setenv("T2D_LOG_JSON", "1", 1);
     }
     t2d::log::init();
-    t2d::log::info("t2d server starting (version: {})", T2D_VERSION);
+    t2d::log::info(
+        "t2d server starting (version: {} sha:{} dirty:{} build:{})",
+        T2D_VERSION,
+        T2D_GIT_SHA,
+        T2D_BUILD_DIRTY,
+        T2D_BUILD_DATE);
     t2d::log::info("Tick rate: {} Hz", cfg.tick_rate);
     t2d::log::info("Listening on port: {}", cfg.listen_port);
     t2d::log::info("Auth mode: {}", cfg.auth_mode);

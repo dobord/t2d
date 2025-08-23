@@ -60,7 +60,7 @@ The following epics are required to reach fully automated builds (server + Andro
 - [ ] Artifact upload (server tar/zip + symbols; desktop binaries; APK; wasm bundle)
 - [ ] Code coverage (lcov / llvm-cov) reporting (advisory)
 - [ ] Static analysis / sanitizers nightly (ASan, UBSan, TSAN matrix)
-- [ ] Version stamping from git tag into `T2D_VERSION`
+- [x] Version stamping from git tag into `T2D_VERSION`
 - [ ] Release workflow (tag push) publishing all platform artifacts + changelog
 - [ ] Signed release artifacts (optional GPG) later
 - [x] Dependency pin & verification job (compare vendored versions vs docs & .env)
