@@ -1,5 +1,12 @@
 # t2d (Tank 2D Multiplayer)
 
+![CI](https://github.com/dobord/t2d/actions/workflows/ci.yml/badge.svg)
+![Coverage](https://github.com/dobord/t2d/actions/workflows/coverage.yml/badge.svg)
+![C++20](https://img.shields.io/badge/C%2B%2B-20-blue)
+![box2d v3.1.1](https://img.shields.io/badge/box2d-v3.1.1-forestgreen)
+![yaml--cpp 0.8.0](https://img.shields.io/badge/yaml--cpp-0.8.0-orange)
+![libcoro fix/skip_linking_pthread_on_android](https://img.shields.io/badge/libcoro-fix__skip__linking__pthread__on__android-purple)
+
 Authoritative 2D multiplayer tank game (server + (future) multi‑platform clients). Current focus: server core, deterministic match loop, networking, matchmaking, bots, snapshots & metrics.
 
 ## Status
@@ -50,6 +57,49 @@ Third-party tests/examples/tools are force-disabled (yaml-cpp, libcoro, box2d, c
 * No real authentication (OAuth adapter pending)
 * Desktop / Android / WASM clients not yet implemented (prototype test client only)
 * No persistence, matchmaking skill/ELO, or replay/validation harness
+
+## Roadmap
+High-level, non-binding plan (subject to change). Earlier items are higher priority. Contribution proposals should reference which item they target or justify new items.
+
+### Short Term (Prototype Hardening)
+- Implement optional snapshot compression (zlib; config flag disabled by default)
+- Add basic auth adapter abstraction implementation (token verification stub -> pluggable OAuth)
+- Improve matchmaking: lobby countdown + dynamic bot fill pacing
+- Deterministic snapshot diff validation test (encode → apply → state equivalence)
+- Metrics: histogram for tick duration, gauge for connected players per match
+- Add zlib dependency integration (guarded) & compression size metrics
+- Strengthen TCP framing fuzz/unit tests (malformed length, truncation)
+- Basic disconnect / reconnect (session resume within short timeout)
+
+### Mid Term (Feature Expansion)
+- Desktop client improvements (rendering, input smoothing)
+- Android client prototype using shared protocol
+- Web/WASM experimental client (Emscripten build pipeline)
+- Projectile / physics enhancements (raycast firing line, obstacles/terrain tiles)
+- Power-ups / pickups prototype (ammo crate, health pack)
+- Persistent player identifiers + simple stats (matches played, kills)
+- Replay / record raw snapshots for offline validation
+- Matchmaking ELO / skill rating draft (config toggle)
+- Optional TLS for client connections (behind build flag)
+
+### Long Term (Scalability & Polish)
+- Multi-match shard orchestration (process pool or cluster controller)
+- State compression research (quantization, dictionary / delta chain compaction)
+- Cheat resistance: server-side movement reconciliation + sanity heuristics
+- Observability: tracing spans (open telemetry) around tick phases
+- Replay playback & determinism verification pipeline in CI
+- Load testing harness (synthetic clients; performance dashboards)
+- Advanced authentication (OAuth provider integration, refresh tokens)
+- Spectator mode (read-only snapshot stream)
+- In-game chat (moderation + rate limiting)
+
+### Exploratory / Nice-to-Have
+- AI bot strategy improvements (path planning, target prioritization)
+- Map editor & multiple map rotation
+- Procedural map generation experiment
+- Cross-play session handoff (desktop ↔ mobile) with state sync
+
+If you plan to work on a roadmap item, open an issue first to avoid duplication and discuss scope.
 
 ## Project Layout
 ```
@@ -119,3 +169,6 @@ All source files should begin with a short SPDX header, e.g.:
 ```
 
 Copyright (c) 2025 dobord and contributors.
+
+## Contributing
+See `CONTRIBUTING.md` for guidelines (coding style, coroutine rules, tests, commit / PR format, dependency manifest updates). Issue and feature request templates are available via GitHub (bug reports & enhancements). Pull requests should include rationale, test evidence, and note any protocol or configuration key changes.

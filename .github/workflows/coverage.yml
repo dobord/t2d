@@ -1,0 +1,36 @@
+name: Coverage
+
+on:
+  push:
+    branches: [ main, master ]
+  pull_request:
+    branches: [ main, master ]
+
+jobs:
+  coverage:
+    name: Coverage (Linux)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          submodules: recursive
+          fetch-depth: 0
+      - name: Install deps
+        run: sudo apt-get update && sudo apt-get install -y protobuf-compiler libprotobuf-dev cmake g++ lcov ninja-build
+      - name: Configure (Debug + coverage)
+        run: cmake -S . -B build -DCMAKE_BUILD_TYPE=Debug -DT2D_BUILD_TESTS=ON -DT2D_ENABLE_COVERAGE=ON -DT2D_BUILD_CLIENT=ON -G Ninja
+      - name: Build
+        run: cmake --build build -- -j4
+      - name: Run tests (generate coverage)
+        working-directory: build
+        run: ctest --output-on-failure
+      - name: Capture lcov
+        run: |
+          lcov --capture --directory build --output-file coverage.info
+          lcov --remove coverage.info '/usr/*' 'third_party/*' --output-file coverage.info || true
+          lcov --list coverage.info
+      - name: Upload coverage artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: coverage-lcov
+          path: coverage.info
