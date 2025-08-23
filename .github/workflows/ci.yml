@@ -192,3 +192,29 @@ jobs:
           done < DEPENDENCIES.md
           if [[ $missing -ne 0 ]]; then exit 1; fi
           echo "Dependency manifest OK"
+
+  clang-tidy:
+    name: Clang-Tidy (Advisory)
+    runs-on: ubuntu-latest
+    continue-on-error: true # non-blocking initially; will gate later
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          submodules: recursive
+          fetch-depth: 0
+      - name: Install deps (compiler + protobuf + clang-tidy)
+        run: sudo apt-get update && sudo apt-get install -y protobuf-compiler libprotobuf-dev cmake g++ ninja-build clang-tidy
+      - name: Configure (Debug, export compile commands)
+        run: cmake -S . -B build-tidy -DCMAKE_BUILD_TYPE=Debug -DT2D_BUILD_TESTS=ON -G Ninja
+      - name: Build (compile only, no tests)
+        run: cmake --build build-tidy -- -j4
+      - name: Run clang-tidy script
+        run: bash scripts/clang_tidy.sh || true
+      - name: Summarize diagnostics
+        run: |
+          if grep -R "warning:" -n build-tidy 2>/dev/null | head -n1; then
+            wc=$(grep -R "warning:" -n build-tidy | wc -l || true)
+            echo "Clang-Tidy warnings: $wc" >> $GITHUB_STEP_SUMMARY
+          else
+            echo "Clang-Tidy warnings: 0" >> $GITHUB_STEP_SUMMARY
+          fi
