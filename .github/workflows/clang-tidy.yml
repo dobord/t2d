@@ -1,0 +1,32 @@
+name: Clang-Tidy
+
+on:
+  pull_request:
+    branches: [ main ]
+  push:
+    branches: [ main ]
+
+permissions:
+  contents: read
+
+jobs:
+  clang-tidy:
+    runs-on: ubuntu-latest
+    timeout-minutes: 25
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          submodules: recursive
+          fetch-depth: 0
+      - name: Install deps
+        run: sudo apt-get update && sudo apt-get install -y protobuf-compiler libprotobuf-dev cmake ninja-build clang-tidy g++
+      - name: Configure (release compile_commands only)
+        run: cmake -S . -B build -G Ninja -DCMAKE_BUILD_TYPE=Release -DT2D_BUILD_TESTS=ON -DT2D_BUILD_CLIENT=ON
+      - name: Run clang-tidy
+        run: bash scripts/clang_tidy.sh build
+      - name: Upload compile commands (debugging aid)
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: clang-tidy-compile-commands
+          path: build/compile_commands.json

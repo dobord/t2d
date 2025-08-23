@@ -89,8 +89,8 @@ License Compatibility:
 - Ammo crates: static bodies with trigger pickup
 
 ## 6. Networking & Protocol
-Implemented messages: AuthRequest/Response, QueueJoin/Status, MatchStart, StateSnapshot, DeltaSnapshot, Heartbeat/Response (damage events pending).
-Planned additions: DamageEvent, TankDestroyed, KillFeedUpdate, PickupEvent, DisconnectNotice.
+Implemented messages: AuthRequest/Response, QueueJoin/Status, MatchStart, StateSnapshot, DeltaSnapshot, Heartbeat/Response, DamageEvent, TankDestroyed, KillFeedUpdate, MatchEnd.
+Planned additions: PickupEvent, DisconnectNotice (explicit), future replay / debug control messages.
 
 ## 7. Authentication & Security
 - OAuth token validation (pluggable module – not implemented yet, stub in place)
