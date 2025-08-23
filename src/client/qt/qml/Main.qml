@@ -8,7 +8,12 @@ Window {
     width: 800; height: 600
     visible: true
     title: "t2d Qt Client"
-    Component.onCompleted: root.requestActivate() // ensure window gets focus for key events
+    Component.onCompleted: root.requestActivate()
+
+    Item { // focusable container for key handling
+        id: rootItem
+        anchors.fill: parent
+        focus: true
 
     // Keyboard state flags (simple set of currently pressed movement keys)
     property bool keyW: false
@@ -109,12 +114,11 @@ Window {
                 ctx.save();
                 ctx.translate(wx, wy);
                 ctx.rotate(hullRad);
-                // Tracks (visual): two long thin rectangles along length (local +X forward), width axis is local +Y.
+                // Tracks: length 6 along X, width 0.3 along Y. Centered at +/- (1.5 - 0.15) = 1.35
                 ctx.fillStyle = '#202a32';
-                const trackLen = 6.0; const trackWidth = 0.3; const halfHullWidth = 1.5; // hull width =3
-                // Left track (+Y) and right track (-Y)
-                ctx.fillRect(-trackLen/2, halfHullWidth - trackWidth/2 - trackLen/2 + trackLen/2, trackLen, trackWidth); // left
-                ctx.fillRect(-trackLen/2, -halfHullWidth - trackWidth/2 + trackWidth, trackLen, trackWidth); // right (adjusted)
+                const trackLen = 6.0; const trackWidth = 0.3; const halfHullWidth = 1.5; const trackOffset = 1.35;
+                ctx.fillRect(-trackLen/2, trackOffset - trackWidth/2, trackLen, trackWidth); // upper (+Y)
+                ctx.fillRect(-trackLen/2, -trackOffset - trackWidth/2, trackLen, trackWidth); // lower (-Y)
                 // Hull body
                 ctx.fillStyle = (i===ownIndex)? '#6cff5d' : '#3fa7ff';
                 ctx.fillRect(-3.0, -1.5, 6.0, 3.0); // length 6 along X, width 3 along Y (centered)
@@ -223,4 +227,5 @@ Window {
         color: "#8098a8"
         font.pixelSize: 14
     }
+    } // end rootItem
 }
