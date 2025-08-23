@@ -136,19 +136,20 @@ coro::task<void> run_matchmaker(std::shared_ptr<coro::io_scheduler> scheduler, M
             ctx->reload_interval_sec = cfg.reload_interval_sec;
             ctx->projectile_speed = cfg.projectile_speed;
             uint32_t eid = 1;
+            uint32_t bot_index = 0; // sequential index for bots to enforce spacing
             for (auto &s : group) {
                 t2d::game::TankStateSimple tank{eid++};
-                // Deterministic initial placement prototype: first (real) player at origin, bots offset on -X looking
-                // towards origin
+                // Spacing requirement: ensure >=7 units gap between hull centers (hull length =6, so +1 buffer)
+                // Place first real player at origin; bots extend along -X at multiples of 7.
                 if (s->is_bot) {
-                    // Place bots spaced along negative X axis to avoid instant projectile self-collisions
-                    // entity_id starts at 1 for player, so bot entity_ids 2..N => positions -2,-3,...
-                    tank.x = -static_cast<float>(tank.entity_id);
+                    float spacing = 7.0f; // required interval
+                    tank.x = -spacing * static_cast<float>(bot_index + 1);
                     tank.y = 0.0f;
-                    tank.hull_angle = 0.0f; // facing east toward player at origin
+                    tank.hull_angle = 0.0f; // facing +X toward origin
                     tank.turret_angle = 0.0f;
+                    ++bot_index;
                 } else {
-                    // player stays at origin
+                    // First real player at origin (additional real players could be spaced on +X in future)
                     tank.x = 0.0f;
                     tank.y = 0.0f;
                     tank.hull_angle = 0.0f;
