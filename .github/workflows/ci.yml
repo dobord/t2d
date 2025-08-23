@@ -7,173 +7,67 @@ on:
 
 jobs:
   build-test:
-    name: Build & Test (${{ matrix.os }})
-    strategy:
-      fail-fast: false
-      matrix:
-        include:
-          - os: ubuntu-latest
-            triplet: linux-amd64
-            install: sudo apt-get update && sudo apt-get install -y protobuf-compiler libprotobuf-dev cmake g++ ninja-build
-            generator_opts: ""
-          - os: windows-latest
-            triplet: windows-amd64
-            install: choco install -y cmake --installargs 'ADD_CMAKE_TO_PATH=1' ninja git || powershell -Command "Write-Host install step partial"
-            generator_opts: "-G Ninja"
-          - os: macos-latest
-            triplet: macos-arm64
-            install: brew update && brew install protobuf cmake ninja ccache llvm || true
-            generator_opts: "-G Ninja"
-    runs-on: ${{ matrix.os }}
+    name: Build & Test (Linux)
+    runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
         with:
           submodules: recursive
           fetch-depth: 0
-      - name: Setup ccache (Unix)
-        if: runner.os != 'Windows'
+      - name: Setup ccache
         uses: actions/cache@v4
         with:
           path: ~/.cache/ccache
-          key: ccache-${{ runner.os }}-${{ matrix.triplet }}-${{ hashFiles('**/CMakeLists.txt', 'proto/**/*.proto') }}
+          key: ccache-linux-amd64-${{ hashFiles('**/CMakeLists.txt', 'proto/**/*.proto') }}
           restore-keys: |
-            ccache-${{ runner.os }}-${{ matrix.triplet }}-
+            ccache-linux-amd64-
       - name: Install deps
-        run: ${{ matrix.install }}
-      - name: Configure LLVM toolchain (macOS)
-        if: runner.os == 'macOS'
+        run: sudo apt-get update && sudo apt-get install -y protobuf-compiler libprotobuf-dev cmake g++ ninja-build ccache
+      - name: Configure ccache env
         run: |
-          set -e
-          LLVM_PREFIX="$(brew --prefix llvm)"
-          echo "Using LLVM at $LLVM_PREFIX"
-          echo "CC=$LLVM_PREFIX/bin/clang" >> $GITHUB_ENV
-          echo "CXX=$LLVM_PREFIX/bin/clang++" >> $GITHUB_ENV
-          echo "CMAKE_C_COMPILER=$LLVM_PREFIX/bin/clang" >> $GITHUB_ENV
-          echo "CMAKE_CXX_COMPILER=$LLVM_PREFIX/bin/clang++" >> $GITHUB_ENV
-          echo "PATH=$LLVM_PREFIX/bin:$PATH" >> $GITHUB_ENV
-          # libcoro CMakeLists expects /usr/local/opt/llvm on macOS; create symlink if Homebrew prefix differs (Apple Silicon uses /opt/homebrew)
-          if [ ! -d /usr/local/opt/llvm ]; then
-            sudo mkdir -p /usr/local/opt || true
-            sudo ln -s "$LLVM_PREFIX" /usr/local/opt/llvm || true
-            echo "Created symlink /usr/local/opt/llvm -> $LLVM_PREFIX"
-          fi
-      - name: Install protobuf via vcpkg (Windows)
-        if: runner.os == 'Windows'
-        shell: powershell
-        run: |
-          $vcpkgRoot = "$env:USERPROFILE\vcpkg"
-          if (-not (Test-Path $vcpkgRoot)) {
-            git clone https://github.com/microsoft/vcpkg $vcpkgRoot
-          }
-          # Cache restore may have populated installed/ already; bootstrap only if tool missing
-          if (-not (Test-Path "$vcpkgRoot\vcpkg.exe")) {
-            & "$vcpkgRoot\bootstrap-vcpkg.bat" -disableMetrics
-          }
-          & "$vcpkgRoot\vcpkg.exe" install protobuf:x64-windows
-          echo "VCPKG_TOOLCHAIN_FILE=$vcpkgRoot\scripts\buildsystems\vcpkg.cmake" >> $env:GITHUB_ENV
-          # Ensure protoc (from vcpkg) is on PATH for subsequent CMake configure
-          $pbTools = Join-Path $vcpkgRoot 'installed/x64-windows/tools/protobuf'
-          if (Test-Path $pbTools) { echo $pbTools >> $env:GITHUB_PATH }
-      - name: Cache vcpkg (Windows)
-        if: runner.os == 'Windows'
-        uses: actions/cache@v4
-        with:
-          path: |
-            ~\vcpkg\installed
-            ~\vcpkg\buildtrees
-            ~\vcpkg\packages
-            ~\vcpkg\downloads
-          key: vcpkg-${{ runner.os }}-protobuf-${{ hashFiles('CMakeLists.txt') }}
-          restore-keys: |
-            vcpkg-${{ runner.os }}-protobuf-
-      - name: Configure ccache env (Unix)
-        if: runner.os != 'Windows'
-        run: |
-          set -e
-          if command -v ccache >/dev/null 2>&1; then
-            echo "ccache already present"
-          else
-            if [ "$RUNNER_OS" = "Linux" ]; then
-              sudo apt-get update && sudo apt-get install -y ccache || true
-            elif [ "$RUNNER_OS" = "macOS" ]; then
-              brew install ccache || true
-            fi
-          fi
           if command -v ccache >/dev/null 2>&1; then
             echo "CMAKE_CXX_COMPILER_LAUNCHER=ccache" >> $GITHUB_ENV
             echo "CMAKE_C_COMPILER_LAUNCHER=ccache" >> $GITHUB_ENV
             ccache --version || true
-          else
-            echo "ccache not available; proceeding without compiler launcher"
           fi
-      - name: Configure (Unix)
-        if: runner.os != 'Windows'
-        run: cmake -S . -B build -DCMAKE_BUILD_TYPE=Release -DT2D_BUILD_TESTS=ON -DT2D_BUILD_CLIENT=ON -DCMAKE_CXX_FLAGS_RELEASE="-O2 -g0" -DCMAKE_C_FLAGS_RELEASE="-O2 -g0" ${{ matrix.generator_opts }}
-      - name: Configure (Windows)
-        if: runner.os == 'Windows'
-        shell: powershell
-        run: |
-          Write-Host "Using toolchain: $env:VCPKG_TOOLCHAIN_FILE"
-          if (-not (Test-Path $env:VCPKG_TOOLCHAIN_FILE)) { Write-Error "Toolchain file missing: $env:VCPKG_TOOLCHAIN_FILE" }
-          cmake -S . -B build -DCMAKE_BUILD_TYPE=Release -DT2D_BUILD_TESTS=ON -DT2D_BUILD_CLIENT=ON -DCMAKE_CXX_FLAGS_RELEASE="-O2 -g0" -DCMAKE_C_FLAGS_RELEASE="-O2 -g0" -DCMAKE_TOOLCHAIN_FILE="$env:VCPKG_TOOLCHAIN_FILE" ${{ matrix.generator_opts }}
+      - name: Configure
+        run: cmake -S . -B build -DCMAKE_BUILD_TYPE=Release -DT2D_BUILD_TESTS=ON -DT2D_BUILD_CLIENT=ON -DCMAKE_CXX_FLAGS_RELEASE="-O2 -g0" -DCMAKE_C_FLAGS_RELEASE="-O2 -g0"
       - name: Build
         env:
           CMAKE_BUILD_PARALLEL_LEVEL: 4
         run: |
           echo "Limiting parallel build to ${{ env.CMAKE_BUILD_PARALLEL_LEVEL }} jobs to reduce memory usage"
-          # Use CMake's portable parallel flag (works across shells & avoids PowerShell var syntax issues)
           cmake --build build --parallel ${{ env.CMAKE_BUILD_PARALLEL_LEVEL }}
       - name: Run tests
         working-directory: build
         run: ctest --output-on-failure -T Test
-      - name: Format check (Linux only)
-        if: runner.os == 'Linux'
+      - name: Format check
         run: bash scripts/format_check.sh || (echo "Run formatting target locally" && exit 1)
-      - name: SPDX header check (Linux only)
-        if: runner.os == 'Linux'
+      - name: SPDX header check
         run: bash scripts/spdx_check.sh
       - name: Upload server binary
-        if: runner.os != 'Windows'
         uses: actions/upload-artifact@v4
         with:
-          name: t2d_server-${{ matrix.triplet }}
+          name: t2d_server-linux-amd64
           path: build/t2d_server*
           if-no-files-found: warn
       - name: Upload desktop client prototype
-        if: runner.os != 'Windows'
         uses: actions/upload-artifact@v4
         with:
-          name: t2d_desktop_client-${{ matrix.triplet }}
+          name: t2d_desktop_client-linux-amd64
           path: build/t2d_desktop_client*
           if-no-files-found: warn
-      - name: Upload server binary (Windows)
-        if: runner.os == 'Windows'
-        uses: actions/upload-artifact@v4
-        with:
-            name: t2d_server-${{ matrix.triplet }}
-            path: build/t2d_server.exe*
-            if-no-files-found: warn
-      - name: Upload desktop client (Windows)
-        if: runner.os == 'Windows'
-        uses: actions/upload-artifact@v4
-        with:
-            name: t2d_desktop_client-${{ matrix.triplet }}
-            path: build/t2d_desktop_client.exe*
-            if-no-files-found: warn
-      - name: Package server (Linux only)
-        if: runner.os == 'Linux'
+      - name: Package server
         run: |
           bash scripts/package_server.sh
           ls -l dist
-      - name: Upload server package (Linux only)
-        if: runner.os == 'Linux'
+      - name: Upload server package
         uses: actions/upload-artifact@v4
         with:
-          name: t2d_server_package-${{ matrix.triplet }}
+          name: t2d_server_package-linux-amd64
           path: dist/t2d_server.tar.gz*
           if-no-files-found: warn
-      - name: Build Docker image (Linux only)
-        if: runner.os == 'Linux'
+      - name: Build Docker image
         run: |
           docker build -t t2d/server:ci .
           docker image ls t2d/server:ci

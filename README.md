@@ -7,7 +7,7 @@
 ![yaml--cpp 0.8.0](https://img.shields.io/badge/yaml--cpp-0.8.0-orange)
 ![libcoro fix/skip_linking_pthread_on_android](https://img.shields.io/badge/libcoro-fix__skip__linking__pthread__on__android-purple)
 
-Authoritative 2D multiplayer tank game (server + (future) multi‑platform clients). Current focus: server core, deterministic match loop, networking, matchmaking, bots, snapshots & metrics.
+Authoritative 2D multiplayer tank game (server + (future) clients). Current focus: server core, deterministic match loop, networking, matchmaking, bots, snapshots & metrics. Desktop client prototype currently builds only on Linux (other platforms dropped for now to reduce CI surface).
 
 ## Status
 Prototype (core gameplay & networking implemented). Box2D physics (movement + projectile→tank contacts) integrated; advanced clients, compression & extended security still pending.

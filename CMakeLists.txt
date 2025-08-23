@@ -212,11 +212,18 @@ if (T2D_BUILD_SERVER)
 endif ()
 
 if (T2D_BUILD_CLIENT)
-    # Prototype desktop client (no UI yet). Later this will switch to a Qt/QML target.
-    add_executable(t2d_desktop_client src/client/desktop_client.cpp src/common/framing.cpp)
-    target_link_libraries(t2d_desktop_client PRIVATE t2d_proto libcoro)
-    target_include_directories(t2d_desktop_client PRIVATE src)
-    target_link_libraries(t2d_desktop_client PRIVATE t2d_version)
+    if (NOT CMAKE_SYSTEM_NAME STREQUAL "Linux")
+        message(
+            STATUS
+                "Desktop client build requested but disabled on non-Linux platform (${CMAKE_SYSTEM_NAME}); skipping target"
+        )
+    else ()
+        # Prototype desktop client (no UI yet). Later this will switch to a Qt/QML target.
+        add_executable(t2d_desktop_client src/client/desktop_client.cpp src/common/framing.cpp)
+        target_link_libraries(t2d_desktop_client PRIVATE t2d_proto libcoro)
+        target_include_directories(t2d_desktop_client PRIVATE src)
+        target_link_libraries(t2d_desktop_client PRIVATE t2d_version)
+    endif ()
 endif ()
 
 # Formatting target placeholder (user can integrate clang-format config later)

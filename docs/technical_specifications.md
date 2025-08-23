@@ -8,7 +8,7 @@
 
 ### Clients
 1. Android (Qt + NDK + QML)
-2. Desktop: Linux (Ubuntu 22.04+), Windows 10+
+2. Desktop: Linux (Ubuntu 22.04+) (other desktop platforms deferred)
 3. WebAssembly (Qt for WASM) built inside Docker (Alpine 3.20.6 base)
 
 ## 2. Core Technology Stack

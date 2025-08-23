@@ -43,7 +43,7 @@ The following epics are required to reach fully automated builds (server + Andro
 - [ ] Map items: ammo crates spawning logic & pickup events
 
 ### 3.2 Client Build Enablement (Multi‑Platform)
-- [ ] Desktop client scaffold (Qt 6 + QML minimal scene, Linux & Windows) (PARTIAL: headless network loop + snapshot/delta application implemented)
+- [ ] Desktop client scaffold (Qt/QML future; CURRENT: Linux prototype only; other platforms deferred) (PARTIAL: headless network loop + snapshot/delta application implemented)
 - [ ] Android client target (Gradle + CMake integration, JNI bridge, QML UI)
 - [ ] WebAssembly build (Emscripten + Qt WASM module) packaged in Docker Alpine base image
 - [ ] Shared network layer (reuse test client framing) + interpolation & reconciliation loop
@@ -52,7 +52,7 @@ The following epics are required to reach fully automated builds (server + Andro
 - [ ] Deterministic replay harness (optional early metrics mode)
 
 ### 3.3 CI Pipeline Enhancements
-- [x] Matrix builds (Linux / Windows / macOS) for server & desktop client
+- [x] Linux build for server & desktop prototype (other OS builds dropped)
 - [ ] Android build job (NDK + Gradle) producing APK artifact
 - [ ] WebAssembly client build job (Docker image + wasm bundle artifact)
 - [ ] Separate build stages: server | clients | tests
@@ -60,7 +60,7 @@ The following epics are required to reach fully automated builds (server + Andro
  - [ ] Artifact upload (server tar/zip + symbols; desktop binaries; APK; wasm bundle) (PARTIAL: server & desktop binaries + Linux tarball uploaded; APK/WASM pending)
  - [x] Code coverage (lcov) reporting workflow (coverage job uploads lcov artifact)
 - [ ] Static analysis / sanitizers nightly (ASan, UBSan, TSAN matrix)
-		- Progress: ASan+UBSan (Linux/macOS) + TSAN (Linux) nightly workflows added; static analysis pending.
+		- Progress: ASan+UBSan (Linux) + TSAN (Linux) nightly workflows added; macOS jobs removed; static analysis pending.
 - [x] Version stamping from git tag into `T2D_VERSION`
 - [ ] Release workflow (tag push) publishing all platform artifacts + changelog
 - [ ] Signed release artifacts (optional GPG) later
@@ -115,7 +115,7 @@ The following epics are required to reach fully automated builds (server + Andro
 3. [x] Snapshot interval config + size metrics (intervals configurable; size counters implemented)
 4. [x] Structured logging + metrics counters (JSON + Prometheus endpoint + graceful shutdown snapshot stats)
 5. [x] OAuth auth strategy abstraction (stub provider; real external validation later)
-6. [ ] Desktop client scaffold + CI build (scaffold started: prototype non-UI desktop client target `t2d_desktop_client`)
+6. [ ] Desktop client scaffold + CI build (Linux-only for now; other platforms deferred; prototype non-UI target `t2d_desktop_client`)
 7. [ ] Android & WASM build jobs
 8. [x] Dependency pin/verification (NDK, Build Tools, periodic submodule SHA audit job) (verification job present; NDK/Build Tools check still pending)
 9. [ ] Artifact uploads (all targets) (PARTIAL: server + desktop artifacts done)
