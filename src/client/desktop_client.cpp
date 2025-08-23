@@ -10,14 +10,86 @@
 
 #include <atomic>
 #include <chrono>
+#include <cmath>
 #include <csignal>
 #include <iostream>
 #include <string>
+#include <unordered_map>
 #include <vector>
 
 using namespace std::chrono_literals;
 
 namespace {
+
+// In-memory simplified world model for demonstration & basic reconciliation.
+struct TankSimple
+{
+    uint32_t id{};
+    float x{};
+    float y{};
+    float hull_angle{};
+    float turret_angle{};
+    uint32_t hp{};
+    uint32_t ammo{};
+};
+
+struct ProjectileSimple
+{
+    uint32_t id{};
+    float x{};
+    float y{};
+    float vx{};
+    float vy{};
+};
+
+struct ClientWorld
+{
+    std::unordered_map<uint32_t, TankSimple> tanks;
+    std::unordered_map<uint32_t, ProjectileSimple> projectiles;
+    uint32_t last_full_tick{0};
+    uint32_t last_tick{0};
+
+    void apply_full(const t2d::StateSnapshot &snap)
+    {
+        tanks.clear();
+        projectiles.clear();
+        last_full_tick = snap.server_tick();
+        last_tick = snap.server_tick();
+        for (const auto &t : snap.tanks()) {
+            tanks[t.entity_id()] =
+                TankSimple{t.entity_id(), t.x(), t.y(), t.hull_angle(), t.turret_angle(), t.hp(), t.ammo()};
+        }
+        for (const auto &p : snap.projectiles()) {
+            projectiles[p.projectile_id()] = ProjectileSimple{p.projectile_id(), p.x(), p.y(), p.vx(), p.vy()};
+        }
+    }
+
+    void apply_delta(const t2d::DeltaSnapshot &d)
+    {
+        // Only apply if base tick matches our last_full_tick (simple guard)
+        last_tick = d.server_tick();
+        for (auto id : d.removed_tanks()) {
+            tanks.erase(id);
+        }
+        for (auto id : d.removed_projectiles()) {
+            projectiles.erase(id);
+        }
+        for (const auto &t : d.tanks()) {
+            auto &ref = tanks[t.entity_id()];
+            ref.id = t.entity_id();
+            ref.x = t.x();
+            ref.y = t.y();
+            ref.hull_angle = t.hull_angle();
+            ref.turret_angle = t.turret_angle();
+            ref.hp = t.hp();
+            ref.ammo = t.ammo();
+        }
+        for (const auto &p : d.projectiles()) {
+            projectiles[p.projectile_id()] = ProjectileSimple{p.projectile_id(), p.x(), p.y(), p.vx(), p.vy()};
+        }
+    }
+};
+
 std::atomic_bool g_shutdown{false};
 
 void handle_sig(int)
@@ -89,23 +161,41 @@ coro::task<void> run_client(std::shared_ptr<coro::io_scheduler> sched, std::stri
     q.mutable_queue_join();
     co_await send_frame(cli, q);
     bool in_match = false;
-    uint64_t last_input_tick = 0;
+    uint64_t loop_iter = 0;
+    std::string session_id;
+    ClientWorld world;
     while (!g_shutdown.load()) {
-        // Periodic heartbeat
-        if ((last_input_tick++ % 50) == 0) {
+        // Periodic heartbeat every ~1s (assuming ~20ms yield below => ~50 iterations)
+        if ((loop_iter % 50) == 0) {
             t2d::ClientMessage hb;
             auto *h = hb.mutable_heartbeat();
-            h->set_session_id(""); // server ignores for now
+            h->set_session_id(session_id);
             h->set_time_ms((uint64_t)std::chrono::duration_cast<std::chrono::milliseconds>(
                                std::chrono::steady_clock::now().time_since_epoch())
                                .count());
             co_await send_frame(cli, hb);
+        }
+        // Send input while in match (simple circular motion + fire pulse)
+        if (in_match && (loop_iter % 5) == 0) { // 100ms intervals
+            t2d::ClientMessage in;
+            auto *ic = in.mutable_input();
+            ic->set_session_id(session_id);
+            ic->set_client_tick((uint32_t)loop_iter);
+            float phase = static_cast<float>(loop_iter % 360) * 3.14159f / 180.0f;
+            ic->set_move_dir(std::sin(phase)); // oscillate forward/back
+            ic->set_turn_dir(std::cos(phase)); // rotate hull
+            ic->set_turret_turn(std::sin(phase * 0.5f));
+            ic->set_fire((loop_iter % 150) == 0); // fire occasionally
+            co_await send_frame(cli, in);
         }
         t2d::ServerMessage sm;
         if (co_await read_one(cli, sm)) {
             if (sm.has_auth_response()) {
                 t2d::log::info(
                     "auth success={} session={}", sm.auth_response().success(), sm.auth_response().session_id());
+                if (sm.auth_response().success()) {
+                    session_id = sm.auth_response().session_id();
+                }
             } else if (sm.has_queue_status()) {
                 t2d::log::info(
                     "queue pos={} players={} need={} timeout_left={}",
@@ -121,12 +211,14 @@ coro::task<void> run_client(std::shared_ptr<coro::io_scheduler> sched, std::stri
                     sm.match_start().tick_rate(),
                     sm.match_start().seed());
             } else if (sm.has_snapshot()) {
-                t2d::log::debug(
+                world.apply_full(sm.snapshot());
+                t2d::log::info(
                     "full snapshot tick={} tanks={} projectiles={}",
                     sm.snapshot().server_tick(),
                     sm.snapshot().tanks_size(),
                     sm.snapshot().projectiles_size());
             } else if (sm.has_delta_snapshot()) {
+                world.apply_delta(sm.delta_snapshot());
                 t2d::log::debug(
                     "delta tick={} base={} dtanks={} dprojs={} removed_tanks={} removed_projs={}",
                     sm.delta_snapshot().server_tick(),
@@ -153,6 +245,24 @@ coro::task<void> run_client(std::shared_ptr<coro::io_scheduler> sched, std::stri
                     "match end id={} winner_entity={}", sm.match_end().match_id(), sm.match_end().winner_entity_id());
             }
         }
+        // Periodic world summary every ~1s
+        if ((loop_iter % 50) == 0 && in_match) {
+            size_t shown = 0;
+            for (const auto &kv : world.tanks) {
+                if (shown++ >= 3)
+                    break;
+                t2d::log::info(
+                    "tank id={} pos=({:.2f},{:.2f}) hp={} ammo={} hull={:.2f} turret={:.2f}",
+                    kv.second.id,
+                    kv.second.x,
+                    kv.second.y,
+                    kv.second.hp,
+                    kv.second.ammo,
+                    kv.second.hull_angle,
+                    kv.second.turret_angle);
+            }
+        }
+        ++loop_iter;
         co_await sched->yield_for(20ms);
     }
     t2d::log::info("client shutdown");

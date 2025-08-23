@@ -43,7 +43,7 @@ The following epics are required to reach fully automated builds (server + Andro
 - [ ] Map items: ammo crates spawning logic & pickup events
 
 ### 3.2 Client Build Enablement (Multi‑Platform)
-- [ ] Desktop client scaffold (Qt 6 + QML minimal scene, Linux & Windows)
+- [ ] Desktop client scaffold (Qt 6 + QML minimal scene, Linux & Windows) (PARTIAL: headless network loop + snapshot/delta application implemented)
 - [ ] Android client target (Gradle + CMake integration, JNI bridge, QML UI)
 - [ ] WebAssembly build (Emscripten + Qt WASM module) packaged in Docker Alpine base image
 - [ ] Shared network layer (reuse test client framing) + interpolation & reconciliation loop
