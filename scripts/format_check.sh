@@ -10,6 +10,13 @@ fi
 ROOT=$(git rev-parse --show-toplevel)
 TMPDIR=$(mktemp -d)
 trap 'rm -rf "$TMPDIR"' EXIT
+# Ensure project style file is available inside temp tree so clang-format
+# does not fall back to its built-in default (which previously caused every
+# file to be reported as needing formatting). Copy rather than symlink to
+# keep the temp dir self-contained.
+if [[ -f "$ROOT/.clang-format" ]]; then
+  cp "$ROOT/.clang-format" "$TMPDIR/.clang-format"
+fi
 STATUS=0
 FILES=$(git -C "$ROOT" ls-files '*.cpp' '*.hpp' '*.h' '*.cc' '*.cxx' | grep -v '^third_party/' || true)
 for rel in $FILES; do
