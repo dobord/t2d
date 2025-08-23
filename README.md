@@ -64,7 +64,7 @@ High-level, non-binding plan (subject to change). Earlier items are higher prior
 ### Short Term (Prototype Hardening)
 - [x] Implement optional snapshot compression (zlib; config flag disabled by default)
 - [x] Add basic auth adapter abstraction implementation (token verification stub -> pluggable OAuth)
-- Improve matchmaking: lobby countdown + dynamic bot fill pacing
+ - [x] Improve matchmaking: lobby countdown + dynamic bot fill pacing
 - Deterministic snapshot diff validation test (encode → apply → state equivalence)
 - Metrics: histogram for tick duration, gauge for connected players per match
 - Add zlib dependency integration (guarded) & compression size metrics

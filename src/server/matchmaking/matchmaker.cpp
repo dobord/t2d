@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: Apache-2.0
 #include "common/logger.hpp"
 #include "common/metrics.hpp"
+#include "game.pb.h"
 #include "server/game/match.hpp"
 #include "server/matchmaking/session_manager.hpp"
 
@@ -50,17 +51,74 @@ coro::task<void> run_matchmaker(std::shared_ptr<coro::io_scheduler> scheduler, M
                 if (q->queue_join_time < earliest)
                     earliest = q->queue_join_time;
         }
-        // If not enough real players but timeout exceeded for earliest player, fill with bots
-        if (!queued.empty() && queued.size() < cfg.max_players) {
+        // Dynamic staged bot pacing: gradually add bots at 25%, 50%, 75%, 100% of timeout to reduce sudden fill.
+        if (!queued.empty() && queued.size() < cfg.max_players && cfg.fill_timeout_seconds > 0) {
             auto waited =
                 std::chrono::duration_cast<std::chrono::seconds>(std::chrono::steady_clock::now() - earliest).count();
-            if (waited >= cfg.fill_timeout_seconds) {
+            double frac = static_cast<double>(waited) / static_cast<double>(cfg.fill_timeout_seconds);
+            // Target minimum population fraction based on elapsed fraction of timeout
+            double target_pop_frac = 0.0;
+            if (frac >= 1.0) {
+                target_pop_frac = 1.0; // full fill
+            } else if (frac >= 0.75) {
+                target_pop_frac = 0.75; // ensure 75%
+            } else if (frac >= 0.5) {
+                target_pop_frac = 0.5;
+            } else if (frac >= 0.25) {
+                target_pop_frac = 0.25;
+            }
+            size_t target_count = static_cast<size_t>(std::ceil(target_pop_frac * cfg.max_players));
+            if (target_count > cfg.max_players)
+                target_count = cfg.max_players;
+            if (queued.size() < target_count) {
+                size_t need = target_count - queued.size();
+                if (need > 0) {
+                    mgr.create_bots(need);
+                    queued = mgr.snapshot_queue();
+                }
+            }
+            // Final full bot fill at/after timeout if still short
+            if (frac >= 1.0 && queued.size() < cfg.max_players) {
                 size_t need = cfg.max_players - queued.size();
                 mgr.create_bots(need);
                 queued = mgr.snapshot_queue();
             }
         }
-        // TODO: push periodic QueueStatusUpdate messages with lobby_countdown & projected bot fill.
+
+        // Periodic QueueStatusUpdate broadcast to all waiting sessions (real players only; bots don't receive msgs)
+        if (!queued.empty()) {
+            uint32_t players_now = static_cast<uint32_t>(queued.size());
+            uint32_t lobby_countdown = 0;
+            uint32_t projected_bot_fill = 0;
+            if (cfg.fill_timeout_seconds > 0 && earliest.time_since_epoch().count() != 0) {
+                auto waited =
+                    std::chrono::duration_cast<std::chrono::seconds>(std::chrono::steady_clock::now() - earliest)
+                        .count();
+                if (waited < 0)
+                    waited = 0;
+                if (waited >= static_cast<int64_t>(cfg.fill_timeout_seconds))
+                    lobby_countdown = 0;
+                else
+                    lobby_countdown = cfg.fill_timeout_seconds - static_cast<uint32_t>(waited);
+                if (players_now < cfg.max_players) {
+                    projected_bot_fill = cfg.max_players - players_now;
+                }
+            }
+            for (size_t i = 0; i < queued.size(); ++i) {
+                auto &sess = queued[i];
+                if (sess->is_bot)
+                    continue;
+                t2d::ServerMessage smsg;
+                auto *qs = smsg.mutable_queue_status();
+                qs->set_position(static_cast<uint32_t>(i + 1));
+                qs->set_players_in_queue(players_now);
+                qs->set_needed_for_match(cfg.max_players > players_now ? cfg.max_players - players_now : 0);
+                qs->set_timeout_seconds_left(lobby_countdown);
+                qs->set_lobby_countdown(lobby_countdown);
+                qs->set_projected_bot_fill(projected_bot_fill);
+                mgr.push_message(sess, smsg);
+            }
+        }
         if (queued.size() >= cfg.max_players) {
             // form match using first max_players
             std::vector<std::shared_ptr<Session>> group(queued.begin(), queued.begin() + cfg.max_players);
