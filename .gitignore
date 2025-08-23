@@ -7,6 +7,7 @@ Thumbs.db
 
 # Logs
 *.log
+*.pid
 
 # Project logs directory
 /logs/
@@ -60,6 +61,7 @@ app/build/
 app/.gradle/
 
 # Common archives and temp
+/tmp/
 *.tmp
 *.swp
 *.swo
