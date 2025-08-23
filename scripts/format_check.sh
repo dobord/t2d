@@ -1,20 +1,23 @@
 #!/usr/bin/env bash
 set -euo pipefail
-# Simple formatting check (non-strict): run clang-format and show diff
-CHANGED=$(git diff --name-only --diff-filter=ACMRTUXB HEAD)
-FAIL=0
-for f in $CHANGED; do
-  if [[ $f == *.cpp || $f == *.hpp || $f == *.h || $f == *.cxx || $f == *.cc ]]; then
-    cp "$f" "$f.bak"
-    clang-format -i "$f"
-    if ! diff -q "$f" "$f.bak" >/dev/null; then
-      echo "Needs formatting: $f"
-      FAIL=1
-    fi
-    mv "$f.bak" "$f"
+# Strict formatting check: format all first-party sources into a temp copy and compare.
+ROOT=$(git rev-parse --show-toplevel)
+TMPDIR=$(mktemp -d)
+trap 'rm -rf "$TMPDIR"' EXIT
+STATUS=0
+FILES=$(git -C "$ROOT" ls-files '*.cpp' '*.hpp' '*.h' '*.cc' '*.cxx' | grep -v '^third_party/' || true)
+for rel in $FILES; do
+  f="$ROOT/$rel"
+  mkdir -p "$TMPDIR/$(dirname "$rel")"
+  cp "$f" "$TMPDIR/$rel"
+  clang-format -i "$TMPDIR/$rel"
+  if ! diff -u "$f" "$TMPDIR/$rel" >/dev/null; then
+    echo "Needs formatting: $rel"
+    STATUS=1
   fi
 done
-if [ $FAIL -eq 1 ]; then
+if [ $STATUS -ne 0 ]; then
   echo "Formatting issues detected. Run: cmake --build build --target format" >&2
   exit 1
 fi
+echo "Formatting OK"
