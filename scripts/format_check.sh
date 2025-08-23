@@ -1,6 +1,12 @@
 #!/usr/bin/env bash
 set -euo pipefail
-# Strict formatting check: format all first-party sources into a temp copy and compare.
+
+APPLY=0
+if [[ ${1:-} == "--apply" ]]; then
+  APPLY=1
+fi
+
+# Strict formatting check: compare clang-format output with repo files.
 ROOT=$(git rev-parse --show-toplevel)
 TMPDIR=$(mktemp -d)
 trap 'rm -rf "$TMPDIR"' EXIT
@@ -14,10 +20,18 @@ for rel in $FILES; do
   if ! diff -u "$f" "$TMPDIR/$rel" >/dev/null; then
     echo "Needs formatting: $rel"
     STATUS=1
+    if [[ $APPLY -eq 1 ]]; then
+      clang-format -i "$f"
+    fi
   fi
 done
 if [ $STATUS -ne 0 ]; then
-  echo "Formatting issues detected. Run: cmake --build build --target format" >&2
-  exit 1
+  # Always prefer our project-only target; never suggest external 'format' that may touch third_party
+  if [[ $APPLY -eq 1 ]]; then
+    echo "Applied clang-format to offending files (third_party excluded). Please stage & commit." >&2
+  else
+    echo "Formatting issues detected. Run: cmake --build build --target t2d_format  (or scripts/format_check.sh --apply)" >&2
+    exit 1
+  fi
 fi
 echo "Formatting OK"
