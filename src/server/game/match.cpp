@@ -1,6 +1,7 @@
 #include "server/game/match.hpp"
 
 #include "common/metrics.hpp"
+#include "server/game/physics.hpp"
 
 #include <cmath>
 #include <iostream>
