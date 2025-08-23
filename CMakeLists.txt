@@ -1,6 +1,25 @@
 cmake_minimum_required(VERSION 3.22)
 project(t2d LANGUAGES CXX)
 
+# Allow user to downgrade adopted policy set (NOT the required CMake program version) via
+# -DCMAKE_POLICY_VERSION_MINIMUM=3.5 (for legacy behavior while still requiring a newer CMake binary).
+# By default we adopt the current minimum required version (3.22). Using a lower value may surface
+# older/compat modes and is not recommended for production.
+set(CMAKE_POLICY_VERSION_MINIMUM
+    "3.22"
+    CACHE STRING "Policy version to adopt (does not lower required CMake version)")
+if (CMAKE_POLICY_VERSION_MINIMUM)
+    # Guard: avoid calling with a value higher than running CMake version
+    if (CMAKE_POLICY_VERSION_MINIMUM VERSION_LESS_EQUAL ${CMAKE_VERSION})
+        cmake_policy(VERSION ${CMAKE_POLICY_VERSION_MINIMUM})
+    else ()
+        message(
+            WARNING
+                "Requested CMAKE_POLICY_VERSION_MINIMUM=${CMAKE_POLICY_VERSION_MINIMUM} exceeds running CMake ${CMAKE_VERSION}; ignoring."
+        )
+    endif ()
+endif ()
+
 set(CMAKE_CXX_STANDARD 20)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
 set(CMAKE_CXX_EXTENSIONS OFF)
