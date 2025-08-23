@@ -67,8 +67,8 @@ coro::task<void> run_match(std::shared_ptr<coro::io_scheduler> scheduler, std::s
             // Basic bot AI: if bot, synthesize movement & periodic fire
             if (sess->is_bot) {
                 // rotate slowly and move forward
-                input.turn_dir = 0.2f;
-                input.move_dir = 0.5f;
+                input.turn_dir = 0.0f; // keep stationary & oriented toward player for deterministic tests
+                input.move_dir = 0.0f; // no forward movement so repeated shots align
                 // fire every ~2 seconds
                 if (ctx->server_tick == 1 || ctx->server_tick % (ctx->tick_rate * 2) == 0) {
                     input.fire = true;
