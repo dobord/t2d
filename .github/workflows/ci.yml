@@ -22,7 +22,7 @@ jobs:
             generator_opts: "-G Ninja"
           - os: macos-latest
             triplet: macos-arm64
-            install: brew update && brew install protobuf cmake ninja ccache || true
+            install: brew update && brew install protobuf cmake ninja ccache llvm || true
             generator_opts: "-G Ninja"
     runs-on: ${{ matrix.os }}
     steps:
@@ -40,6 +40,23 @@ jobs:
             ccache-${{ runner.os }}-${{ matrix.triplet }}-
       - name: Install deps
         run: ${{ matrix.install }}
+      - name: Configure LLVM toolchain (macOS)
+        if: runner.os == 'macOS'
+        run: |
+          set -e
+          LLVM_PREFIX="$(brew --prefix llvm)"
+          echo "Using LLVM at $LLVM_PREFIX"
+          echo "CC=$LLVM_PREFIX/bin/clang" >> $GITHUB_ENV
+          echo "CXX=$LLVM_PREFIX/bin/clang++" >> $GITHUB_ENV
+          echo "CMAKE_C_COMPILER=$LLVM_PREFIX/bin/clang" >> $GITHUB_ENV
+          echo "CMAKE_CXX_COMPILER=$LLVM_PREFIX/bin/clang++" >> $GITHUB_ENV
+          echo "PATH=$LLVM_PREFIX/bin:$PATH" >> $GITHUB_ENV
+          # libcoro CMakeLists expects /usr/local/opt/llvm on macOS; create symlink if Homebrew prefix differs (Apple Silicon uses /opt/homebrew)
+          if [ ! -d /usr/local/opt/llvm ]; then
+            sudo mkdir -p /usr/local/opt || true
+            sudo ln -s "$LLVM_PREFIX" /usr/local/opt/llvm || true
+            echo "Created symlink /usr/local/opt/llvm -> $LLVM_PREFIX"
+          fi
       - name: Install protobuf via vcpkg (Windows)
         if: runner.os == 'Windows'
         shell: powershell
