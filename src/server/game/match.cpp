@@ -293,7 +293,13 @@ coro::task<void> run_match(std::shared_ptr<coro::io_scheduler> scheduler, std::s
                 ctx->match_over = true;
             }
             if (ctx->match_over) {
-                t2d::ServerMessage endmsg; // reuse TankDestroyed? For now log only (future: MatchEnd proto)
+                t2d::ServerMessage endmsg;
+                auto *me = endmsg.mutable_match_end();
+                me->set_match_id(ctx->match_id);
+                me->set_winner_entity_id(ctx->winner_entity);
+                me->set_server_tick(static_cast<uint32_t>(ctx->server_tick));
+                for (auto &pl : ctx->players)
+                    t2d::mm::instance().push_message(pl, endmsg);
                 std::cout << "[match] over id=" << ctx->match_id << " winner_entity=" << ctx->winner_entity
                           << std::endl;
             }

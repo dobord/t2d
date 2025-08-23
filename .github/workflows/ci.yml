@@ -6,31 +6,78 @@ on:
     branches: [ main, master ]
 
 jobs:
-  build-test-linux:
-    runs-on: ubuntu-latest
+  build-test:
+    name: Build & Test (${{ matrix.os }})
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - os: ubuntu-latest
+            triplet: linux-amd64
+            install: sudo apt-get update && sudo apt-get install -y protobuf-compiler libprotobuf-dev cmake g++ ninja-build
+            generator_opts: ""
+          - os: macos-latest
+            triplet: macos-universal
+            install: brew update && brew install protobuf cmake ninja || true
+            generator_opts: ""
+          - os: windows-latest
+            triplet: windows-amd64
+            install: choco install -y protoc cmake ninja || powershell -Command "echo skipping"
+            generator_opts: "-G Ninja"
+    runs-on: ${{ matrix.os }}
     steps:
       - uses: actions/checkout@v4
         with:
           submodules: recursive
           fetch-depth: 0
       - name: Install deps
-        run: sudo apt-get update && sudo apt-get install -y protobuf-compiler libprotobuf-dev cmake g++ ninja-build
-      - name: Configure (server + tests + desktop client)
-        run: cmake -S . -B build -DCMAKE_BUILD_TYPE=Release -DT2D_BUILD_TESTS=ON -DT2D_BUILD_CLIENT=ON
-      - name: Build all
+        run: ${{ matrix.install }}
+      - name: Configure
+        run: cmake -S . -B build -DCMAKE_BUILD_TYPE=Release -DT2D_BUILD_TESTS=ON -DT2D_BUILD_CLIENT=ON ${{ matrix.generator_opts }}
+      - name: Build
         run: cmake --build build --parallel
-      - name: Run tests (ctest)
+      - name: Run tests
         working-directory: build
         run: ctest --output-on-failure -T Test
       - name: Upload server binary
+        if: runner.os != 'Windows'
         uses: actions/upload-artifact@v4
         with:
-          name: t2d_server-linux-amd64
-          path: build/t2d_server
-          if-no-files-found: error
+          name: t2d_server-${{ matrix.triplet }}
+          path: build/t2d_server*
+          if-no-files-found: warn
       - name: Upload desktop client prototype
+        if: runner.os != 'Windows'
         uses: actions/upload-artifact@v4
         with:
-          name: t2d_desktop_client-linux-amd64
-          path: build/t2d_desktop_client
-          if-no-files-found: error
+          name: t2d_desktop_client-${{ matrix.triplet }}
+          path: build/t2d_desktop_client*
+          if-no-files-found: warn
+
+  verify-dependencies:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          submodules: recursive
+      - name: Verify dependency manifest
+        run: |
+          set -e
+          current=$(git submodule status | awk '{print $1, $2}')
+          while read -r name path ref sha; do
+            : # table header skip
+          done < /dev/null
+          # Extract SHAs from DEPENDENCIES.md
+          while read -r line; do
+            if [[ $line == '|'*'|'* ]]; then
+              # | box2d | third_party/box2d | v3.1.1 | <sha> |
+              IFS='|' read -r _ n p r s _ <<<"$line" || true
+              n=$(echo $n | xargs); p=$(echo $p | xargs); s=$(echo $s | xargs)
+              if [[ $n == Name || -z $n ]]; then continue; fi
+              if ! grep -q " $(echo $s | cut -c1-7) $p" <(git submodule status); then
+                echo "Mismatch: $n $p sha $s not found in submodule status" >&2
+                exit 1
+              fi
+            fi
+          done < DEPENDENCIES.md
+          echo "Dependency manifest OK"

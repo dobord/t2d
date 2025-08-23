@@ -143,6 +143,9 @@ coro::task<void> run_client(std::shared_ptr<coro::io_scheduler> sched, std::stri
             } else if (sm.has_destroyed()) {
                 t2d::log::info(
                     "tank destroyed victim={} attacker={}", sm.destroyed().victim_id(), sm.destroyed().attacker_id());
+            } else if (sm.has_match_end()) {
+                t2d::log::info(
+                    "match end id={} winner_entity={}", sm.match_end().match_id(), sm.match_end().winner_entity_id());
             }
         }
         co_await sched->yield_for(20ms);

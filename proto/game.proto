@@ -101,6 +101,12 @@ message KillFeedUpdate {
   repeated TankDestroyed events = 1;
 }
 
+message MatchEnd {
+  string match_id = 1;
+  uint32 winner_entity_id = 2; // 0 if draw / timeout
+  uint32 server_tick = 3;
+}
+
 message Heartbeat {
   string session_id = 1;
   uint64 time_ms = 2;
@@ -125,6 +131,7 @@ message ServerMessage {
     TankDestroyed destroyed = 7;
   HeartbeatResponse heartbeat_resp = 8;
   DeltaSnapshot delta_snapshot = 9;
+  MatchEnd match_end = 10;
   }
 }
 
