@@ -20,6 +20,10 @@ jobs:
             triplet: windows-amd64
             install: choco install -y cmake --installargs 'ADD_CMAKE_TO_PATH=1' ninja git || powershell -Command "Write-Host install step partial"
             generator_opts: "-G Ninja"
+          - os: macos-latest
+            triplet: macos-amd64
+            install: brew update && brew install protobuf cmake ninja || true
+            generator_opts: "-G Ninja"
     runs-on: ${{ matrix.os }}
     steps:
       - uses: actions/checkout@v4
@@ -111,6 +115,20 @@ jobs:
           name: t2d_desktop_client-${{ matrix.triplet }}
           path: build/t2d_desktop_client*
           if-no-files-found: warn
+      - name: Upload server binary (Windows)
+        if: runner.os == 'Windows'
+        uses: actions/upload-artifact@v4
+        with:
+            name: t2d_server-${{ matrix.triplet }}
+            path: build/t2d_server.exe*
+            if-no-files-found: warn
+      - name: Upload desktop client (Windows)
+        if: runner.os == 'Windows'
+        uses: actions/upload-artifact@v4
+        with:
+            name: t2d_desktop_client-${{ matrix.triplet }}
+            path: build/t2d_desktop_client.exe*
+            if-no-files-found: warn
       - name: Package server (Linux only)
         if: runner.os == 'Linux'
         run: |
