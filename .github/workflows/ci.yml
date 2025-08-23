@@ -1,9 +1,9 @@
 name: CI
 on:
   push:
-    branches: [ main ]
+    branches: [ main, develop ]
   pull_request:
-    branches: [ main ]
+    branches: [ main, develop ]
 
 jobs:
   build-test:
@@ -14,6 +14,10 @@ jobs:
         with:
           submodules: recursive
           fetch-depth: 0
+      - name: Quick format & SPDX header check (fail-fast)
+        run: |
+          bash scripts/format_check.sh || (echo "Formatting check failed early" && exit 1)
+          bash scripts/spdx_check.sh
       - name: Setup ccache
         uses: actions/cache@v4
         with:
@@ -41,9 +45,9 @@ jobs:
       - name: Run tests
         working-directory: build
         run: ctest --output-on-failure -T Test
-      - name: Format check
+      - name: Format check (post-build)
         run: bash scripts/format_check.sh || (echo "Run formatting target locally" && exit 1)
-      - name: SPDX header check
+      - name: SPDX header check (post-build)
         run: bash scripts/spdx_check.sh
       - name: Upload server binary
         uses: actions/upload-artifact@v4
@@ -99,6 +103,53 @@ jobs:
         with:
           name: coverage-lcov
           path: coverage.info
+      - name: Coverage summary
+        run: |
+          lines=$(grep -E 'end_of_record' -c coverage.info || true)
+          echo "Total records: $lines" >> $GITHUB_STEP_SUMMARY
+          pct_line=$(grep -E 'lines.*:' coverage.info | head -n1 | awk -F'=' '{print $2}') || true
+          echo "Line coverage: ${pct_line:-n/a}" >> $GITHUB_STEP_SUMMARY
+
+  asan:
+    name: ASan/UBSan (Linux)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          submodules: recursive
+          fetch-depth: 0
+      - name: Install deps
+        run: sudo apt-get update && sudo apt-get install -y protobuf-compiler libprotobuf-dev cmake g++ ninja-build
+      - name: Configure (ASan/UBSan)
+        run: cmake -S . -B build -DCMAKE_BUILD_TYPE=Debug -DT2D_BUILD_TESTS=ON -DT2D_ENABLE_SANITIZERS=ON -G Ninja
+      - name: Build
+        run: cmake --build build -- -j4
+      - name: Run tests (ASan/UBSan)
+        working-directory: build
+        env:
+          ASAN_OPTIONS: detect_leaks=1:strict_string_checks=1:allocator_may_return_null=1
+          UBSAN_OPTIONS: print_stacktrace=1:halt_on_error=1
+        run: ctest --output-on-failure
+
+  tsan:
+    name: ThreadSanitizer (Linux)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          submodules: recursive
+          fetch-depth: 0
+      - name: Install deps
+        run: sudo apt-get update && sudo apt-get install -y protobuf-compiler libprotobuf-dev cmake g++ ninja-build
+      - name: Configure (TSan)
+        run: cmake -S . -B build -DCMAKE_BUILD_TYPE=Debug -DT2D_BUILD_TESTS=ON -DT2D_ENABLE_TSAN=ON -G Ninja
+      - name: Build
+        run: cmake --build build -- -j4
+      - name: Run tests (TSan)
+        working-directory: build
+        env:
+          TSAN_OPTIONS: suppressions=/dev/null halt_on_error=1
+        run: ctest --output-on-failure
 
   verify-dependencies:
     runs-on: ubuntu-latest
