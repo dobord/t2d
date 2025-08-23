@@ -1,6 +1,8 @@
 cmake_minimum_required(VERSION 3.22)
 project(t2d LANGUAGES CXX)
 
+option(T2D_ENABLE_SANITIZERS "Enable Address/Undefined sanitizers (Clang/GCC)" OFF)
+
 # Allow user to downgrade adopted policy set (NOT the required CMake program version) via
 # -DCMAKE_POLICY_VERSION_MINIMUM=3.5 (for legacy behavior while still requiring a newer CMake binary).
 # By default we adopt the current minimum required version (3.22). Using a lower value may surface
@@ -23,6 +25,17 @@ endif ()
 set(CMAKE_CXX_STANDARD 20)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
 set(CMAKE_CXX_EXTENSIONS OFF)
+
+if (T2D_ENABLE_SANITIZERS)
+    if (CMAKE_CXX_COMPILER_ID MATCHES "Clang" OR CMAKE_CXX_COMPILER_ID MATCHES "GNU")
+        message(STATUS "Sanitizers enabled (address,undefined)")
+        add_compile_options(-fsanitize=address,undefined -fno-omit-frame-pointer)
+        add_link_options(-fsanitize=address,undefined -fno-omit-frame-pointer)
+    else ()
+        message(
+            WARNING "Sanitizers requested but not supported for compiler ${CMAKE_CXX_COMPILER_ID}")
+    endif ()
+endif ()
 
 option(T2D_BUILD_SERVER "Build the game server" ON)
 option(T2D_BUILD_CLIENT "Build the desktop client (prototype; Qt UI later)" OFF)
