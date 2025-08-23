@@ -85,8 +85,9 @@ jobs:
         env:
           CMAKE_BUILD_PARALLEL_LEVEL: 4
         run: |
-          echo "Limiting parallel build to $CMAKE_BUILD_PARALLEL_LEVEL jobs to reduce memory usage"
-          cmake --build build -- -j$CMAKE_BUILD_PARALLEL_LEVEL
+          echo "Limiting parallel build to ${{ env.CMAKE_BUILD_PARALLEL_LEVEL }} jobs to reduce memory usage"
+          # Use CMake's portable parallel flag (works across shells & avoids PowerShell var syntax issues)
+          cmake --build build --parallel ${{ env.CMAKE_BUILD_PARALLEL_LEVEL }}
       - name: Run tests
         working-directory: build
         run: ctest --output-on-failure -T Test
