@@ -8,6 +8,67 @@ Window {
     width: 800; height: 600
     visible: true
     title: "t2d Qt Client"
+    Component.onCompleted: root.requestActivate() // ensure window gets focus for key events
+
+    // Keyboard state flags (simple set of currently pressed movement keys)
+    property bool keyW: false
+    property bool keyS: false
+    property bool keyA: false
+    property bool keyD: false
+    property bool keyQ: false   // turret left
+    property bool keyE: false   // turret right
+    property bool keySpace: false
+
+    function recomputeInput() {
+        // Movement forward/backward
+        var mv = 0
+        if (keyW && !keyS) mv = 1
+        else if (keyS && !keyW) mv = -1
+        if (inputState.move !== mv) inputState.move = mv
+        // Hull turn
+        var tr = 0
+        if (keyD && !keyA) tr = 1
+        else if (keyA && !keyD) tr = -1
+        if (inputState.turn !== tr) inputState.turn = tr
+        // Turret turn
+        var tt = 0
+        if (keyE && !keyQ) tt = 1
+        else if (keyQ && !keyE) tt = -1
+        if (inputState.turretTurn !== tt) inputState.turretTurn = tt
+        // Fire (held space)
+        var fr = keySpace
+        if (inputState.fire !== fr) inputState.fire = fr
+    }
+
+    Keys.onPressed: function(ev) {
+        switch(ev.key) {
+        case Qt.Key_W: keyW = true; break;
+        case Qt.Key_S: keyS = true; break;
+        case Qt.Key_A: keyA = true; break;
+        case Qt.Key_D: keyD = true; break;
+        case Qt.Key_Q: keyQ = true; break;
+        case Qt.Key_E: keyE = true; break;
+        case Qt.Key_Space: keySpace = true; break;
+        default: return;
+        }
+        ev.accepted = true;
+        recomputeInput();
+    }
+
+    Keys.onReleased: function(ev) {
+        switch(ev.key) {
+        case Qt.Key_W: keyW = false; break;
+        case Qt.Key_S: keyS = false; break;
+        case Qt.Key_A: keyA = false; break;
+        case Qt.Key_D: keyD = false; break;
+        case Qt.Key_Q: keyQ = false; break;
+        case Qt.Key_E: keyE = false; break;
+        case Qt.Key_Space: keySpace = false; break;
+        default: return;
+        }
+        ev.accepted = true;
+        recomputeInput();
+    }
 
     Rectangle { anchors.fill: parent; color: "#202830" }
 
@@ -20,20 +81,40 @@ Window {
             ctx.fillStyle = '#162028';
             ctx.fillRect(0,0,width,height);
             const a = timingState.alpha;
-            // draw tanks
+            // Determine own tank (heuristic: first tank id if list non-empty). Real client should match session id.
+            let ownIndex = entityModel.count() > 0 ? 0 : -1;
+            // World units currently arbitrary; assume tank nominal radius = 1 world unit.
+            const tankWorldRadius = 1.0;
+            const targetScreenRadius = Math.min(width, height) * 0.10; // 10% of min dimension
+            const scale = targetScreenRadius / tankWorldRadius;
+            let centerX = 0;
+            let centerY = 0;
+            if (ownIndex >= 0) {
+                centerX = entityModel.interpX(ownIndex,a);
+                centerY = entityModel.interpY(ownIndex,a);
+            }
+            // Transform: translate so own tank is centered, then scale.
+            ctx.save();
+            ctx.translate(width/2, height/2);
+            ctx.scale(scale, scale);
+            ctx.translate(-centerX, -centerY);
+            // Draw tanks
             for(let i=0;i<entityModel.count();++i){
-                const ixp = entityModel.interpX(i,a);
-                const iyp = entityModel.interpY(i,a);
-                ctx.fillStyle = '#3fa7ff';
-                ctx.beginPath(); ctx.arc(ixp, iyp, 6, 0, Math.PI*2); ctx.fill();
+                const wx = entityModel.interpX(i,a);
+                const wy = entityModel.interpY(i,a);
+                const screenR = tankWorldRadius; // radius in world units (scaled by ctx)
+                ctx.fillStyle = (i===ownIndex)? '#6cff5d' : '#3fa7ff';
+                ctx.beginPath(); ctx.arc(wx, wy, screenR, 0, Math.PI*2); ctx.fill();
             }
-            // draw projectiles
+            // Draw projectiles (assume small square 0.3 world units)
             ctx.fillStyle = '#ffcf40';
+            const pr = 0.3;
             for(let j=0;j<projectileModel.count();++j){
-                const ixp = projectileModel.interpX(j,a);
-                const iyp = projectileModel.interpY(j,a);
-                ctx.fillRect(ixp-2, iyp-2, 4, 4);
+                const wx = projectileModel.interpX(j,a);
+                const wy = projectileModel.interpY(j,a);
+                ctx.fillRect(wx-pr, wy-pr, pr*2, pr*2);
             }
+            ctx.restore();
         }
         Timer { interval: 16; running: true; repeat: true; onTriggered: { timingState.update(); scene.requestPaint(); } }
     }

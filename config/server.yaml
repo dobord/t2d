@@ -3,7 +3,7 @@ version: 1
 max_players_per_match: 16
 max_parallel_matches: 8
 queue_soft_limit: 256
-fill_timeout_seconds: 180  # after this waiting match fills with bots
+fill_timeout_seconds: 5    # after this waiting match fills with bots (reduced for faster local matches)
 tick_rate: 30
 snapshot_interval_ticks: 5  # every 5 ticks send incremental snapshot (runtime configurable)
 full_snapshot_interval_ticks: 30  # send a full snapshot at least this often

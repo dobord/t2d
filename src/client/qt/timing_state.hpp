@@ -16,7 +16,7 @@ public:
 
     void markServerTick() { lastTick_ = std::chrono::steady_clock::now(); }
 
-    void update()
+    Q_INVOKABLE void update()
     {
         if (tickIntervalMs_ <= 0)
             return;
