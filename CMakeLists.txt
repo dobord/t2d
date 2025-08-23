@@ -271,6 +271,9 @@ if (T2D_BUILD_TESTS)
     target_link_libraries(t2d_unit_snapshot_replay PRIVATE t2d_proto)
     target_include_directories(t2d_unit_snapshot_replay PRIVATE src)
     target_compile_definitions(t2d_unit_snapshot_replay PRIVATE T2D_VERSION="${T2D_VERSION_STR}")
+    add_executable(t2d_unit_framing_fuzz tests/unit_framing_fuzz.cpp)
+    target_include_directories(t2d_unit_framing_fuzz PRIVATE src)
+    target_compile_definitions(t2d_unit_framing_fuzz PRIVATE T2D_VERSION="${T2D_VERSION_STR}")
 
     add_executable(
         t2d_e2e_match_start
@@ -393,6 +396,7 @@ if (T2D_BUILD_TESTS)
         t2d_unit_heartbeat_timeout
         t2d_unit_snapshot_delta
         t2d_unit_snapshot_replay
+        t2d_unit_framing_fuzz
         t2d_e2e_match_start
         t2d_e2e_input_move
         t2d_e2e_heartbeat
