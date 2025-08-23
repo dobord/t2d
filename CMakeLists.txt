@@ -308,6 +308,19 @@ if (T2D_BUILD_TESTS)
     target_include_directories(t2d_e2e_damage_multi PRIVATE src)
     target_compile_definitions(t2d_e2e_damage_multi PRIVATE T2D_VERSION="${T2D_VERSION_STR}")
 
+    add_executable(
+        t2d_e2e_kill_feed
+        src/common/framing.cpp
+        src/server/auth/auth_provider.cpp
+        src/server/game/match.cpp
+        src/server/matchmaking/matchmaker.cpp
+        src/server/matchmaking/session_manager.cpp
+        src/server/net/listener.cpp
+        tests/e2e_kill_feed.cpp)
+    target_link_libraries(t2d_e2e_kill_feed PRIVATE t2d_proto libcoro yaml-cpp)
+    target_include_directories(t2d_e2e_kill_feed PRIVATE src)
+    target_compile_definitions(t2d_e2e_kill_feed PRIVATE T2D_VERSION="${T2D_VERSION_STR}")
+
     # Register tests with CTest (only if BUILD_TESTING enabled)
     set(T2D_TEST_TARGETS
         t2d_unit_session_manager
@@ -320,7 +333,8 @@ if (T2D_BUILD_TESTS)
         t2d_e2e_bot_projectile
         t2d_e2e_delta_snapshots
         t2d_e2e_damage_event
-        t2d_e2e_damage_multi)
+        t2d_e2e_damage_multi
+        t2d_e2e_kill_feed)
     foreach (_t IN LISTS T2D_TEST_TARGETS)
         add_test(NAME ${_t} COMMAND ${_t})
         set_tests_properties(${_t} PROPERTIES TIMEOUT 20)
