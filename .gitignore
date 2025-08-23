@@ -36,6 +36,9 @@ Thumbs.db
 **/compile_commands.json
 **/Makefile
 
+# CTest artifacts created if tests accidentally run from source root
+/Testing/
+
 # Legacy top-level Android module (if present)
 /app/
 app/.cxx/
