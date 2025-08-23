@@ -1,12 +1,12 @@
 // SPDX-License-Identifier: Apache-2.0
 #include "server/game/match.hpp"
 
+#include "common/logger.hpp"
 #include "common/metrics.hpp"
 #include "server/game/physics.hpp"
 #include "server/game/snapshot_compress.hpp"
 
 #include <cmath>
-#include <iostream>
 #include <unordered_map>
 #include <unordered_set>
 
@@ -102,7 +102,7 @@ namespace t2d::game {
 coro::task<void> run_match(std::shared_ptr<coro::io_scheduler> scheduler, std::shared_ptr<MatchContext> ctx)
 {
     co_await scheduler->schedule();
-    std::cout << "[match] start id=" << ctx->match_id << " players=" << ctx->players.size() << std::endl;
+    t2d::log::info("[match] start id={} players={}", ctx->match_id, ctx->players.size());
     // Phase 1 physics integration: create Box2D world and bodies mirroring current tanks
     t2d::phys::World phys_world({0.0f, 0.0f}); // no gravity for top-down
     ProjectileMap projectile_bodies; // projectile id -> body id
@@ -454,12 +454,11 @@ coro::task<void> run_match(std::shared_ptr<coro::io_scheduler> scheduler, std::s
                 me->set_server_tick(static_cast<uint32_t>(ctx->server_tick));
                 for (auto &pl : ctx->players)
                     t2d::mm::instance().push_message(pl, endmsg);
-                std::cout << "[match] over id=" << ctx->match_id << " winner_entity=" << ctx->winner_entity
-                          << std::endl;
+                t2d::log::info("[match] over id={} winner_entity={}", ctx->match_id, ctx->winner_entity);
             }
         }
         if (ctx->match_over || ctx->server_tick > ctx->tick_rate * 10) {
-            std::cout << "[match] end id=" << ctx->match_id << std::endl;
+            t2d::log::info("[match] end id={}", ctx->match_id);
             // Destroy remaining projectile bodies
             for (auto &kv : projectile_bodies) {
                 t2d::phys::destroy_body(kv.second);
