@@ -1,3 +1,4 @@
+// SPDX-License-Identifier: Apache-2.0
 // e2e_bot_fill.cpp
 // Verifies that a single real player is matched with bots after fill timeout.
 #include "common/framing.hpp"

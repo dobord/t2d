@@ -1,3 +1,4 @@
+// SPDX-License-Identifier: Apache-2.0
 #include "server/matchmaking/session_manager.hpp"
 
 #include <algorithm>

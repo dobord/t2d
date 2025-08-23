@@ -1,4 +1,4 @@
-cmake_minimum_required(VERSION 3.22)
+cmake_minimum_required(VERSION 3.22) # SPDX-License-Identifier: Apache-2.0
 project(t2d LANGUAGES CXX)
 
 option(T2D_ENABLE_SANITIZERS "Enable Address/Undefined sanitizers (Clang/GCC)" OFF)

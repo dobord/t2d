@@ -1,3 +1,4 @@
+// SPDX-License-Identifier: Apache-2.0
 // e2e_kill_feed.cpp
 // Validates that when a lethal hit occurs, a KillFeedUpdate is eventually received.
 #include "common/framing.hpp"

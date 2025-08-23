@@ -1,3 +1,4 @@
+// SPDX-License-Identifier: Apache-2.0
 // metrics.hpp
 // Simple atomic counters for prototype metrics collection (snapshot sizes, counts).
 #pragma once

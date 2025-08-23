@@ -1,3 +1,4 @@
+// SPDX-License-Identifier: Apache-2.0
 #include "common/logger.hpp"
 #include "common/metrics.hpp"
 #include "server/game/match.hpp"

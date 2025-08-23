@@ -1,3 +1,4 @@
+// SPDX-License-Identifier: Apache-2.0
 // physics.hpp - minimal Box2D integration for tank movement & projectile bodies (prototype)
 #pragma once
 #include <box2d/box2d.h>

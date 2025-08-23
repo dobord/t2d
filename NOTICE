@@ -1,0 +1,19 @@
+t2d (Tank 2D Multiplayer)
+Copyright (c) 2025 dobord and contributors
+
+This product includes software developed by third parties:
+
+- Box2D (third_party/box2d)
+  Copyright (c) 2022 Erin Catto
+  License: MIT (see third_party/box2d/LICENSE)
+
+- yaml-cpp (third_party/yaml-cpp)
+  Copyright (c) 2008-2015 Jesse Beder
+  License: MIT (see third_party/yaml-cpp/LICENSE)
+
+- libcoro (third_party/libcoro)
+  License: Apache License 2.0 (see third_party/libcoro/LICENSE)
+
+Portions of this distribution may include additional bundled licenses (e.g., c-ares under Apache License 2.0) located within their respective subdirectories under third_party/.
+
+Use of this software is governed by the Apache License 2.0 (see LICENSE). This NOTICE file is for informational purposes only and does not modify the License.

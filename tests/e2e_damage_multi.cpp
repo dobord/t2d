@@ -1,3 +1,4 @@
+// SPDX-License-Identifier: Apache-2.0
 // e2e_damage_multi.cpp
 // Ensures multiple sequential hits reduce HP correctly and lethal final shot emits TankDestroyed.
 #include "common/framing.hpp"

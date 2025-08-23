@@ -1,3 +1,4 @@
+// SPDX-License-Identifier: Apache-2.0
 #include "server/net/metrics_http.hpp"
 
 #include "common/logger.hpp"

@@ -1,3 +1,4 @@
+// SPDX-License-Identifier: Apache-2.0
 // Asynchronous structured logger (header-only) inspired by udp2tcp logger.
 // Simplified to use a dedicated background thread instead of coroutine queue
 // to avoid dependency on coroutine mutex/queue types that are not enabled in

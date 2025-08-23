@@ -1,3 +1,4 @@
+// SPDX-License-Identifier: Apache-2.0
 // metrics_http.hpp
 // Simple Prometheus text-format metrics endpoint (HTTP/1.1) for prototype.
 #pragma once

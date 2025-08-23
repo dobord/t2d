@@ -1,3 +1,4 @@
+// SPDX-License-Identifier: Apache-2.0
 #include "common/framing.hpp"
 #include "common/logger.hpp"
 #include "game.pb.h"

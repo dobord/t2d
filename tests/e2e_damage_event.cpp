@@ -1,3 +1,4 @@
+// SPDX-License-Identifier: Apache-2.0
 // e2e_damage_event.cpp
 // Validates that a projectile hitting a tank produces a DamageEvent and (if lethal) TankDestroyed.
 #include "common/framing.hpp"

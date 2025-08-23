@@ -1,3 +1,4 @@
+// SPDX-License-Identifier: Apache-2.0
 // rle.hpp - extremely simple run-length encoder for repetitive byte sequences (prototype level)
 #pragma once
 #include <string>

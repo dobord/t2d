@@ -1,3 +1,4 @@
+// SPDX-License-Identifier: Apache-2.0
 // e2e_bot_projectile.cpp
 // Ensures that after bot fill, a projectile from a bot appears in snapshots.
 #include "common/framing.hpp"

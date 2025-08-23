@@ -1,3 +1,4 @@
+// SPDX-License-Identifier: Apache-2.0
 // auth_provider.hpp
 // Simple pluggable authentication strategy abstraction (stub OAuth placeholder).
 #pragma once

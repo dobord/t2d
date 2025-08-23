@@ -1,3 +1,4 @@
+// SPDX-License-Identifier: Apache-2.0
 // e2e_delta_snapshots.cpp
 #include "common/framing.hpp"
 #include "game.pb.h"

@@ -1,3 +1,4 @@
+// SPDX-License-Identifier: Apache-2.0
 #include "server/auth/auth_provider.hpp"
 
 #include <atomic>

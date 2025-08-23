@@ -111,4 +111,11 @@ Gameplay and server behavior are data‑driven via `config/server.yaml`. Key par
 Adjusting these allows rapid iteration on pacing (e.g., shorten `bot_fire_interval_ticks` to accelerate tests or increase `movement_speed` to test balance). Unknown keys are ignored; absent keys fall back to compiled defaults.
 
 ## License
-TBD (pending; intend to choose a permissive OSI license before first tagged release)
+Apache License 2.0. See `LICENSE` for full text.
+
+All source files should begin with a short SPDX header, e.g.:
+```cpp
+// SPDX-License-Identifier: Apache-2.0
+```
+
+Copyright (c) 2025 dobord and contributors.

@@ -93,6 +93,9 @@ jobs:
       - name: Format check (Linux only)
         if: runner.os == 'Linux'
         run: bash scripts/format_check.sh || (echo "Run formatting target locally" && exit 1)
+      - name: SPDX header check (Linux only)
+        if: runner.os == 'Linux'
+        run: bash scripts/spdx_check.sh
       - name: Upload server binary
         if: runner.os != 'Windows'
         uses: actions/upload-artifact@v4

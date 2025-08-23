@@ -54,13 +54,30 @@ run_target() {
 }
 
 STAGED_ALL=$(git diff --cached --name-only --diff-filter=ACMR || true)
-mapfile -t STAGED < <(echo "$STAGED_ALL" | grep -E '\.(c|cc|cxx|cpp|h|hpp)$' || true)
+mapfile -t STAGED < <(echo "$STAGED_ALL" | grep -E '\\.(c|cc|cxx|cpp|h|hpp)$' || true)
 FILTERED=()
 for f in "${STAGED[@]}"; do
   case "$f" in
     third_party/*) continue;;
     *) FILTERED+=("$f");;
   esac
+done
+
+# Auto-add SPDX header to new first-party C/C++ files missing it.
+for f in "${FILTERED[@]}"; do
+  # Only operate on files that exist in the working tree
+  [ -f "$f" ] || continue
+  if ! grep -E -q 'SPDX-License-Identifier:\s*Apache-2.0' "$f"; then
+    # Determine comment prefix (all current first-party sources use //; adjust if ever adding pure C headers with /* */ style)
+    # Preserve shebang if present
+    tmp="$f.tmp.spdx";
+    if head -1 "$f" | grep -q '^#!'; then
+      { head -1 "$f"; echo "// SPDX-License-Identifier: Apache-2.0"; tail -n +2 "$f"; } > "$tmp"
+    else
+      { echo "// SPDX-License-Identifier: Apache-2.0"; cat "$f"; } > "$tmp"
+    fi
+    mv "$tmp" "$f"
+  fi
 done
 
 # Run clang-format directly on filtered staged files

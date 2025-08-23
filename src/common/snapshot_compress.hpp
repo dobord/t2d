@@ -1,3 +1,4 @@
+// SPDX-License-Identifier: Apache-2.0
 // snapshot_compress.hpp
 // Optional lightweight quantization helpers for snapshot coordinates & angles.
 #pragma once
