@@ -161,7 +161,8 @@ int main(int argc, char **argv)
     engine.rootContext()->setContextProperty("projectileModel", &projectileModel);
     engine.rootContext()->setContextProperty("inputState", &input);
     engine.rootContext()->setContextProperty("timingState", &timing);
-    engine.load(QUrl("qrc:/T2DClient/Main.qml"));
+    // The generated resource uses path prefix including source-relative directories; load via full embedded path.
+    engine.load(QUrl("qrc:/T2DClient/src/client/qt/qml/Main.qml"));
     if (engine.rootObjects().isEmpty()) {
         t2d::log::error("Failed to load QML scene");
         return 1;
