@@ -98,13 +98,36 @@ Window {
             ctx.translate(width/2, height/2);
             ctx.scale(scale, scale);
             ctx.translate(-centerX, -centerY);
-            // Draw tanks
+            // Draw tanks with geometry: hull 3x6 (width x length), tracks 6x0.3, turret radius 1.3, barrel 4x0.1
             for(let i=0;i<entityModel.count();++i){
                 const wx = entityModel.interpX(i,a);
                 const wy = entityModel.interpY(i,a);
-                const screenR = tankWorldRadius; // radius in world units (scaled by ctx)
+                const hullDeg = entityModel.interpHullAngle(i,a);
+                const turretDeg = entityModel.interpTurretAngle(i,a);
+                const hullRad = hullDeg * Math.PI/180.0;
+                const turretRad = turretDeg * Math.PI/180.0;
+                ctx.save();
+                ctx.translate(wx, wy);
+                ctx.rotate(hullRad);
+                // Tracks (visual): two long thin rectangles along length (local +X forward), width axis is local +Y.
+                ctx.fillStyle = '#202a32';
+                const trackLen = 6.0; const trackWidth = 0.3; const halfHullWidth = 1.5; // hull width =3
+                // Left track (+Y) and right track (-Y)
+                ctx.fillRect(-trackLen/2, halfHullWidth - trackWidth/2 - trackLen/2 + trackLen/2, trackLen, trackWidth); // left
+                ctx.fillRect(-trackLen/2, -halfHullWidth - trackWidth/2 + trackWidth, trackLen, trackWidth); // right (adjusted)
+                // Hull body
                 ctx.fillStyle = (i===ownIndex)? '#6cff5d' : '#3fa7ff';
-                ctx.beginPath(); ctx.arc(wx, wy, screenR, 0, Math.PI*2); ctx.fill();
+                ctx.fillRect(-3.0, -1.5, 6.0, 3.0); // length 6 along X, width 3 along Y (centered)
+                // Turret (independent rotation around center)
+                ctx.save();
+                ctx.rotate(turretRad - hullRad); // apply relative rotation
+                ctx.fillStyle = '#44525d';
+                ctx.beginPath(); ctx.arc(0,0,1.3,0,Math.PI*2); ctx.fill();
+                // Barrel
+                ctx.fillStyle = '#cccccc';
+                ctx.fillRect(0, -0.05, 4.0, 0.1);
+                ctx.restore();
+                ctx.restore();
             }
             // Draw projectiles (assume small square 0.3 world units)
             ctx.fillStyle = '#ffcf40';

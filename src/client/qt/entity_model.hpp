@@ -15,6 +15,10 @@ struct QtTankRow
     float y{};
     float prev_x{};
     float prev_y{};
+    float hull_angle{}; // degrees
+    float turret_angle{}; // degrees
+    float prev_hull_angle{};
+    float prev_turret_angle{};
     float hp{};
     float ammo{};
 };
@@ -31,6 +35,8 @@ public:
         YRole,
         PrevXRole,
         PrevYRole,
+        HullAngleRole,
+        TurretAngleRole,
         HPRole,
         AmmoRole
     };
@@ -55,6 +61,31 @@ public:
             return 0.f;
         const auto &r = rows_[row];
         return r.prev_y + (r.y - r.prev_y) * alpha;
+    }
+
+    Q_INVOKABLE float interpHullAngle(int row, float alpha) const
+    {
+        std::scoped_lock lk(m_);
+        if (row < 0 || (size_t)row >= rows_.size())
+            return 0.f;
+        const auto &r = rows_[row];
+        float a0 = r.prev_hull_angle;
+        float a1 = r.hull_angle;
+        // Shortest angular interpolation (degrees)
+        float diff = std::fmod(a1 - a0 + 540.f, 360.f) - 180.f;
+        return a0 + diff * alpha;
+    }
+
+    Q_INVOKABLE float interpTurretAngle(int row, float alpha) const
+    {
+        std::scoped_lock lk(m_);
+        if (row < 0 || (size_t)row >= rows_.size())
+            return 0.f;
+        const auto &r = rows_[row];
+        float a0 = r.prev_turret_angle;
+        float a1 = r.turret_angle;
+        float diff = std::fmod(a1 - a0 + 540.f, 360.f) - 180.f;
+        return a0 + diff * alpha;
     }
 
     int rowCount(const QModelIndex &parent = QModelIndex()) const override
@@ -83,6 +114,10 @@ public:
                 return r.prev_x;
             case PrevYRole:
                 return r.prev_y;
+            case HullAngleRole:
+                return r.hull_angle;
+            case TurretAngleRole:
+                return r.turret_angle;
             case HPRole:
                 return r.hp;
             case AmmoRole:
@@ -99,6 +134,8 @@ public:
             {YRole, "y"},
             {PrevXRole, "prevX"},
             {PrevYRole, "prevY"},
+            {HullAngleRole, "hullAngle"},
+            {TurretAngleRole, "turretAngle"},
             {HPRole, "hp"},
             {AmmoRole, "ammo"}};
     }
@@ -108,7 +145,18 @@ public:
         std::vector<QtTankRow> newRows;
         newRows.reserve(snap.tanks_size());
         for (const auto &t : snap.tanks()) {
-            newRows.push_back(QtTankRow{t.entity_id(), t.x(), t.y(), t.x(), t.y(), (float)t.hp(), (float)t.ammo()});
+            newRows.push_back(QtTankRow{
+                t.entity_id(),
+                t.x(),
+                t.y(),
+                t.x(),
+                t.y(),
+                t.hull_angle(),
+                t.turret_angle(),
+                t.hull_angle(),
+                t.turret_angle(),
+                (float)t.hp(),
+                (float)t.ammo()});
         }
         {
             std::scoped_lock lk(m_);
@@ -140,6 +188,10 @@ public:
                     rows_[i].prev_y = rows_[i].y;
                     rows_[i].x = t.x();
                     rows_[i].y = t.y();
+                    rows_[i].prev_hull_angle = rows_[i].hull_angle;
+                    rows_[i].prev_turret_angle = rows_[i].turret_angle;
+                    rows_[i].hull_angle = t.hull_angle();
+                    rows_[i].turret_angle = t.turret_angle();
                     rows_[i].hp = (float)t.hp();
                     rows_[i].ammo = (float)t.ammo();
                     auto top = index((int)i);
@@ -149,7 +201,18 @@ public:
                 }
             if (!found) {
                 beginInsertRows({}, (int)rows_.size(), (int)rows_.size());
-                rows_.push_back(QtTankRow{t.entity_id(), t.x(), t.y(), t.x(), t.y(), (float)t.hp(), (float)t.ammo()});
+                rows_.push_back(QtTankRow{
+                    t.entity_id(),
+                    t.x(),
+                    t.y(),
+                    t.x(),
+                    t.y(),
+                    t.hull_angle(),
+                    t.turret_angle(),
+                    t.hull_angle(),
+                    t.turret_angle(),
+                    (float)t.hp(),
+                    (float)t.ammo()});
                 endInsertRows();
             }
         }

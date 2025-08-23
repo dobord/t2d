@@ -41,7 +41,9 @@ inline b2BodyId create_tank(World &w, float x, float y)
     sd.enableContactEvents = true;
     sd.filter.categoryBits = CAT_TANK;
     sd.filter.maskBits = CAT_PROJECTILE | CAT_TANK; // tank vs projectile (and optionally tank vs tank for later)
-    b2Polygon box = b2MakeBox(0.5f, 0.5f);
+    // Hull rectangle 3x6 -> half extents 1.5 (width), 3.0 (length). We keep forward direction logical; Box2D body not
+    // rotated yet.
+    b2Polygon box = b2MakeBox(1.5f, 3.0f);
     b2CreatePolygonShape(body, &sd, &box);
     w.tank_bodies.push_back(body);
     return body;
@@ -59,7 +61,8 @@ inline b2BodyId create_projectile(World &w, float x, float y, float vx, float vy
     sd.enableContactEvents = true;
     sd.filter.categoryBits = CAT_PROJECTILE;
     sd.filter.maskBits = CAT_TANK; // only collide with tanks
-    b2Polygon box = b2MakeBox(0.1f, 0.1f);
+    // Projectile rectangle 0.3 x 0.1 -> half extents 0.15 x 0.05
+    b2Polygon box = b2MakeBox(0.15f, 0.05f);
     b2CreatePolygonShape(body, &sd, &box);
     b2Vec2 vel{vx, vy};
     b2Body_SetLinearVelocity(body, vel);

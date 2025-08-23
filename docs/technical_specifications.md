@@ -88,6 +88,30 @@ License Compatibility:
 - Projectiles: raycast or fast body to avoid tunneling
 - Ammo crates: static bodies with trigger pickup
 
+### 5.1 Tank & Projectile Geometry (Prototype Spec)
+The prototype uses a simplified descriptive shape for gameplay and rendering:
+
+Tank (all units in world meters):
+1. Hull: axis‑aligned rectangle 3.0 (width) x 6.0 (length). Length axis defines the forward direction (hull_angle = 0 faces +X).
+2. Tracks: two rectangles running along the hull length, each 6.0 x 0.3, positioned flush against the long sides. Their centers are offset ±1.35 on the width axis ( (3.0 / 2) - (0.3 / 2) ). Tracks are currently a visual detail only (no separate collision fixtures in prototype).
+3. Turret: circle radius 1.3 centered at the hull center (same origin as hull).
+4. Barrel: rectangle 4.0 (length) x 0.1 (thickness) rigidly attached to the turret, extending forward (along +X after hull and turret rotations) from the turret center. Local barrel origin starts at turret center (i.e. barrel spans [0, 4.0] in its local +X).
+
+Projectile:
+- Rectangle 0.3 (length) x 0.1 (thickness); collision shape approximated by a Box2D box with half extents (0.15, 0.05). (Previously a 0.2x0.2 square.)
+
+Collision Representation (current prototype):
+- Tank: single Box2D box fixture with half extents (1.5, 3.0) matching the hull (rotation not yet dynamically updated — orientation handled logically for movement and firing).
+- Projectile: single Box2D box with half extents (0.15, 0.05).
+
+Spawn Offsets:
+- Projectiles spawn at (tank_center + forward * 4.2) to appear just beyond the barrel tip (hull half length 3.0 + barrel length 4.0, slight extra to avoid immediate self‑collision) and reduce early contact artifacts.
+
+Future Improvements:
+- Add a separate (smaller) circular collision shape for the turret for more accurate hits.
+- Dynamic rotation of the Box2D tank body to align with hull_angle (currently deferred for simplicity).
+- Barrel raycast firing instead of spawning a physical projectile body for latency‑sensitive hit registration.
+
 ## 6. Networking & Protocol
 Implemented messages: AuthRequest/Response, QueueJoin/Status, MatchStart, StateSnapshot, DeltaSnapshot, Heartbeat/Response, DamageEvent, TankDestroyed, KillFeedUpdate, MatchEnd.
 Planned additions: PickupEvent, DisconnectNotice (explicit), future replay / debug control messages.

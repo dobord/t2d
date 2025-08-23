@@ -205,8 +205,11 @@ coro::task<void> run_match(std::shared_ptr<coro::io_scheduler> scheduler, std::s
                 auto pid = ctx->next_projectile_id++;
                 // Use current tank position (already synced) and offset spawn slightly forward to avoid immediate
                 // self-collision logic
-                float ox = t.x + std::cos(rad) * 0.6f;
-                float oy = t.y + std::sin(rad) * 0.6f;
+                // Spawn projectile just beyond barrel tip: hull half length (3.0) + barrel length (4.0) + safety margin
+                // (0.2)
+                float forward_offset = 3.0f + 4.0f + 0.2f; // 7.2 units
+                float ox = t.x + std::cos(rad) * forward_offset;
+                float oy = t.y + std::sin(rad) * forward_offset;
                 ctx->projectiles.push_back({pid, ox, oy, std::cos(rad) * speed, std::sin(rad) * speed, t.entity_id});
                 // Create physics body for projectile
                 auto body =
