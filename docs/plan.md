@@ -26,7 +26,7 @@ All documentation in this repository is maintained in English (see repository st
 - Server Features: Auth stub, matchmaking, matches with bots & AI, movement, projectiles, heartbeats, delta/full snapshots.
 - Protocol: Auth, Queue, MatchStart, (Full) StateSnapshot, DeltaSnapshot, Heartbeat/Response, Damage & events placeholders.
 - Reliability: Streaming frame parser, batching, heartbeat timeout.
-- Observability: Basic logger (stdout). No metrics/tracing yet.
+- Observability: Structured logging + metrics counters + Prometheus endpoint.
 - Testing: Broad unit + e2e coverage for core behaviors.
 - CI: Single workflow building & testing (Linux). No artifact upload; client build disabled.
 
@@ -66,9 +66,9 @@ The following epics are required to reach fully automated builds (server + Andro
  - [ ] Dependency pin & verification job (compare vendored versions vs docs & .env)
 
 ### 3.4 Observability & Operational Readiness
-- [ ] Structured logging (JSON lines) + log level from config
-- [ ] Metrics: TPS, queue depth, active matches, snapshot_full_bytes / snapshot_delta_bytes, bots_in_match
-- [ ] Prometheus exposition or lightweight HTTP metrics endpoint
+- [x] Structured logging (JSON lines) + log level from config
+- [x] Metrics: TPS, queue depth, active matches, snapshot_full_bytes / snapshot_delta_bytes, bots_in_match
+- [x] Prometheus exposition or lightweight HTTP metrics endpoint
 - [ ] Crash safety (signal mini‑dump or stack trace)
 - [ ] In‑match debug overlay (client) toggle (later)
 
@@ -114,7 +114,7 @@ The following epics are required to reach fully automated builds (server + Andro
 3. [x] Snapshot interval config + size metrics (intervals configurable; size counters implemented)
 4. [x] Structured logging + metrics counters (JSON + Prometheus endpoint + graceful shutdown snapshot stats)
 5. [x] OAuth auth strategy abstraction (stub provider; real external validation later)
-6. [ ] Desktop client scaffold + CI build
+6. [ ] Desktop client scaffold + CI build (scaffold started: prototype non-UI desktop client target `t2d_desktop_client`)
 7. [ ] Android & WASM build jobs
 8. [ ] Dependency pin/verification (NDK, Build Tools, periodic submodule SHA audit job)
 9. [ ] Artifact uploads (all targets)

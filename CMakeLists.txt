@@ -6,7 +6,7 @@ set(CMAKE_CXX_STANDARD_REQUIRED ON)
 set(CMAKE_CXX_EXTENSIONS OFF)
 
 option(T2D_BUILD_SERVER "Build the game server" ON)
-option(T2D_BUILD_CLIENT "Build the desktop client (Qt)" OFF) # enable later
+option(T2D_BUILD_CLIENT "Build the desktop client (prototype; Qt UI later)" OFF)
 option(T2D_BUILD_TESTS "Build internal test executables" ON)
 
 # Always enable testing (simplifies CI integration); T2D_BUILD_TESTS controls build of executables
@@ -87,6 +87,14 @@ if (T2D_BUILD_SERVER)
     target_include_directories(t2d_server PRIVATE src)
     target_link_libraries(t2d_server PRIVATE t2d_proto yaml-cpp libcoro box2d)
     target_compile_definitions(t2d_server PRIVATE T2D_VERSION="0.0.1-dev")
+endif ()
+
+if (T2D_BUILD_CLIENT)
+    # Prototype desktop client (no UI yet). Later this will switch to a Qt/QML target.
+    add_executable(t2d_desktop_client src/client/desktop_client.cpp src/common/framing.cpp)
+    target_link_libraries(t2d_desktop_client PRIVATE t2d_proto libcoro)
+    target_include_directories(t2d_desktop_client PRIVATE src)
+    target_compile_definitions(t2d_desktop_client PRIVATE T2D_VERSION="0.0.1-dev")
 endif ()
 
 # Formatting target placeholder (user can integrate clang-format config later)
