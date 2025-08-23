@@ -166,7 +166,8 @@ find_program(CLANG_FORMAT_BIN clang-format)
 find_program(CMAKE_FORMAT_BIN cmake-format)
 if (CLANG_FORMAT_BIN)
     # Collect only first-party sources (exclude third_party explicitly)
-    set(T2D_FORMAT_DIRS src include tests)
+    # Restrict formatting strictly to first-party source roots; do NOT recurse outside these
+    set(T2D_FORMAT_DIRS src tests)
     set(ALL_CXX_SOURCE_FILES)
     foreach (_d IN LISTS T2D_FORMAT_DIRS)
         if (EXISTS ${CMAKE_CURRENT_SOURCE_DIR}/${_d})
@@ -182,7 +183,7 @@ if (CLANG_FORMAT_BIN)
             list(APPEND ALL_CXX_SOURCE_FILES ${_cur})
         endif ()
     endforeach ()
-    # Defensive filter in case a future path adds third_party via symlink
+    # Remove any accidentally captured third_party paths (safety net)
     list(
         FILTER
         ALL_CXX_SOURCE_FILES
@@ -265,7 +266,7 @@ if (T2D_BUILD_TESTS)
         src/server/matchmaking/session_manager.cpp
         src/server/net/listener.cpp
         tests/e2e_match_start.cpp)
-    target_link_libraries(t2d_e2e_match_start PRIVATE t2d_proto libcoro yaml-cpp)
+    target_link_libraries(t2d_e2e_match_start PRIVATE t2d_proto libcoro yaml-cpp box2d)
     target_include_directories(t2d_e2e_match_start PRIVATE src)
     target_compile_definitions(t2d_e2e_match_start PRIVATE T2D_VERSION="${T2D_VERSION_STR}")
 
@@ -278,7 +279,7 @@ if (T2D_BUILD_TESTS)
         src/server/matchmaking/session_manager.cpp
         src/server/net/listener.cpp
         tests/e2e_input_move.cpp)
-    target_link_libraries(t2d_e2e_input_move PRIVATE t2d_proto libcoro yaml-cpp)
+    target_link_libraries(t2d_e2e_input_move PRIVATE t2d_proto libcoro yaml-cpp box2d)
     target_include_directories(t2d_e2e_input_move PRIVATE src)
     target_compile_definitions(t2d_e2e_input_move PRIVATE T2D_VERSION="${T2D_VERSION_STR}")
 
@@ -291,7 +292,7 @@ if (T2D_BUILD_TESTS)
         src/server/matchmaking/session_manager.cpp
         src/server/net/listener.cpp
         tests/e2e_heartbeat.cpp)
-    target_link_libraries(t2d_e2e_heartbeat PRIVATE t2d_proto libcoro yaml-cpp)
+    target_link_libraries(t2d_e2e_heartbeat PRIVATE t2d_proto libcoro yaml-cpp box2d)
     target_include_directories(t2d_e2e_heartbeat PRIVATE src)
     target_compile_definitions(t2d_e2e_heartbeat PRIVATE T2D_VERSION="${T2D_VERSION_STR}")
 
@@ -304,7 +305,7 @@ if (T2D_BUILD_TESTS)
         src/server/matchmaking/session_manager.cpp
         src/server/net/listener.cpp
         tests/e2e_bot_fill.cpp)
-    target_link_libraries(t2d_e2e_bot_fill PRIVATE t2d_proto libcoro yaml-cpp)
+    target_link_libraries(t2d_e2e_bot_fill PRIVATE t2d_proto libcoro yaml-cpp box2d)
     target_include_directories(t2d_e2e_bot_fill PRIVATE src)
     target_compile_definitions(t2d_e2e_bot_fill PRIVATE T2D_VERSION="${T2D_VERSION_STR}")
     add_executable(
@@ -316,7 +317,7 @@ if (T2D_BUILD_TESTS)
         src/server/matchmaking/session_manager.cpp
         src/server/net/listener.cpp
         tests/e2e_bot_projectile.cpp)
-    target_link_libraries(t2d_e2e_bot_projectile PRIVATE t2d_proto libcoro yaml-cpp)
+    target_link_libraries(t2d_e2e_bot_projectile PRIVATE t2d_proto libcoro yaml-cpp box2d)
     target_include_directories(t2d_e2e_bot_projectile PRIVATE src)
     target_compile_definitions(t2d_e2e_bot_projectile PRIVATE T2D_VERSION="${T2D_VERSION_STR}")
     add_executable(
@@ -328,7 +329,7 @@ if (T2D_BUILD_TESTS)
         src/server/matchmaking/session_manager.cpp
         src/server/net/listener.cpp
         tests/e2e_delta_snapshots.cpp)
-    target_link_libraries(t2d_e2e_delta_snapshots PRIVATE t2d_proto libcoro yaml-cpp)
+    target_link_libraries(t2d_e2e_delta_snapshots PRIVATE t2d_proto libcoro yaml-cpp box2d)
     target_include_directories(t2d_e2e_delta_snapshots PRIVATE src)
     target_compile_definitions(t2d_e2e_delta_snapshots PRIVATE T2D_VERSION="${T2D_VERSION_STR}")
     add_executable(
@@ -340,7 +341,7 @@ if (T2D_BUILD_TESTS)
         src/server/matchmaking/session_manager.cpp
         src/server/net/listener.cpp
         tests/e2e_damage_event.cpp)
-    target_link_libraries(t2d_e2e_damage_event PRIVATE t2d_proto libcoro yaml-cpp)
+    target_link_libraries(t2d_e2e_damage_event PRIVATE t2d_proto libcoro yaml-cpp box2d)
     target_include_directories(t2d_e2e_damage_event PRIVATE src)
     target_compile_definitions(t2d_e2e_damage_event PRIVATE T2D_VERSION="${T2D_VERSION_STR}")
 
@@ -353,7 +354,7 @@ if (T2D_BUILD_TESTS)
         src/server/matchmaking/session_manager.cpp
         src/server/net/listener.cpp
         tests/e2e_damage_multi.cpp)
-    target_link_libraries(t2d_e2e_damage_multi PRIVATE t2d_proto libcoro yaml-cpp)
+    target_link_libraries(t2d_e2e_damage_multi PRIVATE t2d_proto libcoro yaml-cpp box2d)
     target_include_directories(t2d_e2e_damage_multi PRIVATE src)
     target_compile_definitions(t2d_e2e_damage_multi PRIVATE T2D_VERSION="${T2D_VERSION_STR}")
 
@@ -366,7 +367,7 @@ if (T2D_BUILD_TESTS)
         src/server/matchmaking/session_manager.cpp
         src/server/net/listener.cpp
         tests/e2e_kill_feed.cpp)
-    target_link_libraries(t2d_e2e_kill_feed PRIVATE t2d_proto libcoro yaml-cpp)
+    target_link_libraries(t2d_e2e_kill_feed PRIVATE t2d_proto libcoro yaml-cpp box2d)
     target_include_directories(t2d_e2e_kill_feed PRIVATE src)
     target_compile_definitions(t2d_e2e_kill_feed PRIVATE T2D_VERSION="${T2D_VERSION_STR}")
 

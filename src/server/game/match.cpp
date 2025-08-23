@@ -5,7 +5,95 @@
 
 #include <cmath>
 #include <iostream>
+#include <unordered_map>
 #include <unordered_set>
+
+namespace {
+
+using ProjectileMap = std::unordered_map<uint32_t, b2BodyId>;
+
+static void process_contacts(
+    t2d::phys::World &phys_world, ProjectileMap &projectile_bodies, t2d::game::MatchContext &ctx)
+{
+    const uint32_t damage_amount = ctx.projectile_damage;
+    auto events = b2World_GetContactEvents(phys_world.id);
+    if (events.beginCount <= 0)
+        return;
+    for (int i = 0; i < events.beginCount; ++i) {
+        const b2ContactBeginTouchEvent &ev = events.beginEvents[i];
+        b2BodyId a = b2Shape_GetBody(ev.shapeIdA);
+        b2BodyId b = b2Shape_GetBody(ev.shapeIdB);
+        uint32_t proj_id = 0;
+        bool a_is_proj = false;
+        uint32_t tank_index = UINT32_MAX;
+        for (auto &kv : projectile_bodies) {
+            if (kv.second.index1 == a.index1) {
+                proj_id = kv.first;
+                a_is_proj = true;
+                break;
+            }
+            if (kv.second.index1 == b.index1) {
+                proj_id = kv.first;
+                a_is_proj = false;
+                break;
+            }
+        }
+        if (proj_id == 0)
+            continue;
+        for (size_t ti = 0; ti < phys_world.tank_bodies.size(); ++ti) {
+            auto id = phys_world.tank_bodies[ti];
+            if ((a_is_proj ? b.index1 : a.index1) == id.index1) {
+                tank_index = ti;
+                break;
+            }
+        }
+        if (tank_index == UINT32_MAX || tank_index >= ctx.tanks.size())
+            continue;
+        auto &tank = ctx.tanks[tank_index];
+        if (!tank.alive)
+            continue;
+        auto pit =
+            std::find_if(ctx.projectiles.begin(), ctx.projectiles.end(), [&](auto &p) { return p.id == proj_id; });
+        if (pit == ctx.projectiles.end())
+            continue;
+        auto &proj = *pit;
+        if (tank.entity_id == proj.owner)
+            continue;
+        if (tank.hp > 0) {
+            if (tank.hp <= damage_amount)
+                tank.hp = 0;
+            else
+                tank.hp -= damage_amount;
+            t2d::ServerMessage evmsg;
+            auto *d = evmsg.mutable_damage();
+            d->set_victim_id(tank.entity_id);
+            d->set_attacker_id(proj.owner);
+            d->set_amount(damage_amount);
+            d->set_remaining_hp(tank.hp);
+            for (auto &pl : ctx.players)
+                t2d::mm::instance().push_message(pl, evmsg);
+            if (tank.hp == 0) {
+                tank.alive = false;
+                ctx.removed_tanks_since_full.push_back(tank.entity_id);
+                ctx.kill_feed_events.emplace_back(tank.entity_id, proj.owner);
+                t2d::ServerMessage tdmsg;
+                auto *td = tdmsg.mutable_destroyed();
+                td->set_victim_id(tank.entity_id);
+                td->set_attacker_id(proj.owner);
+                for (auto &pl : ctx.players)
+                    t2d::mm::instance().push_message(pl, tdmsg);
+            }
+        }
+        auto body_it = projectile_bodies.find(proj_id);
+        if (body_it != projectile_bodies.end()) {
+            t2d::phys::destroy_body(body_it->second);
+            projectile_bodies.erase(body_it);
+        }
+        ctx.removed_projectiles_since_full.push_back(proj_id);
+        ctx.projectiles.erase(pit);
+    }
+}
+} // anonymous namespace
 
 namespace t2d::game {
 
@@ -13,6 +101,14 @@ coro::task<void> run_match(std::shared_ptr<coro::io_scheduler> scheduler, std::s
 {
     co_await scheduler->schedule();
     std::cout << "[match] start id=" << ctx->match_id << " players=" << ctx->players.size() << std::endl;
+    // Phase 1 physics integration: create Box2D world and bodies mirroring current tanks
+    t2d::phys::World phys_world({0.0f, 0.0f}); // no gravity for top-down
+    ProjectileMap projectile_bodies; // projectile id -> body id
+    if (phys_world.tank_bodies.size() != ctx->tanks.size()) {
+        for (auto &t : ctx->tanks) {
+            t2d::phys::create_tank(phys_world, t.x, t.y);
+        }
+    }
     using clock = std::chrono::steady_clock;
     auto tick_interval = std::chrono::milliseconds(1000 / ctx->tick_rate);
     auto next = clock::now();
@@ -71,12 +167,10 @@ coro::task<void> run_match(std::shared_ptr<coro::io_scheduler> scheduler, std::s
             auto input = t2d::mm::instance().get_input_copy(sess);
             // Basic bot AI: if bot, synthesize movement & periodic fire
             if (sess->is_bot) {
-                // Deterministic: bots immediately fire once at tick 1 then every 2s; stay stationary.
                 input.turn_dir = 0.0f;
                 input.move_dir = 0.0f;
-                if (ctx->server_tick <= 1 || ctx->server_tick % (ctx->tick_rate * 2) == 0) {
-                    input.fire = true;
-                }
+                uint32_t interval = ctx->bot_fire_interval_ticks == 0 ? 1 : ctx->bot_fire_interval_ticks;
+                input.fire = (ctx->server_tick % interval) == 0;
                 t2d::mm::Session::InputState upd = input;
                 t2d::mm::instance().set_bot_input(sess, upd);
             }
@@ -93,12 +187,29 @@ coro::task<void> run_match(std::shared_ptr<coro::io_scheduler> scheduler, std::s
                 t.turret_angle -= 360.f;
             // Move forward/backward along hull direction (very naive)
             float rad = t.hull_angle * 3.14159265f / 180.f;
-            t.x += std::cos(rad) * input.move_dir * movement_speed() * dt;
-            t.y += std::sin(rad) * input.move_dir * movement_speed() * dt;
+            // Apply velocity to physics body (phase 1: simple set linear velocity each tick)
+            if (i < phys_world.tank_bodies.size()) {
+                auto id = phys_world.tank_bodies[i];
+                t2d::phys::set_body_velocity(
+                    id,
+                    std::cos(rad) * input.move_dir * ctx->movement_speed,
+                    std::sin(rad) * input.move_dir * ctx->movement_speed);
+            } else {
+                t.x += std::cos(rad) * input.move_dir * ctx->movement_speed * dt;
+                t.y += std::sin(rad) * input.move_dir * ctx->movement_speed * dt;
+            }
             if (input.fire && t.ammo > 0) {
-                float speed = 5.0f;
-                ctx->projectiles.push_back(
-                    {ctx->next_projectile_id++, t.x, t.y, std::cos(rad) * speed, std::sin(rad) * speed, t.entity_id});
+                float speed = ctx->projectile_speed;
+                auto pid = ctx->next_projectile_id++;
+                // Use current tank position (already synced) and offset spawn slightly forward to avoid immediate
+                // self-collision logic
+                float ox = t.x + std::cos(rad) * 0.6f;
+                float oy = t.y + std::sin(rad) * 0.6f;
+                ctx->projectiles.push_back({pid, ox, oy, std::cos(rad) * speed, std::sin(rad) * speed, t.entity_id});
+                // Create physics body for projectile
+                auto body =
+                    t2d::phys::create_projectile(phys_world, t.x, t.y, std::cos(rad) * speed, std::sin(rad) * speed);
+                projectile_bodies.emplace(pid, body);
                 t.ammo--;
                 if (sess->is_bot)
                     t2d::mm::instance().clear_bot_fire(sess);
@@ -116,71 +227,52 @@ coro::task<void> run_match(std::shared_ptr<coro::io_scheduler> scheduler, std::s
             }
         }
         // Update projectiles
-        for (auto &p : ctx->projectiles) {
-            p.x += p.vx * dt;
-            p.y += p.vy * dt;
+        // Physics step (tanks + future projectiles). Projectiles still manual for now.
+        t2d::phys::step(phys_world, dt);
+        // Sync tank positions back from physics bodies
+        for (size_t i = 0; i < ctx->tanks.size() && i < phys_world.tank_bodies.size(); ++i) {
+            auto id = phys_world.tank_bodies[i];
+            auto pos = t2d::phys::get_body_position(id);
+            ctx->tanks[i].x = pos.x;
+            ctx->tanks[i].y = pos.y;
         }
-        // Collision detection (very naive circle overlap) -> DamageEvent
-        {
-            const float hit_radius = 0.3f; // prototype radius
-            const uint32_t damage_amount = 25;
-            // Collect indices to remove after processing to avoid iterator invalidation
-            std::vector<size_t> remove_indices;
-            for (size_t pi = 0; pi < ctx->projectiles.size(); ++pi) {
-                auto &proj = ctx->projectiles[pi];
-                bool hit = false;
-                for (auto &tank : ctx->tanks) {
-                    if (tank.entity_id == proj.owner)
-                        continue; // no self-hit prototype
-                    if (!tank.alive)
-                        continue; // already dead
-                    float dx = proj.x - tank.x;
-                    float dy = proj.y - tank.y;
-                    float dist2 = dx * dx + dy * dy;
-                    if (dist2 <= hit_radius * hit_radius && tank.hp > 0) {
-                        // Apply damage
-                        if (tank.hp <= damage_amount)
-                            tank.hp = 0;
-                        else
-                            tank.hp -= damage_amount;
-                        // Emit DamageEvent
-                        t2d::ServerMessage ev;
-                        auto *d = ev.mutable_damage();
-                        d->set_victim_id(tank.entity_id);
-                        d->set_attacker_id(proj.owner);
-                        d->set_amount(damage_amount);
-                        d->set_remaining_hp(tank.hp);
-                        std::cout << "[match] DamageEvent victim=" << tank.entity_id << " attacker=" << proj.owner
-                                  << " hp=" << tank.hp << std::endl;
-                        for (auto &pl : ctx->players)
-                            t2d::mm::instance().push_message(pl, ev);
-                        // If destroyed emit TankDestroyed (entity removal handled in later epic)
-                        if (tank.hp == 0) {
-                            tank.alive = false;
-                            ctx->removed_tanks_since_full.push_back(tank.entity_id);
-                            ctx->kill_feed_events.emplace_back(tank.entity_id, proj.owner);
-                            t2d::ServerMessage tdmsg;
-                            auto *td = tdmsg.mutable_destroyed();
-                            td->set_victim_id(tank.entity_id);
-                            td->set_attacker_id(proj.owner);
-                            for (auto &pl : ctx->players)
-                                t2d::mm::instance().push_message(pl, tdmsg);
-                        }
-                        hit = true;
-                        break; // stop checking tanks for this projectile
-                    }
-                }
-                if (hit)
-                    remove_indices.push_back(pi);
+        // Sync projectile positions from physics bodies (remove invalid)
+        for (auto &p : ctx->projectiles) {
+            auto it = projectile_bodies.find(p.id);
+            if (it != projectile_bodies.end()) {
+                auto pos = t2d::phys::get_body_position(it->second);
+                p.x = pos.x;
+                p.y = pos.y;
+            } else {
+                // Fallback: if body missing keep manual update
+                p.x += p.vx * dt;
+                p.y += p.vy * dt;
             }
-            if (!remove_indices.empty()) {
-                // Remove in reverse order
-                for (auto it = remove_indices.rbegin(); it != remove_indices.rend(); ++it) {
-                    ctx->removed_projectiles_since_full.push_back(ctx->projectiles[*it].id);
+        }
+        // Simple bounds cull for projectiles (world prototype area +/-100)
+        {
+            std::vector<size_t> to_remove_bounds;
+            for (size_t i = 0; i < ctx->projectiles.size(); ++i) {
+                auto &pr = ctx->projectiles[i];
+                if (std::fabs(pr.x) > 100.f || std::fabs(pr.y) > 100.f) {
+                    to_remove_bounds.push_back(i);
+                }
+            }
+            if (!to_remove_bounds.empty()) {
+                for (auto it = to_remove_bounds.rbegin(); it != to_remove_bounds.rend(); ++it) {
+                    auto pid = ctx->projectiles[*it].id;
+                    auto body_it = projectile_bodies.find(pid);
+                    if (body_it != projectile_bodies.end()) {
+                        t2d::phys::destroy_body(body_it->second);
+                        projectile_bodies.erase(body_it);
+                    }
+                    ctx->removed_projectiles_since_full.push_back(pid);
                     ctx->projectiles.erase(ctx->projectiles.begin() + *it);
                 }
             }
         }
+        // Contact-based projectile vs tank collision using Box2D contact events
+        process_contacts(phys_world, projectile_bodies, *ctx);
         if (ctx->snapshot_interval_ticks > 0 && ctx->server_tick % ctx->snapshot_interval_ticks == 0) {
             bool send_full = (ctx->server_tick - ctx->last_full_snapshot_tick >= ctx->full_snapshot_interval_ticks);
             if (send_full) {
@@ -370,6 +462,11 @@ coro::task<void> run_match(std::shared_ptr<coro::io_scheduler> scheduler, std::s
         }
         if (ctx->match_over || ctx->server_tick > ctx->tick_rate * 10) {
             std::cout << "[match] end id=" << ctx->match_id << std::endl;
+            // Destroy remaining projectile bodies
+            for (auto &kv : projectile_bodies) {
+                t2d::phys::destroy_body(kv.second);
+            }
+            projectile_bodies.clear();
             // Adjust metrics on match end
             t2d::metrics::runtime().active_matches.fetch_sub(1, std::memory_order_relaxed);
             // bots_in_match is a gauge reflecting current bots across matches; subtract bots from this match

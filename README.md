@@ -3,7 +3,7 @@
 Authoritative 2D multiplayer tank game (server + (future) multi‑platform clients). Current focus: server core, deterministic match loop, networking, matchmaking, bots, snapshots & metrics.
 
 ## Status
-Prototype (core gameplay & networking implemented). Physics (Box2D integration), advanced clients, compression & security still pending.
+Prototype (core gameplay & networking implemented). Box2D physics (movement + projectile→tank contacts) integrated; advanced clients, compression & extended security still pending.
 
 ## Build (Server)
 
@@ -34,8 +34,8 @@ Third-party tests/examples/tools are force-disabled (yaml-cpp, libcoro, box2d, c
 * Protobuf protocol: Auth, Queue, MatchStart, StateSnapshot, DeltaSnapshot, DamageEvent, KillFeedUpdate, TankDestroyed, MatchEnd, Heartbeat/Response
 * TCP framing + streaming parser (incremental, handles partial frames)
 * Matchmaking queue with bot fill after timeout & single-player allowance
-* Deterministic match loop (tick rate configurable) with bots (periodic firing) & naive movement
-* Damage + projectile collision (naive circle overlap) & kill feed batching
+* Deterministic match loop (tick rate configurable) with bots (configurable firing interval) & physics‑based movement (Box2D)
+* Damage + projectile collision via Box2D contact events & kill feed batching
 * Delta & full snapshots (intervals configurable) with removal lists and size metrics
 * Heartbeat timeout pruning + disconnect handling (entity removal & destroy events)
 * Auth provider abstraction (stub strategy selectable via config)
@@ -46,7 +46,7 @@ Third-party tests/examples/tools are force-disabled (yaml-cpp, libcoro, box2d, c
 
 ## Current Limitations / TODO (High-Level)
 * No snapshot compression yet (planned optional zlib / quantization)
-* No Box2D physics (movement and collisions are simplified)
+* Physics lacks advanced features (no terrain, raycast firing line, crate pickups yet)
 * No real authentication (OAuth adapter pending)
 * Desktop / Android / WASM clients not yet implemented (prototype test client only)
 * No persistence, matchmaking skill/ELO, or replay/validation harness
@@ -85,6 +85,30 @@ genhtml coverage.info -o cov_html
 
 ## Metrics (Prometheus Style)
 Enable by setting `metrics_port` in `config/server.yaml`. Exposes counters for snapshot bytes, counts, runtime tick durations, queue depth, active matches, bots, projectiles, auth failures, etc.
+
+## Gameplay & Tuning Configuration
+Gameplay and server behavior are data‑driven via `config/server.yaml`. Key parameters (defaults shown):
+
+| Key | Default | Purpose |
+|-----|---------|---------|
+| tick_rate | 30 | Simulation ticks per second |
+| snapshot_interval_ticks | 5 | Interval between delta snapshots |
+| full_snapshot_interval_ticks | 30 | Interval between mandatory full snapshots |
+| bot_fire_interval_ticks | 60 | Bot firing cadence (ticks; 60 @30Hz ≈ 2s) |
+| movement_speed | 2.0 | Tank linear speed (units/s) |
+| projectile_speed | 5.0 | Projectile speed (units/s) |
+| projectile_damage | 25 | Damage per projectile contact |
+| reload_interval_sec | 3.0 | Seconds to regenerate one ammo (up to max_ammo) |
+| max_players_per_match | 16 | Match size (bot fill after timeout) |
+| fill_timeout_seconds | 180 | Seconds before auto bot fill |
+| heartbeat_timeout_seconds | 30 | Disconnect if no heartbeat within window |
+| matchmaker_poll_ms | 200 | Matchmaker queue poll interval |
+| log_level | info | Logging verbosity (env override) |
+| log_json | false | Enable structured JSON logs |
+| metrics_port | 9100 | Prometheus metrics endpoint (0 disables) |
+| auth_mode | stub | Authentication provider mode |
+
+Adjusting these allows rapid iteration on pacing (e.g., shorten `bot_fire_interval_ticks` to accelerate tests or increase `movement_speed` to test balance). Unknown keys are ignored; absent keys fall back to compiled defaults.
 
 ## License
 TBD (pending; intend to choose a permissive OSI license before first tagged release)

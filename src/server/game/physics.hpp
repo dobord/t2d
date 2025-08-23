@@ -9,50 +9,84 @@ namespace t2d::phys {
 
 struct World
 {
-    b2World world;
-    std::vector<b2Body *> tank_bodies;
-    std::vector<b2Body *> projectile_bodies;
+    b2WorldId id{b2_nullWorldId};
+    std::vector<b2BodyId> tank_bodies;
+    std::vector<b2BodyId> projectile_bodies;
 
-    explicit World(const b2Vec2 &gravity) : world(gravity) {}
+    explicit World(const b2Vec2 &gravity)
+    {
+        b2WorldDef def = b2DefaultWorldDef();
+        def.gravity = gravity;
+        id = b2CreateWorld(&def);
+    }
 };
 
-inline b2Body *create_tank(World &w, float x, float y)
+// Simple category bits for collision filtering (prototype)
+enum Category : uint32_t
 {
-    b2BodyDef def;
-    def.type = b2_dynamicBody;
-    def.position = {x, y};
-    auto body = w.world.CreateBody(&def);
-    b2Polygon box = b2MakeBox(0.5f, 0.5f);
-    b2ShapeDef sd;
+    CAT_TANK = 0x0001,
+    CAT_PROJECTILE = 0x0002,
+};
+
+inline b2BodyId create_tank(World &w, float x, float y)
+{
+    b2BodyDef bd = b2DefaultBodyDef();
+    bd.type = b2_dynamicBody;
+    bd.position = {x, y};
+    b2BodyId body = b2CreateBody(w.id, &bd);
+    b2ShapeDef sd = b2DefaultShapeDef();
     sd.density = 1.0f;
-    sd.friction = 0.3f;
-    sd.restitution = 0.f;
-    body->CreateFixture(&sd, &box);
+    sd.material.friction = 0.3f;
+    sd.enableContactEvents = true;
+    sd.filter.categoryBits = CAT_TANK;
+    sd.filter.maskBits = CAT_PROJECTILE | CAT_TANK; // tank vs projectile (and optionally tank vs tank for later)
+    b2Polygon box = b2MakeBox(0.5f, 0.5f);
+    b2CreatePolygonShape(body, &sd, &box);
     w.tank_bodies.push_back(body);
     return body;
 }
 
-inline b2Body *create_projectile(World &w, float x, float y, float vx, float vy)
+inline b2BodyId create_projectile(World &w, float x, float y, float vx, float vy)
 {
-    b2BodyDef def;
-    def.type = b2_dynamicBody;
-    def.position = {x, y};
-    def.bullet = true;
-    auto body = w.world.CreateBody(&def);
-    b2Polygon box = b2MakeBox(0.1f, 0.1f);
-    b2ShapeDef sd;
+    b2BodyDef bd = b2DefaultBodyDef();
+    bd.type = b2_dynamicBody;
+    bd.position = {x, y};
+    bd.isBullet = true;
+    b2BodyId body = b2CreateBody(w.id, &bd);
+    b2ShapeDef sd = b2DefaultShapeDef();
     sd.density = 0.1f;
-    sd.restitution = 0.f;
-    sd.friction = 0.f;
-    body->CreateFixture(&sd, &box);
-    body->SetLinearVelocity({vx, vy});
+    sd.enableContactEvents = true;
+    sd.filter.categoryBits = CAT_PROJECTILE;
+    sd.filter.maskBits = CAT_TANK; // only collide with tanks
+    b2Polygon box = b2MakeBox(0.1f, 0.1f);
+    b2CreatePolygonShape(body, &sd, &box);
+    b2Vec2 vel{vx, vy};
+    b2Body_SetLinearVelocity(body, vel);
     w.projectile_bodies.push_back(body);
     return body;
 }
 
+inline void set_body_velocity(b2BodyId id, float vx, float vy)
+{
+    b2Vec2 vel{vx, vy};
+    b2Body_SetLinearVelocity(id, vel);
+}
+
+inline b2Vec2 get_body_position(b2BodyId id)
+{
+    return b2Body_GetPosition(id);
+}
+
 inline void step(World &w, float dt)
 {
-    w.world.Step(dt, 4, 2);
+    b2World_Step(w.id, dt, 4);
+}
+
+inline void destroy_body(b2BodyId id)
+{
+    if (b2Body_IsValid(id)) {
+        b2DestroyBody(id);
+    }
 }
 
 } // namespace t2d::phys

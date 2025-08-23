@@ -18,6 +18,11 @@ struct MatchConfig
     uint32_t poll_interval_ms{200};
     uint32_t snapshot_interval_ticks{5};
     uint32_t full_snapshot_interval_ticks{30};
+    uint32_t bot_fire_interval_ticks{60};
+    float movement_speed{2.0f};
+    uint32_t projectile_damage{25};
+    float reload_interval_sec{3.0f};
+    float projectile_speed{5.0f};
 };
 
 static uint32_t random_seed()
@@ -62,6 +67,11 @@ coro::task<void> run_matchmaker(std::shared_ptr<coro::io_scheduler> scheduler, M
             ctx->players = group;
             ctx->snapshot_interval_ticks = cfg.snapshot_interval_ticks;
             ctx->full_snapshot_interval_ticks = cfg.full_snapshot_interval_ticks;
+            ctx->bot_fire_interval_ticks = cfg.bot_fire_interval_ticks;
+            ctx->movement_speed = cfg.movement_speed;
+            ctx->projectile_damage = cfg.projectile_damage;
+            ctx->reload_interval_sec = cfg.reload_interval_sec;
+            ctx->projectile_speed = cfg.projectile_speed;
             uint32_t eid = 1;
             for (auto &s : group) {
                 t2d::game::TankStateSimple tank{eid++};

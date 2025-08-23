@@ -39,7 +39,7 @@ The following epics are required to reach fully automated builds (server + Andro
 - [x] Graceful disconnect broadcast + entity removal deltas
 - [ ] Snapshot compression / size optimization (quantization, thresholding, optional zstd)
 - [ ] Configurable snapshot & delta intervals (expose existing constants to config fully)
-- [ ] Box2D physics integration (server authoritative movement, turret rotation, projectile collision)
+- [x] Box2D physics integration (server authoritative movement + projectile collision via contact events)
 - [ ] Map items: ammo crates spawning logic & pickup events
 
 ### 3.2 Client Build Enablement (Multi‑Platform)
@@ -102,14 +102,14 @@ The following epics are required to reach fully automated builds (server + Andro
  - [ ] Script: dependency audit / license report generation
 
 ### 3.8 Physics (Box2D Integration)
-- [ ] Integrate Box2D as dependency (server)
-- [ ] Replace naive movement with physics body simulation
-- [ ] Tank hull vs projectile collision shapes
+- [x] Integrate Box2D as dependency (server)
+- [x] Replace naive movement with physics body simulation
+- [x] Tank hull vs projectile collision shapes + contact events
 - [ ] Ray / hull collision for firing line (optional early approximation)
 - [ ] Ammo crate pickups via AABB contact listener
 
 ## 4. Incremental Roadmap (Proposed Order)
-1. [x] Damage & collision events (with tests) // basic projectile->tank damage + events implemented
+1. [x] Damage & collision events (with tests) // projectile->tank damage via Box2D contacts
 2. [x] Entity removal / disconnect deltas (projectile + tank destruction removals implemented; disconnect pending)
 3. [x] Snapshot interval config + size metrics (intervals configurable; size counters implemented)
 4. [x] Structured logging + metrics counters (JSON + Prometheus endpoint + graceful shutdown snapshot stats)
@@ -119,7 +119,7 @@ The following epics are required to reach fully automated builds (server + Andro
 8. [ ] Dependency pin/verification (NDK, Build Tools, periodic submodule SHA audit job)
 9. [ ] Artifact uploads (all targets)
 10. [ ] Release workflow + version stamping
-11. [ ] Box2D physics integration phase 1 (movement + collision)
+11. [x] Box2D physics integration phase 1 (movement + collision + filtering)
 12. [ ] Coverage & sanitizer matrix
 13. [ ] Fuzzing & replay validation
 

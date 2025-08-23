@@ -63,6 +63,11 @@ struct ServerConfig
     uint16_t metrics_port{0}; // 0 disables
     std::string auth_mode{"disabled"};
     std::string auth_stub_prefix{"user_"};
+    uint32_t bot_fire_interval_ticks{60}; // bot AI fires every N ticks (default 2s at 30Hz)
+    float movement_speed{2.0f}; // units per second
+    uint32_t projectile_damage{25};
+    float reload_interval_sec{3.0f};
+    float projectile_speed{5.0f};
 };
 
 static ServerConfig load_config(const std::string &path)
@@ -103,6 +108,21 @@ static ServerConfig load_config(const std::string &path)
     }
     if (root["auth_stub_prefix"]) {
         cfg.auth_stub_prefix = root["auth_stub_prefix"].as<std::string>();
+    }
+    if (root["bot_fire_interval_ticks"]) {
+        cfg.bot_fire_interval_ticks = root["bot_fire_interval_ticks"].as<uint32_t>();
+    }
+    if (root["movement_speed"]) {
+        cfg.movement_speed = root["movement_speed"].as<float>();
+    }
+    if (root["projectile_damage"]) {
+        cfg.projectile_damage = root["projectile_damage"].as<uint32_t>();
+    }
+    if (root["reload_interval_sec"]) {
+        cfg.reload_interval_sec = root["reload_interval_sec"].as<float>();
+    }
+    if (root["projectile_speed"]) {
+        cfg.projectile_speed = root["projectile_speed"].as<float>();
     }
     return cfg;
 }
@@ -159,7 +179,12 @@ int main(int argc, char **argv)
             cfg.tick_rate,
             cfg.matchmaker_poll_ms,
             cfg.snapshot_interval_ticks,
-            cfg.full_snapshot_interval_ticks}));
+            cfg.full_snapshot_interval_ticks,
+            cfg.bot_fire_interval_ticks,
+            cfg.movement_speed,
+            cfg.projectile_damage,
+            cfg.reload_interval_sec,
+            cfg.projectile_speed}));
     // Launch heartbeat monitor
     scheduler->spawn(heartbeat_monitor(scheduler, cfg.heartbeat_timeout_seconds));
     if (cfg.metrics_port != 0) {

@@ -34,6 +34,11 @@ struct MatchContext
     uint32_t last_full_snapshot_tick{0};
     uint32_t snapshot_interval_ticks{5};
     uint32_t full_snapshot_interval_ticks{30};
+    uint32_t bot_fire_interval_ticks{60}; // configurable bot fire cadence
+    float movement_speed{2.0f};
+    uint32_t projectile_damage{25};
+    float reload_interval_sec{3.0f};
+    float projectile_speed{5.0f};
     // Cache of last sent tank states for delta computation
     std::vector<TankStateSimple> last_sent_tanks;
 
@@ -54,7 +59,6 @@ struct MatchContext
     std::vector<uint32_t> removed_tanks_since_full; // future (on disconnect / destroy)
     // Simple per-tank reload timers (seconds until next ammo +1); 0 = ready to accumulate
     std::vector<float> reload_timers;
-    float reload_interval_sec{3.0f}; // every N seconds grant +1 ammo up to max
     uint32_t max_ammo{10};
     bool match_over{false};
     uint32_t winner_entity{0};

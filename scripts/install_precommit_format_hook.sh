@@ -1,8 +1,11 @@
 #!/usr/bin/env bash
-# Install a git pre-commit hook that auto-formats the project using the CMake
-# target 'format_all' (or falls back to 'format', 't2d_format', and 'format_cmake').
-# If formatting introduces changes, the commit is blocked so the user can review
-# and re-stage. Run this script once after cloning.
+# Install a git pre-commit hook that auto-formats ONLY first-party sources.
+# It does NOT invoke generic 'format' CMake targets (which may touch third_party in dependencies).
+# Strategy:
+#  1. Detect staged C/C++ files excluding third_party/**.
+#  2. Run clang-format -i directly on those files.
+#  3. Optionally run cmake-format only on root CMakeLists.txt.
+#  4. Re-stage changed files. In strict mode (env T2D_FORMAT_BLOCK=true or git config t2d.formatBlock=true), abort.
 #
 # Usage:
 #   scripts/install_precommit_format_hook.sh
@@ -50,8 +53,8 @@ run_target() {
   return 1
 }
 
-# Gather staged C/C++ files limited to first-party (exclude third_party)
-mapfile -t STAGED < <(git diff --cached --name-only --diff-filter=ACMR | grep -E '\.(c|cc|cxx|cpp|h|hpp)$' || true)
+STAGED_ALL=$(git diff --cached --name-only --diff-filter=ACMR || true)
+mapfile -t STAGED < <(echo "$STAGED_ALL" | grep -E '\.(c|cc|cxx|cpp|h|hpp)$' || true)
 FILTERED=()
 for f in "${STAGED[@]}"; do
   case "$f" in
@@ -60,13 +63,9 @@ for f in "${STAGED[@]}"; do
   esac
 done
 
-# Run clang-format directly on filtered staged files to avoid touching third_party
+# Run clang-format directly on filtered staged files
 if [ ${#FILTERED[@]} -gt 0 ]; then
-  for f in "${FILTERED[@]}"; do
-    if [ -f "$f" ]; then
-      clang-format -i "$f" || true
-    fi
-  done
+  clang-format -i "${FILTERED[@]}" || true
 fi
 
 # Optionally format root CMakeLists.txt (first-party) if cmake-format exists
@@ -77,12 +76,11 @@ if command -v cmake-format >/dev/null 2>&1; then
 fi
 
 # Re-stage any changes produced (only our filtered set + root CMakeLists)
-if ! git diff --quiet; then
+CHANGED=0
+if ! git diff --quiet -- "${FILTERED[@]}" CMakeLists.txt 2>/dev/null; then
   git add "${FILTERED[@]}" 2>/dev/null || true
   if [ -f CMakeLists.txt ]; then git add CMakeLists.txt 2>/dev/null || true; fi
   CHANGED=1
-else
-  CHANGED=0
 fi
 
 # Respect optional strict blocking mode (env var or git config)

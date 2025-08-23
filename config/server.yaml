@@ -8,6 +8,11 @@ tick_rate: 30
 snapshot_interval_ticks: 5  # every 5 ticks send incremental snapshot (runtime configurable)
 full_snapshot_interval_ticks: 30  # send a full snapshot at least this often
 bot_difficulty: 1  # 0 = dummy, 1 = basic
+bot_fire_interval_ticks: 60  # bots fire every N ticks (default 60 -> ~2s at 30Hz)
+movement_speed: 2.0           # units per second for tanks
+projectile_damage: 25         # damage per projectile hit
+reload_interval_sec: 3.0      # seconds to grant +1 ammo (per tank) up to max
+projectile_speed: 5.0         # projectile linear speed units/s
 listen_port: 40000
 heartbeat_timeout_seconds: 30
 matchmaker_poll_ms: 200

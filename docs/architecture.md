@@ -16,13 +16,13 @@ This document outlines the initial high-level architecture of the t2d game serve
 ## Authoritative Server Model
 Clients send only input commands; the server simulates the world and distributes state snapshots. This prevents most client-side cheating and maintains consistency.
 
-## Tick Loop (Planned)
-1. Collect input commands for current tick.
-2. Step physics world (fixed timestep = 1 / tick_rate).
-3. Resolve collisions and damage.
-4. Spawn / expire projectiles and ammo boxes.
-5. Record events (damage, kills) and queue for broadcast.
-6. Every N ticks send incremental snapshot; every M ticks send full snapshot.
+## Tick Loop (Current Prototype)
+1. Collect latest input commands (bots synthesize input internally).
+2. Step Box2D physics world (fixed dt = 1 / tick_rate).
+3. Synchronize tank & projectile transforms back to authoritative state.
+4. Process begin-contact events (projectile → tank) to apply damage & generate Damage/Destroyed events.
+5. Spawn / cull projectiles; update ammo reload timers and issue KillFeed batch if any events.
+6. Emit delta or full snapshot based on configured intervals.
 
 ## Concurrency Model
 Coroutines (libcoro) scheduled on a single io_scheduler for I/O bound tasks (network polling, matchmaking). Physics tick runs on a controlled loop to avoid race conditions (single-threaded simulation per match instance) initially.
@@ -31,7 +31,7 @@ Coroutines (libcoro) scheduled on a single io_scheduler for I/O bound tasks (net
 Multiple matches coexist; each match has its own world state and tick coroutine. A central match manager tracks active matches and available player slots.
 
 ## Configuration
-YAML configuration (see `config/server.yaml`). Networking now uses `listen_port` for the TCP listener.
+YAML configuration (see `config/server.yaml`). Core gameplay (movement speed, projectile speed & damage, bot fire interval, reload time) is now data-driven for rapid balancing.
 
 ## Heartbeat & Liveness
 Clients periodically send a Heartbeat message. The server records `last_heartbeat` per session. A background coroutine (`heartbeat_monitor`) will later enforce timeouts and prune stale sessions (prototype currently only records timestamps).
