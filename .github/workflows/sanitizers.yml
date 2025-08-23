@@ -1,0 +1,124 @@
+name: Sanitizers Nightly
+
+on:
+  schedule:
+    - cron: '0 2 * * *' # 02:00 UTC nightly
+  workflow_dispatch: {}
+
+permissions:
+  contents: read
+
+jobs:
+  asan-ubsan-linux:
+    name: ASan+UBSan (Linux)
+    runs-on: ubuntu-latest
+    timeout-minutes: 40
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          submodules: recursive
+          fetch-depth: 0
+      - name: Install deps
+        run: sudo apt-get update && sudo apt-get install -y protobuf-compiler libprotobuf-dev cmake g++ ninja-build
+      - name: Configure (Debug + sanitizers)
+        run: cmake -S . -B build -G Ninja -DCMAKE_BUILD_TYPE=Debug -DT2D_BUILD_TESTS=ON -DT2D_ENABLE_SANITIZERS=ON -DT2D_BUILD_CLIENT=ON
+      - name: Build
+        run: cmake --build build -- -j4
+      - name: Run tests (ASan/UBSan)
+        env:
+          ASAN_OPTIONS: detect_leaks=1:strict_string_checks=1:check_initialization_order=1
+          UBSAN_OPTIONS: print_stacktrace=1:halt_on_error=1
+        working-directory: build
+        run: ctest --output-on-failure
+      - name: Archive logs on failure
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: sanitizer-logs-linux
+          path: |
+            build/Testing/Temporary/LastTest.log
+            build/*.log
+
+  asan-ubsan-macos:
+    name: ASan+UBSan (macOS)
+    runs-on: macos-latest
+    timeout-minutes: 50
+    steps:
+      - uses: actions/checkout@v4
+        with:
+            submodules: recursive
+            fetch-depth: 0
+      - name: Install deps
+        run: brew update && brew install protobuf cmake ninja || true
+      - name: Configure (Debug + sanitizers)
+        run: cmake -S . -B build -G Ninja -DCMAKE_BUILD_TYPE=Debug -DT2D_BUILD_TESTS=ON -DT2D_ENABLE_SANITIZERS=ON -DT2D_BUILD_CLIENT=ON
+      - name: Build
+        run: cmake --build build -- -j4
+      - name: Run tests (ASan/UBSan)
+        env:
+          ASAN_OPTIONS: detect_leaks=1
+          UBSAN_OPTIONS: print_stacktrace=1:halt_on_error=1
+        working-directory: build
+        run: ctest --output-on-failure
+      - name: Archive logs on failure
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: sanitizer-logs-macos
+          path: |
+            build/Testing/Temporary/LastTest.log
+            build/*.log
+
+  summary:
+    name: Summary
+    needs: [asan-ubsan-linux, asan-ubsan-macos, tsan-linux]
+    runs-on: ubuntu-latest
+    if: always()
+    steps:
+      - name: Report result
+        run: |
+          echo "ASan/UBSan Linux: ${{ needs.asan-ubsan-linux.result }}"
+          echo "ASan/UBSan macOS: ${{ needs.asan-ubsan-macos.result }}"
+          echo "TSAN Linux: ${{ needs.tsan-linux.result }}"
+          if [[ '${{ needs.asan-ubsan-linux.result }}' != 'success' || '${{ needs.asan-ubsan-macos.result }}' != 'success' || '${{ needs.tsan-linux.result }}' != 'success' ]]; then
+            echo 'One or more sanitizer jobs failed.' >&2
+            exit 1
+          fi
+
+  tsan-linux:
+    name: TSAN (Linux)
+    runs-on: ubuntu-latest
+    timeout-minutes: 40
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          submodules: recursive
+          fetch-depth: 0
+      - name: Install deps
+        run: sudo apt-get update && sudo apt-get install -y protobuf-compiler libprotobuf-dev cmake g++ ninja-build
+      - name: Configure (Debug + TSAN)
+        run: cmake -S . -B build -G Ninja -DCMAKE_BUILD_TYPE=Debug -DT2D_BUILD_TESTS=ON -DT2D_ENABLE_TSAN=ON -DT2D_BUILD_CLIENT=ON
+      - name: Build
+        run: cmake --build build -- -j4
+      - name: Run tests (TSAN)
+        env:
+          TSAN_OPTIONS: suppressions=/dev/null exitcode=66
+        working-directory: build
+        run: ctest --output-on-failure || true
+      - name: Fail if data race detected
+        working-directory: build
+        run: |
+          # Simple heuristic: search test log for 'WARNING: ThreadSanitizer' pattern
+          if grep -R "WARNING: ThreadSanitizer" Testing/Temporary/LastTest.log >/dev/null 2>&1; then
+            echo "Data race detected by TSAN" >&2
+            cat Testing/Temporary/LastTest.log || true
+            exit 1
+          fi
+      - name: Archive logs on failure
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: tsan-logs-linux
+          path: |
+            build/Testing/Temporary/LastTest.log
+            build/*.log

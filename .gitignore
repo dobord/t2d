@@ -42,6 +42,9 @@ Thumbs.db
 # Local zlib-enabled build dir
 /build-zlib/
 
+# Local TSAN build dir
+/build-tsan/
+
 # CTest artifacts created if tests accidentally run from source root
 /Testing/
 

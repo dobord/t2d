@@ -2,6 +2,7 @@ cmake_minimum_required(VERSION 3.22) # SPDX-License-Identifier: Apache-2.0
 project(t2d LANGUAGES CXX)
 
 option(T2D_ENABLE_SANITIZERS "Enable Address/Undefined sanitizers (Clang/GCC)" OFF)
+option(T2D_ENABLE_TSAN "Enable Thread Sanitizer (Clang/GCC)" OFF)
 option(T2D_ENABLE_COVERAGE "Enable code coverage instrumentation (GCC/Clang Debug builds)" OFF)
 option(T2D_ENABLE_SNAPSHOT_QUANT "Enable snapshot quantization (reduced bandwidth)" ON)
 option(T2D_ENABLE_ZLIB "Enable zlib compression for snapshots (optional)" OFF)
@@ -29,6 +30,13 @@ set(CMAKE_CXX_STANDARD 20)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
 set(CMAKE_CXX_EXTENSIONS OFF)
 
+if (T2D_ENABLE_SANITIZERS AND T2D_ENABLE_TSAN)
+    message(
+        FATAL_ERROR
+            "Cannot enable both T2D_ENABLE_SANITIZERS (ASan/UBSan) and T2D_ENABLE_TSAN at the same time"
+    )
+endif ()
+
 if (T2D_ENABLE_SANITIZERS)
     if (CMAKE_CXX_COMPILER_ID MATCHES "Clang" OR CMAKE_CXX_COMPILER_ID MATCHES "GNU")
         message(STATUS "Sanitizers enabled (address,undefined)")
@@ -37,6 +45,19 @@ if (T2D_ENABLE_SANITIZERS)
     else ()
         message(
             WARNING "Sanitizers requested but not supported for compiler ${CMAKE_CXX_COMPILER_ID}")
+    endif ()
+endif ()
+
+if (T2D_ENABLE_TSAN)
+    if (CMAKE_CXX_COMPILER_ID MATCHES "Clang" OR CMAKE_CXX_COMPILER_ID MATCHES "GNU")
+        message(STATUS "Thread Sanitizer enabled")
+        add_compile_options(-fsanitize=thread -fno-omit-frame-pointer)
+        add_link_options(-fsanitize=thread -fno-omit-frame-pointer)
+    else ()
+        message(
+            WARNING
+                "Thread Sanitizer requested but not supported for compiler ${CMAKE_CXX_COMPILER_ID}"
+        )
     endif ()
 endif ()
 

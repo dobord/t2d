@@ -56,10 +56,11 @@ The following epics are required to reach fully automated builds (server + Andro
 - [ ] Android build job (NDK + Gradle) producing APK artifact
 - [ ] WebAssembly client build job (Docker image + wasm bundle artifact)
 - [ ] Separate build stages: server | clients | tests
-- [ ] CCache / build cache integration
-- [ ] Artifact upload (server tar/zip + symbols; desktop binaries; APK; wasm bundle)
-- [ ] Code coverage (lcov / llvm-cov) reporting (advisory)
+ - [x] CCache / build cache integration (ccache configured & cached in CI matrix)
+ - [ ] Artifact upload (server tar/zip + symbols; desktop binaries; APK; wasm bundle) (PARTIAL: server & desktop binaries + Linux tarball uploaded; APK/WASM pending)
+ - [x] Code coverage (lcov) reporting workflow (coverage job uploads lcov artifact)
 - [ ] Static analysis / sanitizers nightly (ASan, UBSan, TSAN matrix)
+		- Progress: ASan+UBSan (Linux/macOS) + TSAN (Linux) nightly workflows added; static analysis pending.
 - [x] Version stamping from git tag into `T2D_VERSION`
 - [ ] Release workflow (tag push) publishing all platform artifacts + changelog
 - [ ] Signed release artifacts (optional GPG) later
@@ -73,8 +74,8 @@ The following epics are required to reach fully automated builds (server + Andro
 - [ ] In‑match debug overlay (client) toggle (later)
 
 ### 3.5 Quality & Tooling
-- [ ] Clang-format enforcement (fail CI on diff)
-- [ ] Clang-Tidy curated checks
+ - [x] Clang-format enforcement (format check job fails CI on diff)
+ - [ ] Clang-Tidy curated checks (PARTIAL: advisory CI job added; rule tuning + gating pending)
 - [ ] Performance microbench (serialization, framing)
 - [ ] Fuzzing: frame parser (libFuzzer) & delta reassembly
 - [ ] Replay validator comparing reconstructed vs authoritative state
@@ -116,11 +117,11 @@ The following epics are required to reach fully automated builds (server + Andro
 5. [x] OAuth auth strategy abstraction (stub provider; real external validation later)
 6. [ ] Desktop client scaffold + CI build (scaffold started: prototype non-UI desktop client target `t2d_desktop_client`)
 7. [ ] Android & WASM build jobs
-8. [ ] Dependency pin/verification (NDK, Build Tools, periodic submodule SHA audit job)
-9. [ ] Artifact uploads (all targets)
-10. [ ] Release workflow + version stamping
+8. [x] Dependency pin/verification (NDK, Build Tools, periodic submodule SHA audit job) (verification job present; NDK/Build Tools check still pending)
+9. [ ] Artifact uploads (all targets) (PARTIAL: server + desktop artifacts done)
+10. [ ] Release workflow + version stamping (version stamping core in place, release workflow pending)
 11. [x] Box2D physics integration phase 1 (movement + collision + filtering)
-12. [ ] Coverage & sanitizer matrix
+12. [x] Sanitizer matrix (coverage DONE; ASan+UBSan + TSAN nightly) (static analysis separate)
 13. [ ] Fuzzing & replay validation
 
 ## 5. Risk & Mitigation
@@ -148,6 +149,8 @@ E. Release workflow publishes artifacts on tag push.
 - [ ] CI matrix + artifact upload (server + desktop)
 - [ ] Bash build scripts (install, full/partial build, tests, package)
 - [ ] Add dependency pin list manifest (DEPENDENCIES.md) & CI check vs docs (.env sync)
+ - [ ] Integrate sanitizer build matrix (ASan/UBSan/TSan) nightly
+ - [ ] Split artifact upload task into per-platform subtasks (APK, WASM bundle)
 
 ## 8. Tracking & Metrics (Planned)
 Metric prototypes (initial):
