@@ -45,6 +45,10 @@ Thumbs.db
 # Local TSAN build dir
 /build-tsan/
 
+# Local no-Qt and Qt client build dirs
+/build-noqt/
+/build-qt/
+
 # CTest artifacts created if tests accidentally run from source root
 /Testing/
 

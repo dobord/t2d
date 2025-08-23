@@ -20,15 +20,17 @@ All documentation in this repository is maintained in English (see repository st
 - [x] Vendored third-party libs via git submodules (yaml-cpp, libcoro, box2d) with pinned SHAs
 - [x] Structured logging + metrics counters (JSON mode, config-driven level, Prometheus /metrics, runtime + snapshot size metrics)
 - [x] Auth strategy abstraction (pluggable provider stub)
+- [x] Qt/QML desktop client baseline (entity & projectile lists, canvas rendering, interpolation, input controls)
 
 ## 2. Current State Snapshot
-- Language / Tooling: C++20, libcoro, protobuf, yaml-cpp, CMake.
-- Server Features: Auth stub, matchmaking, matches with bots & AI, movement, projectiles, heartbeats, delta/full snapshots.
-- Protocol: Auth, Queue, MatchStart, (Full) StateSnapshot, DeltaSnapshot, Heartbeat/Response, Damage & events placeholders.
-- Reliability: Streaming frame parser, batching, heartbeat timeout.
-- Observability: Structured logging + metrics counters + Prometheus endpoint.
-- Testing: Broad unit + e2e coverage for core behaviors.
-- CI: Single workflow building & testing (Linux). No artifact upload; client build disabled.
+- Language / Tooling: C++20, libcoro, protobuf, yaml-cpp, Box2D, Qt6 (optional), CMake.
+- Server Features: Auth stub, matchmaking, matches with bots & AI, movement, projectiles, heartbeats, delta/full snapshots, damage & kill feed, basic victory logic.
+- Protocol: Auth, Queue, MatchStart, StateSnapshot (full), DeltaSnapshot, Heartbeat/Response, DamageEvent, TankDestroyed, KillFeedUpdate, MatchEnd.
+- Reliability: Streaming frame parser, outbound batching, heartbeat timeout pruning, deterministic tick loop.
+- Observability: Structured logging + metrics counters (snapshot sizes, tick runtime, bots etc.) + Prometheus endpoint.
+- Testing: Broad unit + e2e coverage (delta snapshots, heartbeat, framing, bot fill, damage, replay delta basics).
+- CI: Multi-job workflow (build/test, coverage, ASan/UBSan, TSAN, dependency verify) with artifact uploads (server binary & package, desktop prototype, Qt client if built), ccache, code coverage lcov artifact, version stamping.
+- Client: Prototype desktop client (headless) plus Qt/QML UI (canvas rendering of tanks/projectiles with interpolation, basic input state binding). Other platforms pending.
 
 ## 3. Remaining Scope Toward Full CI (Server + Multi‑Platform Clients)
 The following epics are required to reach fully automated builds (server + Android + Desktop + WebAssembly clients) with distributable artifacts and quality gates.
@@ -43,28 +45,29 @@ The following epics are required to reach fully automated builds (server + Andro
 - [ ] Map items: ammo crates spawning logic & pickup events
 
 ### 3.2 Client Build Enablement (Multi‑Platform)
-- [ ] Desktop client scaffold (Qt/QML future; CURRENT: Linux prototype only; other platforms deferred) (PARTIAL: headless network loop + snapshot/delta application implemented)
+- [x] Desktop client scaffold (Linux prototype networking loop)
+- [x] Qt/QML desktop UI baseline (entity/projectile list models, canvas rendering, temporal interpolation, basic input controls)
 - [ ] Android client target (Gradle + CMake integration, JNI bridge, QML UI)
-- [ ] WebAssembly build (Emscripten + Qt WASM module) packaged in Docker Alpine base image
-- [ ] Shared network layer (reuse test client framing) + interpolation & reconciliation loop
-- [ ] Basic battlefield rendering (tanks, projectiles, simple map tiles / crates)
+- [ ] WebAssembly build (Emscripten + Qt WASM module) packaged in Docker image
+- [ ] Shared client-side reconciliation & prediction (beyond current simple interpolation)
+- [ ] Battlefield rendering enhancements (sprites, orientation, map tiles / crates)
 - [ ] Input mapping (touch, keyboard/mouse, gamepad future)
-- [ ] Deterministic replay harness (optional early metrics mode)
+- [ ] Deterministic replay harness (record & playback)
 
 ### 3.3 CI Pipeline Enhancements
-- [x] Linux build for server & desktop prototype (other OS builds dropped)
+- [x] Linux build for server & clients (prototype + Qt UI)
 - [ ] Android build job (NDK + Gradle) producing APK artifact
-- [ ] WebAssembly client build job (Docker image + wasm bundle artifact)
-- [ ] Separate build stages: server | clients | tests
- - [x] CCache / build cache integration (ccache configured & cached in CI matrix)
- - [ ] Artifact upload (server tar/zip + symbols; desktop binaries; APK; wasm bundle) (PARTIAL: server & desktop binaries + Linux tarball uploaded; APK/WASM pending)
- - [x] Code coverage (lcov) reporting workflow (coverage job uploads lcov artifact)
-- [ ] Static analysis (clang-tidy) gating (advisory script exists; add CI job + rule tuning)
-- [x] Sanitizers matrix (ASan/UBSan + TSAN) integrated in main CI (Linux)
-- [x] Version stamping from git tag into `T2D_VERSION`
-- [ ] Release workflow (tag push) publishing all platform artifacts + changelog
-- [ ] Signed release artifacts (optional GPG) later
-- [x] Dependency pin & verification job (compare vendored versions vs docs & .env)
+- [ ] WebAssembly client build job (Docker + wasm bundle artifact)
+- [x] Separate build stages logically split across jobs (build/test, coverage, sanitizers, deps)
+	- [x] CCache integration
+	- [ ] Artifact upload completion (APK, WASM bundle, debugging symbols) (PARTIAL: server binaries/package + desktop & Qt client uploaded)
+	- [x] Code coverage (lcov) reporting + summary
+	- [ ] Static analysis (clang-tidy) gating (script exists; CI job pending)
+	- [x] Sanitizers matrix (ASan/UBSan + TSAN)
+	- [x] Version stamping from git metadata
+	- [ ] Release workflow (tag push) + changelog
+	- [ ] Signed release artifacts (optional)
+	- [x] Dependency pin & verification
 
 ### 3.4 Observability & Operational Readiness
 - [x] Structured logging (JSON lines) + log level from config
@@ -116,7 +119,7 @@ The following epics are required to reach fully automated builds (server + Andro
 4. [x] Structured logging + metrics counters (JSON + Prometheus endpoint + graceful shutdown snapshot stats)
 5. [x] OAuth auth strategy abstraction (stub provider; real external validation later)
 6. [x] Desktop client scaffold + CI build (Linux-only; prototype non-UI target `t2d_desktop_client`)
-7. [ ] Desktop client (Linux Qt 6.8.3 UI QML) – add basic UI layer (render tanks/projectiles, minimal HUD)
+7. [x] Desktop client (Linux Qt 6.8.3 UI QML) – basic UI layer (lists, canvas rendering, interpolation, input)
 8. [ ] Android & WASM build jobs
 9. [x] Dependency pin/verification (NDK, Build Tools, periodic submodule SHA audit job) (verification job present; NDK/Build Tools check still pending)
 10. [ ] Artifact uploads (all targets) (PARTIAL: server + desktop artifacts done)
@@ -144,22 +147,22 @@ D. Version string embedded & traceable to commit/tag.
 E. Release workflow publishes artifacts on tag push.
 
 ## 7. Immediate Next Actions (Actionable Backlog)
-- [ ] Snapshot compression (quantization already opt-in flag; implement size threshold & optional zstd/zlib toggle)
+- [ ] Snapshot compression (quantization flag exists; implement zlib/zstd and thresholding)
 - [ ] Configurable snapshot & delta intervals fully exposed to config file
 - [ ] Map items: ammo crates spawning + pickup events
-- [ ] Android build job (NDK toolchain + minimal JNI stub) producing APK artifact
+- [ ] Android build job (NDK + minimal JNI stub) producing APK artifact
 - [ ] WASM client build job (Emscripten) producing bundle artifact
 - [ ] Artifact uploads completion (APK, WASM bundle, symbol files)
-- [ ] Release workflow on tag push (publish all artifacts + draft changelog)
-- [ ] clang-tidy CI job (non-blocking first; then gating once noise reduced)
-- [ ] Performance microbench harness (serialization & framing) + initial baseline capture
-- [ ] Fuzzing target for frame parser (libFuzzer) wired in CI (nightly)
-- [ ] Replay validator test comparing reconstructed vs authoritative state
+- [ ] Release workflow on tag push (publish artifacts + changelog)
+- [ ] clang-tidy CI job (non-blocking → gating)
+- [ ] Performance microbench harness (serialization & framing) + baseline capture
+- [ ] Fuzzing target for frame parser (libFuzzer) in nightly CI
+- [ ] Replay validator test (reconstruct vs authoritative) & deterministic harness
 - [ ] Security lint (secret scan + license report script)
 - [ ] Script: Android toolchain version verification vs manifest
 - [ ] Script: dependency audit / license report generation
-- [ ] Crash handling: signal handler producing backtrace (disable in sanitizer runs)
-- [ ] Deterministic replay harness scaffold (record + replay ticks)
+- [ ] Crash handling: backtrace on signals (disabled under sanitizers)
+- [ ] Client prediction & reconciliation (beyond linear interpolation)
 - [ ] OAuth real token validation adapter (pluggable external service)
 
 ## 8. Tracking & Metrics (Planned)
@@ -172,6 +175,7 @@ Metric prototypes (initial):
 - [ ] bots_in_match
 - [ ] projectiles_active
 - [ ] auth_failures_total
+- [ ] client_interpolation_alpha (gauge for drift diagnostics)
 
 ## 9. Out of Scope (Later Phases)
 - Advanced physics & terrain detail (beyond Box2D core integration)

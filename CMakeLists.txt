@@ -78,6 +78,7 @@ endif ()
 
 option(T2D_BUILD_SERVER "Build the game server" ON)
 option(T2D_BUILD_CLIENT "Build the desktop client (prototype; Qt UI later)" OFF)
+option(T2D_BUILD_QT_CLIENT "Build the Qt/QML desktop client UI (Linux Qt 6)" OFF)
 option(T2D_BUILD_TESTS "Build internal test executables" ON)
 
 # Always enable testing (simplifies CI integration); T2D_BUILD_TESTS controls build of executables
@@ -223,6 +224,62 @@ if (T2D_BUILD_CLIENT)
         target_link_libraries(t2d_desktop_client PRIVATE t2d_proto libcoro)
         target_include_directories(t2d_desktop_client PRIVATE src)
         target_link_libraries(t2d_desktop_client PRIVATE t2d_version)
+    endif ()
+endif ()
+
+if (T2D_BUILD_QT_CLIENT)
+    if (NOT CMAKE_SYSTEM_NAME STREQUAL "Linux")
+        message(
+            STATUS
+                "Qt client requested but disabled on non-Linux platform (${CMAKE_SYSTEM_NAME}); skipping target"
+        )
+    else ()
+        find_package(Qt6 QUIET COMPONENTS Quick Qml Gui Core)
+        if (NOT Qt6_FOUND)
+            message(
+                WARNING
+                    "Qt6 not found; disable T2D_BUILD_QT_CLIENT or install Qt6 (>=6.5) to build UI client"
+            )
+        else ()
+            message(STATUS "Building Qt/QML client (Qt6)")
+            set(CMAKE_AUTOMOC ON)
+            set(CMAKE_AUTORCC ON)
+            set(CMAKE_AUTOUIC ON)
+            add_executable(
+                t2d_qt_client
+                src/client/qt/entity_model.cpp
+                src/client/qt/input_state.cpp
+                src/client/qt/projectile_model.cpp
+                src/client/qt/qt_client.cpp
+                src/client/qt/timing_state.hpp)
+            target_include_directories(t2d_qt_client PRIVATE src src/client/qt)
+            target_link_libraries(
+                t2d_qt_client
+                PRIVATE Qt6::Quick
+                        Qt6::Qml
+                        Qt6::Gui
+                        Qt6::Core
+                        t2d_proto
+                        libcoro)
+            target_link_libraries(t2d_qt_client PRIVATE t2d_version)
+            # QML module & resources (minimal)
+            set(T2D_QML_DIR ${CMAKE_CURRENT_SOURCE_DIR}/src/client/qt/qml)
+            if (EXISTS ${T2D_QML_DIR})
+                # Use qt_add_qml_module if available (Qt6)
+                if (COMMAND qt_add_qml_module)
+                    qt_add_qml_module(
+                        t2d_qt_client
+                        URI
+                        T2DClient
+                        VERSION
+                        1.0
+                        QML_FILES
+                        src/client/qt/qml/Main.qml)
+                else ()
+                    message(WARNING "qt_add_qml_module not available; QML files not embedded")
+                endif ()
+            endif ()
+        endif ()
     endif ()
 endif ()
 

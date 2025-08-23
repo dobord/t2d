@@ -37,6 +37,30 @@ Optional flags:
 
 Third-party tests/examples/tools are force-disabled (yaml-cpp, libcoro, box2d, c-ares) for lean builds.
 
+## Qt Desktop Client (Experimental UI)
+Qt/QML client (Linux only) with tank & projectile list models, 2D canvas rendering and temporal interpolation between server snapshots.
+
+Prerequisites: Qt 6 (>=6.5; tested with 6.8.3), components Quick/Qml/Gui/Core in PATH (qmake/qt-config not required if CMake package config files installed).
+
+Build:
+```bash
+cmake -S . -B build-qt -DT2D_BUILD_QT_CLIENT=ON -DT2D_BUILD_SERVER=OFF
+cmake --build build-qt -j
+./build-qt/t2d_qt_client  # connect to localhost:40000 (ensure server running)
+```
+
+Run server separately in another terminal:
+```bash
+cmake -S . -B build -DT2D_BUILD_SERVER=ON
+cmake --build build -j
+./build/t2d_server config/server.yaml
+```
+
+Notes:
+* QML module URI: `T2DClient`; main file embedded via `qt_add_qml_module` when available.
+* Current UI: tank & projectile lists (id, pos, hp, ammo), canvas rendering (interpolated positions), basic input controls (move/turn/turret/fire) bound to network loop.
+* Falls back gracefully if Qt not found (warning & target skipped).
+
 ## Features Implemented (Snapshot)
 * Protobuf protocol: Auth, Queue, MatchStart, StateSnapshot, DeltaSnapshot, DamageEvent, KillFeedUpdate, TankDestroyed, MatchEnd, Heartbeat/Response
 * TCP framing + streaming parser (incremental, handles partial frames)
