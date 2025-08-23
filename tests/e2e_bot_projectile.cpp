@@ -76,6 +76,10 @@ static coro::task<void> flow(std::shared_ptr<coro::io_scheduler> sched, uint16_t
                 if (sm.snapshot().projectiles_size() > 0) {
                     sawProjectile = true;
                 }
+            } else if (sm.has_delta_snapshot()) {
+                if (sm.delta_snapshot().projectiles_size() > 0) {
+                    sawProjectile = true;
+                }
             }
         }
     }
@@ -89,8 +93,9 @@ int main()
     auto sched = coro::default_executor::io_executor();
     uint16_t port = 41040;
     sched->spawn(t2d::net::run_listener(sched, port));
-    // quick fill: 4 players target, 1s timeout
-    sched->spawn(t2d::mm::run_matchmaker(sched, t2d::mm::MatchConfig{4, 1, 30}));
+    // quick fill: 4 players target, 1s timeout. Force snapshot + full snapshot every tick (interval=1)
+    // so the projectile fired on tick 1 appears in a full snapshot (test only inspects full snapshots).
+    sched->spawn(t2d::mm::run_matchmaker(sched, t2d::mm::MatchConfig{4, 1, 30, 200, 1, 1}));
     coro::sync_wait(flow(sched, port));
     return 0;
 }

@@ -16,10 +16,6 @@ jobs:
             triplet: linux-amd64
             install: sudo apt-get update && sudo apt-get install -y protobuf-compiler libprotobuf-dev cmake g++ ninja-build
             generator_opts: ""
-          - os: macos-latest
-            triplet: macos-universal
-            install: brew update && brew install protobuf cmake ninja || true
-            generator_opts: ""
           - os: windows-latest
             triplet: windows-amd64
             install: choco install -y protoc cmake ninja || powershell -Command "echo skipping"
@@ -40,14 +36,27 @@ jobs:
             ccache-${{ runner.os }}-${{ matrix.triplet }}-
       - name: Install deps
         run: ${{ matrix.install }}
+      - name: Install protobuf via vcpkg (Windows)
+        if: runner.os == 'Windows'
+        shell: powershell
+        run: |
+          git clone https://github.com/microsoft/vcpkg $env:USERPROFILE\vcpkg
+          $env:USERPROFILE\vcpkg\bootstrap-vcpkg.bat -disableMetrics
+          $env:USERPROFILE\vcpkg\vcpkg.exe install protobuf:x64-windows
+          echo "VCPKG_TOOLCHAIN_FILE=$env:USERPROFILE\vcpkg\scripts\buildsystems\vcpkg.cmake" >> $env:GITHUB_ENV
       - name: Configure ccache env (Unix)
         if: runner.os != 'Windows'
         run: |
           which ccache || sudo apt-get install -y ccache || true
           echo "CMAKE_CXX_COMPILER_LAUNCHER=ccache" >> $GITHUB_ENV
           echo "CMAKE_C_COMPILER_LAUNCHER=ccache" >> $GITHUB_ENV
-      - name: Configure
+      - name: Configure (Unix)
+        if: runner.os != 'Windows'
         run: cmake -S . -B build -DCMAKE_BUILD_TYPE=Release -DT2D_BUILD_TESTS=ON -DT2D_BUILD_CLIENT=ON -DCMAKE_CXX_FLAGS_RELEASE="-O2 -g0" -DCMAKE_C_FLAGS_RELEASE="-O2 -g0" ${{ matrix.generator_opts }}
+      - name: Configure (Windows)
+        if: runner.os == 'Windows'
+        shell: powershell
+        run: cmake -S . -B build -DCMAKE_BUILD_TYPE=Release -DT2D_BUILD_TESTS=ON -DT2D_BUILD_CLIENT=ON -DCMAKE_CXX_FLAGS_RELEASE="-O2 -g0" -DCMAKE_C_FLAGS_RELEASE="-O2 -g0" -DCMAKE_TOOLCHAIN_FILE=$Env:VCPKG_TOOLCHAIN_FILE ${{ matrix.generator_opts }}
       - name: Build
         env:
           CMAKE_BUILD_PARALLEL_LEVEL: 4

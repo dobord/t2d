@@ -70,11 +70,10 @@ coro::task<void> run_match(std::shared_ptr<coro::io_scheduler> scheduler, std::s
             auto input = t2d::mm::instance().get_input_copy(sess);
             // Basic bot AI: if bot, synthesize movement & periodic fire
             if (sess->is_bot) {
-                // rotate slowly and move forward
-                input.turn_dir = 0.0f; // keep stationary & oriented toward player for deterministic tests
-                input.move_dir = 0.0f; // no forward movement so repeated shots align
-                // fire every ~2 seconds
-                if (ctx->server_tick == 1 || ctx->server_tick % (ctx->tick_rate * 2) == 0) {
+                // Deterministic: bots immediately fire once at tick 1 then every 2s; stay stationary.
+                input.turn_dir = 0.0f;
+                input.move_dir = 0.0f;
+                if (ctx->server_tick <= 1 || ctx->server_tick % (ctx->tick_rate * 2) == 0) {
                     input.fire = true;
                 }
                 t2d::mm::Session::InputState upd = input;
@@ -291,8 +290,10 @@ coro::task<void> run_match(std::shared_ptr<coro::io_scheduler> scheduler, std::s
                 t2d::mm::instance().push_message(pl, kfmsg);
             ctx->kill_feed_events.clear();
         }
-        // Victory condition: only one (or zero) alive non-bot tank remains OR time limit reached
-        if (!ctx->match_over) {
+        // Victory condition: only one (or zero) alive tank remains OR time limit reached.
+        // Delay evaluation for initial warmup (avoid instant end when match starts with 1 player before bot fill, or
+        // transient states).
+        if (!ctx->match_over && ctx->server_tick > ctx->tick_rate * 2) { // ~2s grace period
             uint32_t alive_count = 0;
             uint32_t last_alive_id = 0;
             for (auto &t : ctx->tanks) {

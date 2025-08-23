@@ -68,10 +68,11 @@ coro::task<void> run_matchmaker(std::shared_ptr<coro::io_scheduler> scheduler, M
                 // Deterministic initial placement prototype: first (real) player at origin, bots offset on -X looking
                 // towards origin
                 if (s->is_bot) {
-                    // place bot at -1,0 facing east (0 degrees) so projectiles travel toward player tank at origin
-                    tank.x = -1.0f;
+                    // Place bots spaced along negative X axis to avoid instant projectile self-collisions
+                    // entity_id starts at 1 for player, so bot entity_ids 2..N => positions -2,-3,...
+                    tank.x = -static_cast<float>(tank.entity_id);
                     tank.y = 0.0f;
-                    tank.hull_angle = 0.0f;
+                    tank.hull_angle = 0.0f; // facing east toward player at origin
                     tank.turret_angle = 0.0f;
                 } else {
                     // player stays at origin
