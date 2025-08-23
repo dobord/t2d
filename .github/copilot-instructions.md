@@ -57,6 +57,7 @@ This repository uses C++20 coroutines with libcoro and yaml-cpp. Please follow t
 - When adding TLS client logic, guard with `#ifdef LIBCORO_FEATURE_TLS` and use the awaitable TLS API.
 - Project language policy: all source code comments, log messages, commit messages, and documentation MUST be written in English only (no mixed languages) to keep the codebase consistent and accessible. This also applies to build scripts (`build.gradle`, `settings.gradle`, CMake files) and shell/python scripts under `scripts/`.
  - Git commit messages: must be written in English only. Keep the subject line short (<=50 chars) and in present tense; use the commit body to explain the rationale and any important implementation details when necessary.
+ - Do NOT use raw `std::cout` / `std::cerr` for runtime messages in first‑party code; always use the project logger (`t2d::log::info|warn|error|debug`). Direct stdout/stderr usage is allowed only inside the logging implementation itself or third_party code.
 
 
 Following these rules keeps coroutine lifetimes explicit, avoids scheduler mismatches, and prevents subtle endianness and I/O pitfalls.
