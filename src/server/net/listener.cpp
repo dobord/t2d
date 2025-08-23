@@ -2,7 +2,9 @@
 
 #include "common/framing.hpp"
 #include "common/logger.hpp"
+#include "common/metrics.hpp"
 #include "game.pb.h"
+#include "server/auth/auth_provider.hpp"
 #include "server/matchmaking/session_manager.hpp"
 
 #include <arpa/inet.h>
@@ -117,23 +119,25 @@ static coro::task<void> connection_loop(
             if (cmsg.has_auth_request()) {
                 const auto &ar = cmsg.auth_request();
                 auto *resp = smsg.mutable_auth_response();
-                bool ok = true;
-                // Prototype auth check: require non-empty oauth_token
-                if (ar.oauth_token().empty()) {
-                    ok = false;
+                auto *prov = t2d::auth::provider();
+                t2d::auth::AuthResult r;
+                if (prov)
+                    r = prov->validate(ar.oauth_token());
+                else {
+                    r.ok = true;
+                    r.user_id = "anon";
                 }
-                if (!ok) {
+                if (!r.ok) {
                     resp->set_success(false);
-                    resp->set_reason("auth_failed");
+                    resp->set_reason(r.reason.empty() ? "auth_failed" : r.reason);
                     t2d::metrics::runtime().auth_failures.fetch_add(1, std::memory_order_relaxed);
-                    t2d::log::warn("[conn] AuthRequest failed (empty token)");
+                    t2d::log::warn("[conn] AuthRequest failed reason={}", resp->reason());
                 } else {
                     resp->set_success(true);
-                    std::string sid = "sess_" + ar.client_version();
-                    resp->set_session_id(sid);
+                    resp->set_session_id(r.user_id);
                     resp->set_reason("");
-                    t2d::mm::instance().authenticate(session, sid);
-                    t2d::log::info("[conn] AuthRequest -> success sid={}", sid);
+                    t2d::mm::instance().authenticate(session, r.user_id);
+                    t2d::log::info("[conn] AuthRequest -> success sid={}", r.user_id);
                 }
             } else if (cmsg.has_queue_join()) {
                 auto *qs = smsg.mutable_queue_status();

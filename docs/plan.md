@@ -18,6 +18,8 @@ All documentation in this repository is maintained in English (see repository st
 - [x] Extended unit & e2e test suite
 - [x] CI pipeline (Linux build + tests)
 - [x] Vendored third-party libs via git submodules (yaml-cpp, libcoro, box2d) with pinned SHAs
+- [x] Structured logging + metrics counters (JSON mode, config-driven level, Prometheus /metrics, runtime + snapshot size metrics)
+- [x] Auth strategy abstraction (pluggable provider stub)
 
 ## 2. Current State Snapshot
 - Language / Tooling: C++20, libcoro, protobuf, yaml-cpp, CMake.
@@ -110,8 +112,8 @@ The following epics are required to reach fully automated builds (server + Andro
 1. [x] Damage & collision events (with tests) // basic projectile->tank damage + events implemented
 2. [x] Entity removal / disconnect deltas (projectile + tank destruction removals implemented; disconnect pending)
 3. [x] Snapshot interval config + size metrics (intervals configurable; size counters implemented)
-4. [~] Structured logging + metrics counters (config-driven level/json + HTTP /metrics endpoint; remaining: auth_failures increment, graceful shutdown stats flush)
-5. [ ] OAuth auth strategy abstraction
+4. [x] Structured logging + metrics counters (JSON + Prometheus endpoint + graceful shutdown snapshot stats)
+5. [x] OAuth auth strategy abstraction (stub provider; real external validation later)
 6. [ ] Desktop client scaffold + CI build
 7. [ ] Android & WASM build jobs
 8. [ ] Dependency pin/verification (NDK, Build Tools, periodic submodule SHA audit job)
@@ -140,10 +142,8 @@ D. Version string embedded & traceable to commit/tag.
 E. Release workflow publishes artifacts on tag push.
 
 ## 7. Immediate Next Actions (Actionable Backlog)
-- [ ] Projectile ↔ tank collision + DamageEvent (unit + e2e tests)
-- [ ] TankDestroyed & entity removal in delta snapshots
-- [ ] Structured logging (JSON) + size metrics (snapshot_full_bytes / snapshot_delta_bytes)
-- [ ] OAuth auth strategy interface + mock validator tests
+- [ ] Projectile ↔ tank collision + DamageEvent tests hardening (edge cases, multi-hit)
+- [ ] TankDestroyed & entity removal on disconnect (currently destruction covered)
 - [ ] Desktop client minimal (network connect + log baseline & delta)
 - [ ] CI matrix + artifact upload (server + desktop)
 - [ ] Bash build scripts (install, full/partial build, tests, package)

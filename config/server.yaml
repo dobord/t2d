@@ -14,3 +14,5 @@ matchmaker_poll_ms: 200
 log_level: info  # debug|info|warn|error
 log_json: false  # true to emit JSON lines
 metrics_port: 9100  # 0 disables metrics HTTP endpoint (/metrics)
+auth_mode: stub     # disabled|stub (future: oauth)
+auth_stub_prefix: user_

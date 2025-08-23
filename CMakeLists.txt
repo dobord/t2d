@@ -82,6 +82,8 @@ if (T2D_BUILD_SERVER)
         src/server/matchmaking/session_manager.cpp
         src/server/net/listener.cpp
         src/server/net/metrics_http.cpp)
+    # auth provider source
+    target_sources(t2d_server PRIVATE src/server/auth/auth_provider.cpp)
     target_include_directories(t2d_server PRIVATE src)
     target_link_libraries(t2d_server PRIVATE t2d_proto yaml-cpp libcoro box2d)
     target_compile_definitions(t2d_server PRIVATE T2D_VERSION="0.0.1-dev")
@@ -182,6 +184,7 @@ if (T2D_BUILD_TESTS)
     add_executable(
         t2d_e2e_match_start
         src/common/framing.cpp
+        src/server/auth/auth_provider.cpp
         src/server/game/match.cpp
         src/server/matchmaking/matchmaker.cpp
         src/server/matchmaking/session_manager.cpp
@@ -193,6 +196,7 @@ if (T2D_BUILD_TESTS)
     add_executable(
         t2d_e2e_input_move
         src/common/framing.cpp
+        src/server/auth/auth_provider.cpp
         src/server/game/match.cpp
         src/server/matchmaking/matchmaker.cpp
         src/server/matchmaking/session_manager.cpp
@@ -204,6 +208,7 @@ if (T2D_BUILD_TESTS)
     add_executable(
         t2d_e2e_heartbeat
         src/common/framing.cpp
+        src/server/auth/auth_provider.cpp
         src/server/game/match.cpp
         src/server/matchmaking/matchmaker.cpp
         src/server/matchmaking/session_manager.cpp
@@ -215,6 +220,7 @@ if (T2D_BUILD_TESTS)
     add_executable(
         t2d_e2e_bot_fill
         src/common/framing.cpp
+        src/server/auth/auth_provider.cpp
         src/server/game/match.cpp
         src/server/matchmaking/matchmaker.cpp
         src/server/matchmaking/session_manager.cpp
@@ -225,6 +231,7 @@ if (T2D_BUILD_TESTS)
     add_executable(
         t2d_e2e_bot_projectile
         src/common/framing.cpp
+        src/server/auth/auth_provider.cpp
         src/server/game/match.cpp
         src/server/matchmaking/matchmaker.cpp
         src/server/matchmaking/session_manager.cpp
@@ -235,6 +242,7 @@ if (T2D_BUILD_TESTS)
     add_executable(
         t2d_e2e_delta_snapshots
         src/common/framing.cpp
+        src/server/auth/auth_provider.cpp
         src/server/game/match.cpp
         src/server/matchmaking/matchmaker.cpp
         src/server/matchmaking/session_manager.cpp
@@ -245,6 +253,7 @@ if (T2D_BUILD_TESTS)
     add_executable(
         t2d_e2e_damage_event
         src/common/framing.cpp
+        src/server/auth/auth_provider.cpp
         src/server/game/match.cpp
         src/server/matchmaking/matchmaker.cpp
         src/server/matchmaking/session_manager.cpp

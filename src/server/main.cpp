@@ -1,5 +1,6 @@
 #include "common/logger.hpp"
 #include "common/metrics.hpp"
+#include "server/auth/auth_provider.hpp"
 #include "server/matchmaking/matchmaker.hpp"
 #include "server/matchmaking/session_manager.hpp"
 #include "server/net/listener.hpp"
@@ -60,6 +61,8 @@ struct ServerConfig
     std::string log_level{"info"};
     bool log_json{false};
     uint16_t metrics_port{0}; // 0 disables
+    std::string auth_mode{"disabled"};
+    std::string auth_stub_prefix{"user_"};
 };
 
 static ServerConfig load_config(const std::string &path)
@@ -94,6 +97,12 @@ static ServerConfig load_config(const std::string &path)
     }
     if (root["metrics_port"]) {
         cfg.metrics_port = root["metrics_port"].as<uint16_t>();
+    }
+    if (root["auth_mode"]) {
+        cfg.auth_mode = root["auth_mode"].as<std::string>();
+    }
+    if (root["auth_stub_prefix"]) {
+        cfg.auth_stub_prefix = root["auth_stub_prefix"].as<std::string>();
     }
     return cfg;
 }
@@ -135,6 +144,7 @@ int main(int argc, char **argv)
     t2d::log::info("t2d server starting (version: {})", T2D_VERSION);
     t2d::log::info("Tick rate: {} Hz", cfg.tick_rate);
     t2d::log::info("Listening on port: {}", cfg.listen_port);
+    t2d::log::info("Auth mode: {}", cfg.auth_mode);
 
     // io_scheduler requires options; construct explicitly
     auto scheduler = coro::default_executor::io_executor();
@@ -155,6 +165,9 @@ int main(int argc, char **argv)
     if (cfg.metrics_port != 0) {
         scheduler->spawn(t2d::net::run_metrics_endpoint(scheduler, cfg.metrics_port));
     }
+    // Initialize auth provider (lifetime static); store pointer for listener usage
+    static auto auth_provider_storage = t2d::auth::make_provider(cfg.auth_mode, cfg.auth_stub_prefix);
+    t2d::auth::set_provider(auth_provider_storage.get());
 
     // Main thread just sleeps; real implementation will add signal handling & graceful shutdown.
     while (!t2d::g_shutdown.load()) {
