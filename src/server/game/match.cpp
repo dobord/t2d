@@ -3,6 +3,7 @@
 
 #include "common/metrics.hpp"
 #include "server/game/physics.hpp"
+#include "server/game/snapshot_compress.hpp"
 
 #include <cmath>
 #include <iostream>
@@ -326,10 +327,8 @@ coro::task<void> run_match(std::shared_ptr<coro::io_scheduler> scheduler, std::s
                 sm.SerializeToString(&tmp);
                 t2d::metrics::add_full(tmp.size());
 #if T2D_ENABLE_SNAPSHOT_QUANT
-                // Attempt simple RLE compression (prototype). If compressed smaller, record metric.
-                {
-                    extern std::string rle_try(const std::string &); // forward (unused fallback)
-                }
+                // Compression placeholder: RLE + optional zlib (only metrics currently recorded by rle_try/zlib_try)
+                // Future: send compressed variant conditionally to clients advertising support.
 #endif
                 for (auto &pl : ctx->players)
                     t2d::mm::instance().push_message(pl, sm);
@@ -405,9 +404,7 @@ coro::task<void> run_match(std::shared_ptr<coro::io_scheduler> scheduler, std::s
                 sm.SerializeToString(&tmp);
                 t2d::metrics::add_delta(tmp.size());
 #if T2D_ENABLE_SNAPSHOT_QUANT
-                {
-                    extern std::string rle_try(const std::string &);
-                }
+                // As above, compression logic lives in snapshot_compress.* (not applied to wire in prototype)
 #endif
                 for (auto &pl : ctx->players)
                     t2d::mm::instance().push_message(pl, sm);
