@@ -56,6 +56,8 @@ struct ServerConfig
     uint16_t listen_port{40000};
     uint32_t heartbeat_timeout_seconds{30};
     uint32_t matchmaker_poll_ms{200};
+    std::string log_level{"info"};
+    bool log_json{false};
 };
 
 static ServerConfig load_config(const std::string &path)
@@ -82,6 +84,12 @@ static ServerConfig load_config(const std::string &path)
         cfg.heartbeat_timeout_seconds = root["heartbeat_timeout_seconds"].as<uint32_t>();
     if (root["matchmaker_poll_ms"])
         cfg.matchmaker_poll_ms = root["matchmaker_poll_ms"].as<uint32_t>();
+    if (root["log_level"]) {
+        cfg.log_level = root["log_level"].as<std::string>();
+    }
+    if (root["log_json"]) {
+        cfg.log_json = root["log_json"].as<bool>();
+    }
     return cfg;
 }
 
@@ -111,6 +119,14 @@ int main(int argc, char **argv)
     std::signal(SIGINT, handle_signal);
     std::signal(SIGTERM, handle_signal);
 
+    // Apply logging config via environment emulation before first log init
+    if (!cfg.log_level.empty()) {
+        setenv("T2D_LOG_LEVEL", cfg.log_level.c_str(), 1);
+    }
+    if (cfg.log_json) {
+        setenv("T2D_LOG_JSON", "1", 1);
+    }
+    t2d::log::init();
     t2d::log::info("t2d server starting (version: {})", T2D_VERSION);
     t2d::log::info("Tick rate: {} Hz", cfg.tick_rate);
     t2d::log::info("Listening on port: {}", cfg.listen_port);

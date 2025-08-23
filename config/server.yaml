@@ -11,3 +11,5 @@ bot_difficulty: 1  # 0 = dummy, 1 = basic
 listen_port: 40000
 heartbeat_timeout_seconds: 30
 matchmaker_poll_ms: 200
+log_level: info  # debug|info|warn|error
+log_json: false  # true to emit JSON lines
