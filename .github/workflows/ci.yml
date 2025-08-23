@@ -30,12 +30,30 @@ jobs:
         with:
           submodules: recursive
           fetch-depth: 0
+      - name: Setup ccache (Unix)
+        if: runner.os != 'Windows'
+        uses: actions/cache@v4
+        with:
+          path: ~/.cache/ccache
+          key: ccache-${{ runner.os }}-${{ matrix.triplet }}-${{ hashFiles('**/CMakeLists.txt', 'proto/**/*.proto') }}
+          restore-keys: |
+            ccache-${{ runner.os }}-${{ matrix.triplet }}-
       - name: Install deps
         run: ${{ matrix.install }}
+      - name: Configure ccache env (Unix)
+        if: runner.os != 'Windows'
+        run: |
+          which ccache || sudo apt-get install -y ccache || true
+          echo "CMAKE_CXX_COMPILER_LAUNCHER=ccache" >> $GITHUB_ENV
+          echo "CMAKE_C_COMPILER_LAUNCHER=ccache" >> $GITHUB_ENV
       - name: Configure
-        run: cmake -S . -B build -DCMAKE_BUILD_TYPE=Release -DT2D_BUILD_TESTS=ON -DT2D_BUILD_CLIENT=ON ${{ matrix.generator_opts }}
+        run: cmake -S . -B build -DCMAKE_BUILD_TYPE=Release -DT2D_BUILD_TESTS=ON -DT2D_BUILD_CLIENT=ON -DCMAKE_CXX_FLAGS_RELEASE="-O2 -g0" -DCMAKE_C_FLAGS_RELEASE="-O2 -g0" ${{ matrix.generator_opts }}
       - name: Build
-        run: cmake --build build --parallel
+        env:
+          CMAKE_BUILD_PARALLEL_LEVEL: 4
+        run: |
+          echo "Limiting parallel build to $CMAKE_BUILD_PARALLEL_LEVEL jobs to reduce memory usage"
+          cmake --build build -- -j$CMAKE_BUILD_PARALLEL_LEVEL
       - name: Run tests
         working-directory: build
         run: ctest --output-on-failure -T Test
