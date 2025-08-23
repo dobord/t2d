@@ -6,25 +6,31 @@ on:
     branches: [ main, master ]
 
 jobs:
-  build-test:
+  build-test-linux:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
         with:
-          submodules: recursive  # ensure third_party submodules (yaml-cpp, libcoro, box2d) are present
-          fetch-depth: 0         # full history (optional, helps with future versioning)
+          submodules: recursive
+          fetch-depth: 0
       - name: Install deps
         run: sudo apt-get update && sudo apt-get install -y protobuf-compiler libprotobuf-dev cmake g++ ninja-build
-      - name: Configure
-        run: cmake -S . -B build -DCMAKE_BUILD_TYPE=Release -DT2D_BUILD_TESTS=ON
-      - name: Build
+      - name: Configure (server + tests + desktop client)
+        run: cmake -S . -B build -DCMAKE_BUILD_TYPE=Release -DT2D_BUILD_TESTS=ON -DT2D_BUILD_CLIENT=ON
+      - name: Build all
         run: cmake --build build --parallel
-      - name: Run tests
-        run: |
-          set -e
-          ./build/t2d_unit_session_manager
-          ./build/t2d_unit_framing
-          ./build/t2d_unit_heartbeat_timeout
-          ./build/t2d_e2e_match_start
-          ./build/t2d_e2e_input_move
-          ./build/t2d_e2e_heartbeat
+      - name: Run tests (ctest)
+        working-directory: build
+        run: ctest --output-on-failure -T Test
+      - name: Upload server binary
+        uses: actions/upload-artifact@v4
+        with:
+          name: t2d_server-linux-amd64
+          path: build/t2d_server
+          if-no-files-found: error
+      - name: Upload desktop client prototype
+        uses: actions/upload-artifact@v4
+        with:
+          name: t2d_desktop_client-linux-amd64
+          path: build/t2d_desktop_client
+          if-no-files-found: error
