@@ -34,8 +34,8 @@ All documentation in this repository is maintained in English (see repository st
 The following epics are required to reach fully automated builds (server + Android + Desktop + WebAssembly clients) with distributable artifacts and quality gates.
 
 ### 3.1 Gameplay & Server Core Hardening (Pre‑Artifact Stability)
-- [ ] Damage & hit detection (projectile ↔ tank overlap) with DamageEvent / TankDestroyed / KillFeedUpdate
-- [ ] Ammo & reload rules; match end / victory condition
+- [ ] Damage & hit detection (projectile ↔ tank overlap) with DamageEvent / TankDestroyed / KillFeedUpdate (basic implemented; kill feed pending)
+- [x] Ammo & reload rules; match end / victory condition (basic timer reload + winner detection implemented)
 - [ ] Graceful disconnect broadcast + entity removal deltas
 - [ ] Snapshot compression / size optimization (quantization, thresholding, optional zstd)
 - [ ] Configurable snapshot & delta intervals (expose existing constants to config fully)

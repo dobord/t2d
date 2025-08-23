@@ -57,6 +57,9 @@ coro::task<void> run_match(std::shared_ptr<coro::io_scheduler> scheduler, std::s
             }
         }
         // Basic input-driven updates (no collision / bounds yet)
+        if (ctx->reload_timers.size() != ctx->tanks.size()) {
+            ctx->reload_timers.resize(ctx->tanks.size(), 0.f);
+        }
         float dt = 1.0f / static_cast<float>(ctx->tick_rate);
         for (size_t i = 0; i < ctx->tanks.size() && i < ctx->players.size(); ++i) {
             auto &t = ctx->tanks[i];
@@ -98,6 +101,17 @@ coro::task<void> run_match(std::shared_ptr<coro::io_scheduler> scheduler, std::s
                 t.ammo--;
                 if (sess->is_bot)
                     t2d::mm::instance().clear_bot_fire(sess);
+            }
+            // Reload timer update
+            auto &rt = ctx->reload_timers[i];
+            if (t.ammo < ctx->max_ammo) {
+                rt += dt;
+                if (rt >= ctx->reload_interval_sec) {
+                    t.ammo++;
+                    rt = 0.f;
+                }
+            } else {
+                rt = 0.f; // full ammo, keep timer reset
             }
         }
         // Update projectiles
@@ -262,7 +276,29 @@ coro::task<void> run_match(std::shared_ptr<coro::io_scheduler> scheduler, std::s
                 ctx->removed_tanks_since_full.clear();
             }
         }
-        if (ctx->server_tick > ctx->tick_rate * 10) {
+        // Victory condition: only one (or zero) alive non-bot tank remains OR time limit reached
+        if (!ctx->match_over) {
+            uint32_t alive_count = 0;
+            uint32_t last_alive_id = 0;
+            for (auto &t : ctx->tanks) {
+                if (t.alive) {
+                    ++alive_count;
+                    last_alive_id = t.entity_id;
+                }
+            }
+            if (alive_count <= 1) {
+                ctx->match_over = true;
+                ctx->winner_entity = last_alive_id;
+            } else if (ctx->server_tick > ctx->tick_rate * 30) { // fallback timeout ~30s
+                ctx->match_over = true;
+            }
+            if (ctx->match_over) {
+                t2d::ServerMessage endmsg; // reuse TankDestroyed? For now log only (future: MatchEnd proto)
+                std::cout << "[match] over id=" << ctx->match_id << " winner_entity=" << ctx->winner_entity
+                          << std::endl;
+            }
+        }
+        if (ctx->match_over || ctx->server_tick > ctx->tick_rate * 10) {
             std::cout << "[match] end id=" << ctx->match_id << std::endl;
             // Adjust metrics on match end
             t2d::metrics::runtime().active_matches.fetch_sub(1, std::memory_order_relaxed);

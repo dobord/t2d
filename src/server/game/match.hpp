@@ -52,6 +52,12 @@ struct MatchContext
     // Removed entities since last full snapshot (for delta)
     std::vector<uint32_t> removed_projectiles_since_full;
     std::vector<uint32_t> removed_tanks_since_full; // future (on disconnect / destroy)
+    // Simple per-tank reload timers (seconds until next ammo +1); 0 = ready to accumulate
+    std::vector<float> reload_timers;
+    float reload_interval_sec{3.0f}; // every N seconds grant +1 ammo up to max
+    uint32_t max_ammo{10};
+    bool match_over{false};
+    uint32_t winner_entity{0};
 };
 
 inline float movement_speed()
