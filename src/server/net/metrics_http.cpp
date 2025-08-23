@@ -38,6 +38,8 @@ static std::string build_metrics_body()
     oss << "t2d_active_matches " << rt.active_matches.load() << "\n";
     oss << "# TYPE t2d_bots_in_match gauge\n";
     oss << "t2d_bots_in_match " << rt.bots_in_match.load() << "\n";
+    oss << "# TYPE t2d_connected_players gauge\n";
+    oss << "t2d_connected_players " << rt.connected_players.load() << "\n";
     oss << "# TYPE t2d_projectiles_active gauge\n";
     oss << "t2d_projectiles_active " << rt.projectiles_active.load() << "\n";
     oss << "# TYPE t2d_avg_tick_ns gauge\n";

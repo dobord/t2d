@@ -207,12 +207,13 @@ int main(int argc, char **argv)
             uint64_t avg_ns = samples ? rt.tick_duration_ns_accum.load() / samples : 0;
             t2d::log::info(
                 "{\"metric\":\"runtime\",\"avg_tick_ns\":{},\"queue_depth\":{},\"active_matches\":{},\"bots_in_match\":"
-                "{},\"projectiles_active\":{}}",
+                "{},\"projectiles_active\":{},\"connected_players\":{}}",
                 avg_ns,
                 rt.queue_depth.load(),
                 rt.active_matches.load(),
                 rt.bots_in_match.load(),
-                rt.projectiles_active.load());
+                rt.projectiles_active.load(),
+                rt.connected_players.load());
         }
     }
     t2d::log::info("Shutdown complete.");

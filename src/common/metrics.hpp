@@ -27,6 +27,7 @@ struct RuntimeCounters
     std::atomic<uint64_t> queue_depth{0};
     std::atomic<uint64_t> active_matches{0};
     std::atomic<uint64_t> bots_in_match{0};
+    std::atomic<uint64_t> connected_players{0}; // authenticated non-bot sessions currently connected
     std::atomic<uint64_t> projectiles_active{0};
     std::atomic<uint64_t> auth_failures{0};
 };

@@ -1,6 +1,8 @@
 // SPDX-License-Identifier: Apache-2.0
 #include "server/matchmaking/session_manager.hpp"
 
+#include "common/metrics.hpp"
+
 #include <algorithm>
 
 namespace t2d::mm {
@@ -27,6 +29,9 @@ void SessionManager::authenticate(const std::shared_ptr<Session> &s, std::string
     s->session_id = std::move(session_id);
     s->last_heartbeat = std::chrono::steady_clock::now();
     m_by_session[s->session_id] = s;
+    // metrics increment for connected authenticated players (excluding bots)
+    if (!s->is_bot)
+        t2d::metrics::runtime().connected_players.fetch_add(1, std::memory_order_relaxed);
 }
 
 void SessionManager::enqueue(const std::shared_ptr<Session> &s)
@@ -120,6 +125,12 @@ void SessionManager::disconnect_session(const std::shared_ptr<Session> &s)
     if (!s->session_id.empty())
         m_by_session.erase(s->session_id);
     m_by_connection.erase(s->connection_id);
+    if (!s->is_bot && s->authenticated) {
+        auto &cp = t2d::metrics::runtime().connected_players;
+        auto cur = cp.load(std::memory_order_relaxed);
+        if (cur > 0)
+            cp.fetch_sub(1, std::memory_order_relaxed);
+    }
 }
 
 std::vector<std::shared_ptr<Session>> SessionManager::create_bots(size_t count)
