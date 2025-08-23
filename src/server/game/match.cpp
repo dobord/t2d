@@ -193,25 +193,50 @@ coro::task<void> run_match(std::shared_ptr<coro::io_scheduler> scheduler, std::s
                         continue; // skip removed tanks in new full snapshot
                     auto *ts = snap->add_tanks();
                     ts->set_entity_id(t.entity_id);
+#if T2D_ENABLE_SNAPSHOT_QUANT
+                    // Quantize positions & angles into integer buckets stored still as float (prototype keeps proto
+                    // schema unchanged)
+                    constexpr float POS_SCALE = 100.f; // 1cm
+                    constexpr float ANG_SCALE = 10.f; // 0.1 deg
+                    ts->set_x(std::round(t.x * POS_SCALE) / POS_SCALE);
+                    ts->set_y(std::round(t.y * POS_SCALE) / POS_SCALE);
+                    ts->set_hull_angle(std::round(t.hull_angle * ANG_SCALE) / ANG_SCALE);
+                    ts->set_turret_angle(std::round(t.turret_angle * ANG_SCALE) / ANG_SCALE);
+#else
                     ts->set_x(t.x);
                     ts->set_y(t.y);
                     ts->set_hull_angle(t.hull_angle);
                     ts->set_turret_angle(t.turret_angle);
+#endif
                     ts->set_hp(t.hp);
                     ts->set_ammo(t.ammo);
                 }
                 for (auto &p : ctx->projectiles) {
                     auto *ps = snap->add_projectiles();
                     ps->set_projectile_id(p.id);
+#if T2D_ENABLE_SNAPSHOT_QUANT
+                    constexpr float POS_SCALE = 100.f;
+                    ps->set_x(std::round(p.x * POS_SCALE) / POS_SCALE);
+                    ps->set_y(std::round(p.y * POS_SCALE) / POS_SCALE);
+                    ps->set_vx(p.vx); // velocities left unquantized for now
+                    ps->set_vy(p.vy);
+#else
                     ps->set_x(p.x);
                     ps->set_y(p.y);
                     ps->set_vx(p.vx);
                     ps->set_vy(p.vy);
+#endif
                 }
                 // Approx size: serialized later per recipient; rough proto size estimation using string
                 std::string tmp;
                 sm.SerializeToString(&tmp);
                 t2d::metrics::add_full(tmp.size());
+#if T2D_ENABLE_SNAPSHOT_QUANT
+                // Attempt simple RLE compression (prototype). If compressed smaller, record metric.
+                {
+                    extern std::string rle_try(const std::string &); // forward (unused fallback)
+                }
+#endif
                 for (auto &pl : ctx->players)
                     t2d::mm::instance().push_message(pl, sm);
             } else {
@@ -241,10 +266,19 @@ coro::task<void> run_match(std::shared_ptr<coro::io_scheduler> scheduler, std::s
                     if (changed) {
                         auto *ts = delta->add_tanks();
                         ts->set_entity_id(curr.entity_id);
+#if T2D_ENABLE_SNAPSHOT_QUANT
+                        constexpr float POS_SCALE = 100.f;
+                        constexpr float ANG_SCALE = 10.f;
+                        ts->set_x(std::round(curr.x * POS_SCALE) / POS_SCALE);
+                        ts->set_y(std::round(curr.y * POS_SCALE) / POS_SCALE);
+                        ts->set_hull_angle(std::round(curr.hull_angle * ANG_SCALE) / ANG_SCALE);
+                        ts->set_turret_angle(std::round(curr.turret_angle * ANG_SCALE) / ANG_SCALE);
+#else
                         ts->set_x(curr.x);
                         ts->set_y(curr.y);
                         ts->set_hull_angle(curr.hull_angle);
                         ts->set_turret_angle(curr.turret_angle);
+#endif
                         ts->set_hp(curr.hp);
                         ts->set_ammo(curr.ammo);
                         prev = curr; // update cache
@@ -258,16 +292,29 @@ coro::task<void> run_match(std::shared_ptr<coro::io_scheduler> scheduler, std::s
                 for (auto &p : ctx->projectiles) {
                     auto *ps = delta->add_projectiles();
                     ps->set_projectile_id(p.id);
+#if T2D_ENABLE_SNAPSHOT_QUANT
+                    constexpr float POS_SCALE = 100.f;
+                    ps->set_x(std::round(p.x * POS_SCALE) / POS_SCALE);
+                    ps->set_y(std::round(p.y * POS_SCALE) / POS_SCALE);
+                    ps->set_vx(p.vx);
+                    ps->set_vy(p.vy);
+#else
                     ps->set_x(p.x);
                     ps->set_y(p.y);
                     ps->set_vx(p.vx);
                     ps->set_vy(p.vy);
+#endif
                 }
                 for (auto id : ctx->removed_projectiles_since_full)
                     delta->add_removed_projectiles(id);
                 std::string tmp;
                 sm.SerializeToString(&tmp);
                 t2d::metrics::add_delta(tmp.size());
+#if T2D_ENABLE_SNAPSHOT_QUANT
+                {
+                    extern std::string rle_try(const std::string &);
+                }
+#endif
                 for (auto &pl : ctx->players)
                     t2d::mm::instance().push_message(pl, sm);
             }

@@ -12,6 +12,8 @@ struct SnapshotCounters
     std::atomic<uint64_t> delta_bytes{0};
     std::atomic<uint64_t> full_count{0};
     std::atomic<uint64_t> delta_count{0};
+    std::atomic<uint64_t> full_compressed_bytes{0};
+    std::atomic<uint64_t> delta_compressed_bytes{0};
 };
 
 struct RuntimeCounters
@@ -53,6 +55,16 @@ inline void add_delta(uint64_t bytes)
 {
     snapshot().delta_bytes.fetch_add(bytes, std::memory_order_relaxed);
     snapshot().delta_count.fetch_add(1, std::memory_order_relaxed);
+}
+
+inline void add_full_compressed(uint64_t bytes)
+{
+    snapshot().full_compressed_bytes.fetch_add(bytes, std::memory_order_relaxed);
+}
+
+inline void add_delta_compressed(uint64_t bytes)
+{
+    snapshot().delta_compressed_bytes.fetch_add(bytes, std::memory_order_relaxed);
 }
 
 } // namespace t2d::metrics
