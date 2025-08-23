@@ -26,6 +26,8 @@ coro::task<void> run_match(std::shared_ptr<coro::io_scheduler> scheduler, std::s
         float dt = 1.0f / static_cast<float>(ctx->tick_rate);
         for (size_t i = 0; i < ctx->tanks.size() && i < ctx->players.size(); ++i) {
             auto &t = ctx->tanks[i];
+            if (!t.alive)
+                continue; // skip dead tanks
             auto &sess = ctx->players[i];
             auto input = t2d::mm::instance().get_input_copy(sess);
             // Basic bot AI: if bot, synthesize movement & periodic fire
@@ -81,6 +83,8 @@ coro::task<void> run_match(std::shared_ptr<coro::io_scheduler> scheduler, std::s
                 for (auto &tank : ctx->tanks) {
                     if (tank.entity_id == proj.owner)
                         continue; // no self-hit prototype
+                    if (!tank.alive)
+                        continue; // already dead
                     float dx = proj.x - tank.x;
                     float dy = proj.y - tank.y;
                     float dist2 = dx * dx + dy * dy;
@@ -103,6 +107,8 @@ coro::task<void> run_match(std::shared_ptr<coro::io_scheduler> scheduler, std::s
                             t2d::mm::instance().push_message(pl, ev);
                         // If destroyed emit TankDestroyed (entity removal handled in later epic)
                         if (tank.hp == 0) {
+                            tank.alive = false;
+                            ctx->removed_tanks_since_full.push_back(tank.entity_id);
                             t2d::ServerMessage tdmsg;
                             auto *td = tdmsg.mutable_destroyed();
                             td->set_victim_id(tank.entity_id);
@@ -134,6 +140,8 @@ coro::task<void> run_match(std::shared_ptr<coro::io_scheduler> scheduler, std::s
                 ctx->last_full_snapshot_tick = static_cast<uint32_t>(ctx->server_tick);
                 ctx->last_sent_tanks = ctx->tanks; // replace cache
                 for (auto &t : ctx->tanks) {
+                    if (!t.alive)
+                        continue; // skip removed tanks in new full snapshot
                     auto *ts = snap->add_tanks();
                     ts->set_entity_id(t.entity_id);
                     ts->set_x(t.x);
@@ -168,10 +176,15 @@ coro::task<void> run_match(std::shared_ptr<coro::io_scheduler> scheduler, std::s
                     ctx->last_sent_tanks.resize(ctx->tanks.size());
                 for (size_t i = 0; i < ctx->tanks.size(); ++i) {
                     auto &curr = ctx->tanks[i];
+                    if (!curr.alive)
+                        continue; // do not send changed state for dead tanks
                     if (i >= ctx->last_sent_tanks.size()) {
                         ctx->last_sent_tanks.push_back(curr);
                     }
                     auto &prev = ctx->last_sent_tanks[i];
+                    if (!prev.alive && curr.alive) {
+                        // resurrect case not expected in prototype; treat as changed
+                    }
                     bool changed = std::fabs(curr.x - prev.x) > 0.0001f || std::fabs(curr.y - prev.y) > 0.0001f
                         || std::fabs(curr.hull_angle - prev.hull_angle) > 0.01f
                         || std::fabs(curr.turret_angle - prev.turret_angle) > 0.01f || curr.hp != prev.hp
@@ -188,6 +201,8 @@ coro::task<void> run_match(std::shared_ptr<coro::io_scheduler> scheduler, std::s
                         prev = curr; // update cache
                     }
                 }
+                for (auto id : ctx->removed_tanks_since_full)
+                    delta->add_removed_tanks(id);
                 // new projectiles since base: naive include all with id > 0 created after base tick (simplify: send all
                 // projectiles whose id greater than count at last full snapshot) For prototype, just send all
                 // projectiles (client would de-dup by id)

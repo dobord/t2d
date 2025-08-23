@@ -9,6 +9,10 @@ option(T2D_BUILD_SERVER "Build the game server" ON)
 option(T2D_BUILD_CLIENT "Build the desktop client (Qt)" OFF) # enable later
 option(T2D_BUILD_TESTS "Build internal test executables" ON)
 
+# Always enable testing (simplifies CI integration); T2D_BUILD_TESTS controls build of executables
+enable_testing()
+message(STATUS "Testing enabled (enable_testing())")
+
 ## Third-party dependencies via git submodules under third_party
 ## We intentionally avoid FetchContent here to pin revisions through submodule SHAs
 ## and enable reproducible builds & offline CI.
@@ -247,4 +251,22 @@ if (T2D_BUILD_TESTS)
         tests/e2e_damage_event.cpp)
     target_link_libraries(t2d_e2e_damage_event PRIVATE t2d_proto libcoro yaml-cpp)
     target_include_directories(t2d_e2e_damage_event PRIVATE src)
+
+    # Register tests with CTest (only if BUILD_TESTING enabled)
+    set(T2D_TEST_TARGETS
+        t2d_unit_session_manager
+        t2d_unit_framing
+        t2d_unit_heartbeat_timeout
+        t2d_e2e_match_start
+        t2d_e2e_input_move
+        t2d_e2e_heartbeat
+        t2d_e2e_bot_fill
+        t2d_e2e_bot_projectile
+        t2d_e2e_delta_snapshots
+        t2d_e2e_damage_event)
+    foreach (_t IN LISTS T2D_TEST_TARGETS)
+        add_test(NAME ${_t} COMMAND ${_t})
+        set_tests_properties(${_t} PROPERTIES TIMEOUT 20)
+    endforeach ()
+    add_custom_target(t2d_tests DEPENDS ${T2D_TEST_TARGETS})
 endif ()

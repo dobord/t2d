@@ -21,6 +21,7 @@ struct TankStateSimple
     float turret_angle{0};
     uint32_t hp{100};
     uint32_t ammo{10};
+    bool alive{true}; // when false, entity considered removed (not sent in future full snapshots)
 };
 
 struct MatchContext
