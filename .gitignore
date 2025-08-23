@@ -36,6 +36,9 @@ Thumbs.db
 **/compile_commands.json
 **/Makefile
 
+# Local alternative debug build dir
+/build-debug/
+
 # CTest artifacts created if tests accidentally run from source root
 /Testing/
 
