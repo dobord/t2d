@@ -40,10 +40,11 @@ jobs:
         if: runner.os == 'Windows'
         shell: powershell
         run: |
-          git clone https://github.com/microsoft/vcpkg $env:USERPROFILE\vcpkg
-          $env:USERPROFILE\vcpkg\bootstrap-vcpkg.bat -disableMetrics
-          $env:USERPROFILE\vcpkg\vcpkg.exe install protobuf:x64-windows
-          echo "VCPKG_TOOLCHAIN_FILE=$env:USERPROFILE\vcpkg\scripts\buildsystems\vcpkg.cmake" >> $env:GITHUB_ENV
+          $vcpkgRoot = "$env:USERPROFILE\vcpkg"
+          if (-not (Test-Path $vcpkgRoot)) { git clone https://github.com/microsoft/vcpkg $vcpkgRoot }
+          & "$vcpkgRoot\bootstrap-vcpkg.bat" -disableMetrics
+          & "$vcpkgRoot\vcpkg.exe" install protobuf:x64-windows
+          echo "VCPKG_TOOLCHAIN_FILE=$vcpkgRoot\scripts\buildsystems\vcpkg.cmake" >> $env:GITHUB_ENV
       - name: Configure ccache env (Unix)
         if: runner.os != 'Windows'
         run: |
