@@ -2,6 +2,7 @@ cmake_minimum_required(VERSION 3.22)
 project(t2d LANGUAGES CXX)
 
 option(T2D_ENABLE_SANITIZERS "Enable Address/Undefined sanitizers (Clang/GCC)" OFF)
+option(T2D_ENABLE_COVERAGE "Enable code coverage instrumentation (GCC/Clang Debug builds)" OFF)
 
 # Allow user to downgrade adopted policy set (NOT the required CMake program version) via
 # -DCMAKE_POLICY_VERSION_MINIMUM=3.5 (for legacy behavior while still requiring a newer CMake binary).
@@ -34,6 +35,20 @@ if (T2D_ENABLE_SANITIZERS)
     else ()
         message(
             WARNING "Sanitizers requested but not supported for compiler ${CMAKE_CXX_COMPILER_ID}")
+    endif ()
+endif ()
+
+# Coverage flags (only in Debug to avoid penalizing optimized builds)
+if (T2D_ENABLE_COVERAGE)
+    if (NOT CMAKE_BUILD_TYPE STREQUAL "Debug")
+        message(WARNING "T2D_ENABLE_COVERAGE=ON but CMAKE_BUILD_TYPE != Debug; enabling anyway")
+    endif ()
+    if (CMAKE_CXX_COMPILER_ID MATCHES "Clang" OR CMAKE_CXX_COMPILER_ID MATCHES "GNU")
+        message(STATUS "Coverage instrumentation enabled (-fprofile-arcs -ftest-coverage)")
+        add_compile_options(--coverage -fprofile-arcs -ftest-coverage)
+        add_link_options(--coverage -fprofile-arcs -ftest-coverage)
+    else ()
+        message(WARNING "Coverage requested but unsupported compiler ${CMAKE_CXX_COMPILER_ID}")
     endif ()
 endif ()
 
