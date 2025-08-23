@@ -42,6 +42,17 @@ static std::string build_metrics_body()
     oss << "t2d_projectiles_active " << rt.projectiles_active.load() << "\n";
     oss << "# TYPE t2d_avg_tick_ns gauge\n";
     oss << "t2d_avg_tick_ns " << avg_ns << "\n";
+    // Histogram (cumulative buckets style) - emulate Prometheus histogram (prototype only, no _sum/_count yet)
+    uint64_t cumulative = 0;
+    constexpr uint64_t base = 250000; // 0.25ms
+    for (int i = 0; i < t2d::metrics::RuntimeCounters::TICK_BUCKETS; ++i) {
+        uint64_t bcount = rt.tick_hist[i].load();
+        cumulative += bcount;
+        uint64_t le = (base << i);
+        oss << "t2d_tick_duration_ns_bucket{le=\"" << le << "\"} " << cumulative << "\n";
+    }
+    // +Inf bucket
+    oss << "t2d_tick_duration_ns_bucket{le=\"+Inf\"} " << cumulative << "\n";
     oss << "# TYPE t2d_auth_failures counter\n";
     oss << "t2d_auth_failures " << rt.auth_failures.load() << "\n";
     return oss.str();
