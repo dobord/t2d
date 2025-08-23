@@ -1,0 +1,104 @@
+#include "server/net/metrics_http.hpp"
+
+#include "common/logger.hpp"
+#include "common/metrics.hpp"
+
+#include <coro/net/tcp/client.hpp>
+#include <coro/net/tcp/server.hpp>
+#include <coro/poll.hpp>
+
+#include <cstring>
+#include <span>
+#include <sstream>
+#include <string>
+
+namespace t2d::net {
+
+static std::string build_metrics_body()
+{
+    std::ostringstream oss;
+    auto &snap = t2d::metrics::snapshot();
+    auto &rt = t2d::metrics::runtime();
+    uint64_t samples = rt.tick_samples.load();
+    uint64_t avg_ns = samples ? rt.tick_duration_ns_accum.load() / samples : 0;
+    // Snapshot metrics
+    oss << "# TYPE t2d_snapshot_full_bytes counter\n";
+    oss << "t2d_snapshot_full_bytes " << snap.full_bytes.load() << "\n";
+    oss << "# TYPE t2d_snapshot_delta_bytes counter\n";
+    oss << "t2d_snapshot_delta_bytes " << snap.delta_bytes.load() << "\n";
+    oss << "# TYPE t2d_snapshot_full_count counter\n";
+    oss << "t2d_snapshot_full_count " << snap.full_count.load() << "\n";
+    oss << "# TYPE t2d_snapshot_delta_count counter\n";
+    oss << "t2d_snapshot_delta_count " << snap.delta_count.load() << "\n";
+    // Runtime metrics (gauges)
+    oss << "# TYPE t2d_queue_depth gauge\n";
+    oss << "t2d_queue_depth " << rt.queue_depth.load() << "\n";
+    oss << "# TYPE t2d_active_matches gauge\n";
+    oss << "t2d_active_matches " << rt.active_matches.load() << "\n";
+    oss << "# TYPE t2d_bots_in_match gauge\n";
+    oss << "t2d_bots_in_match " << rt.bots_in_match.load() << "\n";
+    oss << "# TYPE t2d_projectiles_active gauge\n";
+    oss << "t2d_projectiles_active " << rt.projectiles_active.load() << "\n";
+    oss << "# TYPE t2d_avg_tick_ns gauge\n";
+    oss << "t2d_avg_tick_ns " << avg_ns << "\n";
+    oss << "# TYPE t2d_auth_failures counter\n";
+    oss << "t2d_auth_failures " << rt.auth_failures.load() << "\n";
+    return oss.str();
+}
+
+static coro::task<void> handle_client(std::shared_ptr<coro::io_scheduler> scheduler, coro::net::tcp::client client)
+{
+    co_await scheduler->schedule();
+    // Very small timeout; one-shot request
+    auto pol = co_await client.poll(coro::poll_op::read, std::chrono::milliseconds(200));
+    if (pol != coro::poll_status::event) {
+        co_return;
+    }
+    std::string buf(1024, '\0');
+    auto [rs, span] = client.recv(buf);
+    if (rs != coro::net::recv_status::ok && rs != coro::net::recv_status::would_block)
+        co_return;
+    // naive method/path parse
+    std::string_view req(span.data(), span.size());
+    bool metrics = req.rfind("GET /metrics", 0) == 0;
+    std::string body = metrics ? build_metrics_body() : std::string("not found\n");
+    std::ostringstream resp;
+    resp << "HTTP/1.1 " << (metrics ? "200 OK" : "404 Not Found") << "\r\n";
+    resp << "Content-Type: text/plain; version=0.0.4\r\n";
+    resp << "Content-Length: " << body.size() << "\r\n";
+    resp << "Connection: close\r\n\r\n";
+    resp << body;
+    auto s = resp.str();
+    std::span<const char> out{s.data(), s.size()};
+    while (!out.empty()) {
+        co_await client.poll(coro::poll_op::write);
+        auto [st, rest] = client.send(out);
+        if (st == coro::net::send_status::ok || st == coro::net::send_status::would_block) {
+            out = rest;
+            continue;
+        }
+        break;
+    }
+    co_return;
+}
+
+coro::task<void> run_metrics_endpoint(std::shared_ptr<coro::io_scheduler> scheduler, uint16_t port)
+{
+    co_await scheduler->schedule();
+    t2d::log::info("[metrics] HTTP endpoint on port {}", port);
+    coro::net::tcp::server server{scheduler, coro::net::tcp::server::options{.port = port}};
+    while (true) {
+        auto st = co_await server.poll();
+        if (st == coro::poll_status::event) {
+            auto client = server.accept();
+            if (client.socket().is_valid()) {
+                scheduler->spawn(handle_client(scheduler, std::move(client)));
+            }
+        } else if (st == coro::poll_status::error || st == coro::poll_status::closed) {
+            t2d::log::error("[metrics] server poll error/closed");
+            co_return;
+        }
+    }
+}
+
+} // namespace t2d::net

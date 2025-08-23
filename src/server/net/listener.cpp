@@ -117,12 +117,24 @@ static coro::task<void> connection_loop(
             if (cmsg.has_auth_request()) {
                 const auto &ar = cmsg.auth_request();
                 auto *resp = smsg.mutable_auth_response();
-                resp->set_success(true);
-                std::string sid = "sess_" + ar.client_version();
-                resp->set_session_id(sid);
-                resp->set_reason("");
-                t2d::mm::instance().authenticate(session, sid);
-                t2d::log::info("[conn] AuthRequest -> success sid={}", sid);
+                bool ok = true;
+                // Prototype auth check: require non-empty oauth_token
+                if (ar.oauth_token().empty()) {
+                    ok = false;
+                }
+                if (!ok) {
+                    resp->set_success(false);
+                    resp->set_reason("auth_failed");
+                    t2d::metrics::runtime().auth_failures.fetch_add(1, std::memory_order_relaxed);
+                    t2d::log::warn("[conn] AuthRequest failed (empty token)");
+                } else {
+                    resp->set_success(true);
+                    std::string sid = "sess_" + ar.client_version();
+                    resp->set_session_id(sid);
+                    resp->set_reason("");
+                    t2d::mm::instance().authenticate(session, sid);
+                    t2d::log::info("[conn] AuthRequest -> success sid={}", sid);
+                }
             } else if (cmsg.has_queue_join()) {
                 auto *qs = smsg.mutable_queue_status();
                 qs->set_position(1);

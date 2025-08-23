@@ -3,6 +3,7 @@
 #include "server/matchmaking/matchmaker.hpp"
 #include "server/matchmaking/session_manager.hpp"
 #include "server/net/listener.hpp"
+#include "server/net/metrics_http.hpp"
 
 #include <coro/default_executor.hpp>
 #include <coro/io_scheduler.hpp>
@@ -58,6 +59,7 @@ struct ServerConfig
     uint32_t matchmaker_poll_ms{200};
     std::string log_level{"info"};
     bool log_json{false};
+    uint16_t metrics_port{0}; // 0 disables
 };
 
 static ServerConfig load_config(const std::string &path)
@@ -89,6 +91,9 @@ static ServerConfig load_config(const std::string &path)
     }
     if (root["log_json"]) {
         cfg.log_json = root["log_json"].as<bool>();
+    }
+    if (root["metrics_port"]) {
+        cfg.metrics_port = root["metrics_port"].as<uint16_t>();
     }
     return cfg;
 }
@@ -147,10 +152,29 @@ int main(int argc, char **argv)
             cfg.full_snapshot_interval_ticks}));
     // Launch heartbeat monitor
     scheduler->spawn(heartbeat_monitor(scheduler, cfg.heartbeat_timeout_seconds));
+    if (cfg.metrics_port != 0) {
+        scheduler->spawn(t2d::net::run_metrics_endpoint(scheduler, cfg.metrics_port));
+    }
 
     // Main thread just sleeps; real implementation will add signal handling & graceful shutdown.
     while (!t2d::g_shutdown.load()) {
+        static auto last_metrics = std::chrono::steady_clock::now();
         std::this_thread::sleep_for(std::chrono::seconds(1));
+        auto now = std::chrono::steady_clock::now();
+        if (now - last_metrics >= std::chrono::seconds(60)) {
+            last_metrics = now;
+            auto &rt = t2d::metrics::runtime();
+            uint64_t samples = rt.tick_samples.load();
+            uint64_t avg_ns = samples ? rt.tick_duration_ns_accum.load() / samples : 0;
+            t2d::log::info(
+                "{\"metric\":\"runtime\",\"avg_tick_ns\":{},\"queue_depth\":{},\"active_matches\":{},\"bots_in_match\":"
+                "{},\"projectiles_active\":{}}",
+                avg_ns,
+                rt.queue_depth.load(),
+                rt.active_matches.load(),
+                rt.bots_in_match.load(),
+                rt.projectiles_active.load());
+        }
     }
     t2d::log::info("Shutdown complete.");
     // Dump snapshot metrics (stdout JSON lines if JSON mode enabled externally in logger)

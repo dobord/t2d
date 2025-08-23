@@ -20,6 +20,7 @@ coro::task<void> run_match(std::shared_ptr<coro::io_scheduler> scheduler, std::s
             co_await scheduler->yield_for(next - now);
             continue;
         }
+        auto tick_start = now;
         next += tick_interval;
         ctx->server_tick++;
         // Basic input-driven updates (no collision / bounds yet)
@@ -230,8 +231,21 @@ coro::task<void> run_match(std::shared_ptr<coro::io_scheduler> scheduler, std::s
         }
         if (ctx->server_tick > ctx->tick_rate * 10) {
             std::cout << "[match] end id=" << ctx->match_id << std::endl;
+            // Adjust metrics on match end
+            t2d::metrics::runtime().active_matches.fetch_sub(1, std::memory_order_relaxed);
+            // bots_in_match is a gauge reflecting current bots across matches; subtract bots from this match
+            size_t bots = 0;
+            for (auto &pl : ctx->players)
+                if (pl->is_bot)
+                    ++bots;
+            if (bots > 0)
+                t2d::metrics::runtime().bots_in_match.fetch_sub(bots, std::memory_order_relaxed);
             co_return;
         }
+        // Record runtime metrics
+        t2d::metrics::runtime().projectiles_active.store(ctx->projectiles.size(), std::memory_order_relaxed);
+        auto tick_ns = std::chrono::duration_cast<std::chrono::nanoseconds>(clock::now() - tick_start).count();
+        t2d::metrics::add_tick_duration(static_cast<uint64_t>(tick_ns));
     }
 }
 

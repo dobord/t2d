@@ -80,7 +80,8 @@ if (T2D_BUILD_SERVER)
         src/server/main.cpp
         src/server/matchmaking/matchmaker.cpp
         src/server/matchmaking/session_manager.cpp
-        src/server/net/listener.cpp)
+        src/server/net/listener.cpp
+        src/server/net/metrics_http.cpp)
     target_include_directories(t2d_server PRIVATE src)
     target_link_libraries(t2d_server PRIVATE t2d_proto yaml-cpp libcoro box2d)
     target_compile_definitions(t2d_server PRIVATE T2D_VERSION="0.0.1-dev")

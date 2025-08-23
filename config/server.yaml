@@ -13,3 +13,4 @@ heartbeat_timeout_seconds: 30
 matchmaker_poll_ms: 200
 log_level: info  # debug|info|warn|error
 log_json: false  # true to emit JSON lines
+metrics_port: 9100  # 0 disables metrics HTTP endpoint (/metrics)

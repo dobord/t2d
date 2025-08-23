@@ -1,4 +1,5 @@
 #include "common/logger.hpp"
+#include "common/metrics.hpp"
 #include "server/game/match.hpp"
 #include "server/matchmaking/session_manager.hpp"
 
@@ -34,6 +35,7 @@ coro::task<void> run_matchmaker(std::shared_ptr<coro::io_scheduler> scheduler, M
         // sleep configured poll interval
         co_await scheduler->yield_for(std::chrono::milliseconds(cfg.poll_interval_ms));
         auto queued = mgr.snapshot_queue();
+        t2d::metrics::runtime().queue_depth.store(queued.size(), std::memory_order_relaxed);
         // If not enough real players but timeout exceeded for earliest player, fill with bots
         if (!queued.empty() && queued.size() < cfg.max_players) {
             // find earliest join time
@@ -111,6 +113,13 @@ coro::task<void> run_matchmaker(std::shared_ptr<coro::io_scheduler> scheduler, M
             scheduler->spawn(t2d::game::run_match(scheduler, ctx));
             {
                 t2d::log::info(std::string("match created players=") + std::to_string(group.size()));
+                // Update metrics: count bots in this match
+                size_t bots = 0;
+                for (auto &s : group)
+                    if (s->is_bot)
+                        ++bots;
+                t2d::metrics::runtime().active_matches.fetch_add(1, std::memory_order_relaxed);
+                t2d::metrics::runtime().bots_in_match.fetch_add(bots, std::memory_order_relaxed);
             }
         }
         // TODO: partial match start after timeout with bots (future)
