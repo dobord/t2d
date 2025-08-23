@@ -21,8 +21,8 @@ jobs:
             install: choco install -y cmake --installargs 'ADD_CMAKE_TO_PATH=1' ninja git || powershell -Command "Write-Host install step partial"
             generator_opts: "-G Ninja"
           - os: macos-latest
-            triplet: macos-amd64
-            install: brew update && brew install protobuf cmake ninja || true
+            triplet: macos-arm64
+            install: brew update && brew install protobuf cmake ninja ccache || true
             generator_opts: "-G Ninja"
     runs-on: ${{ matrix.os }}
     steps:
@@ -72,9 +72,23 @@ jobs:
       - name: Configure ccache env (Unix)
         if: runner.os != 'Windows'
         run: |
-          which ccache || sudo apt-get install -y ccache || true
-          echo "CMAKE_CXX_COMPILER_LAUNCHER=ccache" >> $GITHUB_ENV
-          echo "CMAKE_C_COMPILER_LAUNCHER=ccache" >> $GITHUB_ENV
+          set -e
+          if command -v ccache >/dev/null 2>&1; then
+            echo "ccache already present"
+          else
+            if [ "$RUNNER_OS" = "Linux" ]; then
+              sudo apt-get update && sudo apt-get install -y ccache || true
+            elif [ "$RUNNER_OS" = "macOS" ]; then
+              brew install ccache || true
+            fi
+          fi
+          if command -v ccache >/dev/null 2>&1; then
+            echo "CMAKE_CXX_COMPILER_LAUNCHER=ccache" >> $GITHUB_ENV
+            echo "CMAKE_C_COMPILER_LAUNCHER=ccache" >> $GITHUB_ENV
+            ccache --version || true
+          else
+            echo "ccache not available; proceeding without compiler launcher"
+          fi
       - name: Configure (Unix)
         if: runner.os != 'Windows'
         run: cmake -S . -B build -DCMAKE_BUILD_TYPE=Release -DT2D_BUILD_TESTS=ON -DT2D_BUILD_CLIENT=ON -DCMAKE_CXX_FLAGS_RELEASE="-O2 -g0" -DCMAKE_C_FLAGS_RELEASE="-O2 -g0" ${{ matrix.generator_opts }}
