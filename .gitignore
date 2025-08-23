@@ -67,3 +67,6 @@ app/.gradle/
 
 # Translations
 translations.txt
+
+# Local developer overrides (not committed)
+qt_local.cmake

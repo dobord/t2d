@@ -1,6 +1,13 @@
 cmake_minimum_required(VERSION 3.22) # SPDX-License-Identifier: Apache-2.0
 project(t2d LANGUAGES CXX)
 
+# Optional local Qt path override (not versioned). Developers can create qt_local.cmake with:
+#   set(CMAKE_PREFIX_PATH "/opt/Qt/6.8.3/gcc_64" ${CMAKE_PREFIX_PATH})
+# or adjust QT_HOST_PATH etc. This file is git-ignored.
+if (EXISTS ${CMAKE_CURRENT_SOURCE_DIR}/qt_local.cmake)
+    include(${CMAKE_CURRENT_SOURCE_DIR}/qt_local.cmake)
+endif ()
+
 option(T2D_ENABLE_SANITIZERS "Enable Address/Undefined sanitizers (Clang/GCC)" OFF)
 option(T2D_ENABLE_TSAN "Enable Thread Sanitizer (Clang/GCC)" OFF)
 option(T2D_ENABLE_COVERAGE "Enable code coverage instrumentation (GCC/Clang Debug builds)" OFF)
