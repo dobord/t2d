@@ -21,6 +21,8 @@ static void process_contacts(
     auto events = b2World_GetContactEvents(phys_world.id);
     if (events.beginCount <= 0)
         return;
+    // Defer projectile body destruction until after iterating events to avoid invalidating shape ids mid-loop.
+    std::vector<uint32_t> to_destroy_projectiles;
     for (int i = 0; i < events.beginCount; ++i) {
         const b2ContactBeginTouchEvent &ev = events.beginEvents[i];
         b2BodyId a = b2Shape_GetBody(ev.shapeIdA);
@@ -88,11 +90,20 @@ static void process_contacts(
         }
         auto body_it = projectile_bodies.find(proj_id);
         if (body_it != projectile_bodies.end()) {
-            t2d::phys::destroy_body(body_it->second);
-            projectile_bodies.erase(body_it);
+            to_destroy_projectiles.push_back(proj_id);
         }
         ctx.removed_projectiles_since_full.push_back(proj_id);
         ctx.projectiles.erase(pit);
+    }
+    // Perform deferred destruction
+    if (!to_destroy_projectiles.empty()) {
+        for (auto pid : to_destroy_projectiles) {
+            auto it = projectile_bodies.find(pid);
+            if (it != projectile_bodies.end()) {
+                t2d::phys::destroy_body(it->second);
+                projectile_bodies.erase(it);
+            }
+        }
     }
 }
 } // anonymous namespace
@@ -207,13 +218,17 @@ coro::task<void> run_match(std::shared_ptr<coro::io_scheduler> scheduler, std::s
                 // self-collision logic
                 // Spawn projectile just beyond barrel tip: hull half length (3.0) + barrel length (4.0) + safety margin
                 // (0.2)
-                float forward_offset = 3.0f + 4.0f + 0.2f; // 7.2 units
+                // Previous forward_offset (7.2) caused instant hits at 7-unit center spacing (projectile spawned inside
+                // next tank hull). Use front hull half-length (3.0) + small safety margin (0.3) so projectile starts
+                // just ahead of firing hull and travels through the barrel visually (barrel length is cosmetic only for
+                // now).
+                float forward_offset = 3.0f + 0.3f; // 3.3 units
                 float ox = t.x + std::cos(rad) * forward_offset;
                 float oy = t.y + std::sin(rad) * forward_offset;
                 ctx->projectiles.push_back({pid, ox, oy, std::cos(rad) * speed, std::sin(rad) * speed, t.entity_id});
-                // Create physics body for projectile
+                // Create physics body for projectile at the same offset position
                 auto body =
-                    t2d::phys::create_projectile(phys_world, t.x, t.y, std::cos(rad) * speed, std::sin(rad) * speed);
+                    t2d::phys::create_projectile(phys_world, ox, oy, std::cos(rad) * speed, std::sin(rad) * speed);
                 projectile_bodies.emplace(pid, body);
                 t.ammo--;
                 if (sess->is_bot)
@@ -443,7 +458,8 @@ coro::task<void> run_match(std::shared_ptr<coro::io_scheduler> scheduler, std::s
                     last_alive_id = t.entity_id;
                 }
             }
-            if (alive_count <= 1) {
+            // If match started with only 1 player (all others bots), allow longer duration before auto-end.
+            if (alive_count <= 1 && ctx->initial_player_count > 1) {
                 ctx->match_over = true;
                 ctx->winner_entity = last_alive_id;
             } else if (ctx->server_tick > ctx->tick_rate * 30) { // fallback timeout ~30s
@@ -460,7 +476,10 @@ coro::task<void> run_match(std::shared_ptr<coro::io_scheduler> scheduler, std::s
                 t2d::log::info("[match] over id={} winner_entity={}", ctx->match_id, ctx->winner_entity);
             }
         }
-        if (ctx->match_over || ctx->server_tick > ctx->tick_rate * 10) {
+        // Extended max duration if single real player (avoid too-short session): 120s else 10s proto cap
+        uint64_t hard_cap_ticks = (ctx->initial_player_count <= 1) ? (ctx->tick_rate * 120ull)
+                                                                   : (ctx->tick_rate * 10ull);
+        if (ctx->match_over || ctx->server_tick > hard_cap_ticks) {
             t2d::log::info("[match] end id={}", ctx->match_id);
             // Destroy remaining projectile bodies
             for (auto &kv : projectile_bodies) {

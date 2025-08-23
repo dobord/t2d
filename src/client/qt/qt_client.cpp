@@ -120,6 +120,13 @@ coro::task<void> run_network(
             ic->set_turn_dir(input->turn());
             ic->set_turret_turn(input->turretTurn());
             ic->set_fire(input->fire());
+            t2d::log::debug(
+                "[qt] send_input ctick={} move={} turn={} turret={} fire={}",
+                loop_iter,
+                input->move(),
+                input->turn(),
+                input->turretTurn(),
+                input->fire());
             co_await send_frame(cli, in);
         }
         t2d::ServerMessage sm;
@@ -149,7 +156,7 @@ int main(int argc, char **argv)
 {
     std::signal(SIGINT, handle_sig);
     std::signal(SIGTERM, handle_sig);
-    setenv("T2D_LOG_LEVEL", "info", 1);
+    setenv("T2D_LOG_LEVEL", "debug", 1); // force debug to observe input sending
     t2d::log::init();
     QGuiApplication app(argc, argv);
     EntityModel tankModel; // tanks

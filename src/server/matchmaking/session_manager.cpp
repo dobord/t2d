@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: Apache-2.0
 #include "server/matchmaking/session_manager.hpp"
 
+#include "common/logger.hpp"
 #include "common/metrics.hpp"
 
 #include <algorithm>
@@ -92,11 +93,25 @@ void SessionManager::update_input(const std::shared_ptr<Session> &s, const t2d::
     std::scoped_lock lk{m_mutex};
     if (cmd.client_tick() < s->input.last_client_tick)
         return; // ignore old
+    bool move_changed = s->input.move_dir != cmd.move_dir();
+    bool turn_changed = s->input.turn_dir != cmd.turn_dir();
+    bool turret_changed = s->input.turret_turn != cmd.turret_turn();
+    bool fire_changed = s->input.fire != cmd.fire();
     s->input.last_client_tick = cmd.client_tick();
     s->input.move_dir = cmd.move_dir();
     s->input.turn_dir = cmd.turn_dir();
     s->input.turret_turn = cmd.turret_turn();
     s->input.fire = cmd.fire();
+    if (!s->is_bot && (move_changed || turn_changed || turret_changed || fire_changed)) {
+        t2d::log::info(
+            "[input] session={} ctick={} move={} turn={} turret={} fire={}",
+            s->session_id,
+            s->input.last_client_tick,
+            s->input.move_dir,
+            s->input.turn_dir,
+            s->input.turret_turn,
+            s->input.fire);
+    }
 }
 
 Session::InputState SessionManager::get_input_copy(const std::shared_ptr<Session> &s)

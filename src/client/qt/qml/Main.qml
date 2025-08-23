@@ -10,10 +10,20 @@ Window {
     title: "t2d Qt Client"
     Component.onCompleted: root.requestActivate()
 
+    // Global key handlers as fallback if inner item loses focus
+    Keys.onPressed: function(ev) {
+        if (!rootItem.focus) rootItem.forceActiveFocus();
+        rootItem.Keys.onPressed(ev);
+    }
+    Keys.onReleased: function(ev) { rootItem.Keys.onReleased(ev); }
+
     Item { // focusable container for key handling
         id: rootItem
         anchors.fill: parent
-        focus: true
+    focus: true
+    property bool followCamera: false // default off so movement is visible
+    property bool showGrid: true
+    Component.onCompleted: { rootItem.forceActiveFocus(); }
 
     // Keyboard state flags (simple set of currently pressed movement keys)
     property bool keyW: false
@@ -43,6 +53,8 @@ Window {
         // Fire (held space)
         var fr = keySpace
         if (inputState.fire !== fr) inputState.fire = fr
+    // Debug log
+    console.debug(`INPUT mv=${inputState.move} turn=${inputState.turn} turret=${inputState.turretTurn} fire=${inputState.fire}`)
     }
 
     Keys.onPressed: function(ev) {
@@ -54,6 +66,8 @@ Window {
         case Qt.Key_Q: keyQ = true; break;
         case Qt.Key_E: keyE = true; break;
         case Qt.Key_Space: keySpace = true; break;
+    case Qt.Key_G: rootItem.followCamera = !rootItem.followCamera; console.debug('followCamera='+rootItem.followCamera); break;
+    case Qt.Key_H: rootItem.showGrid = !rootItem.showGrid; console.debug('showGrid='+rootItem.showGrid); break;
         default: return;
         }
         ev.accepted = true;
@@ -102,7 +116,28 @@ Window {
             ctx.save();
             ctx.translate(width/2, height/2);
             ctx.scale(scale, scale);
-            ctx.translate(-centerX, -centerY);
+            if (rootItem.followCamera)
+                ctx.translate(-centerX, -centerY);
+            // Optional background grid for movement perception
+            if (rootItem.showGrid) {
+                const gridSpacing = 5; // world units
+                const halfW = width/scale/2;
+                const halfH = height/scale/2;
+                ctx.save();
+                ctx.strokeStyle = '#23333c';
+                ctx.lineWidth = 0.02;
+                ctx.beginPath();
+                for (let gx = -halfW; gx <= halfW; gx += gridSpacing) {
+                    ctx.moveTo(gx, -halfH);
+                    ctx.lineTo(gx, halfH);
+                }
+                for (let gy = -halfH; gy <= halfH; gy += gridSpacing) {
+                    ctx.moveTo(-halfW, gy);
+                    ctx.lineTo(halfW, gy);
+                }
+                ctx.stroke();
+                ctx.restore();
+            }
             // Draw tanks with geometry: hull 3x6 (width x length), tracks 6x0.3, turret radius 1.3, barrel 4x0.1
             for(let i=0;i<entityModel.count();++i){
                 const wx = entityModel.interpX(i,a);
@@ -223,7 +258,7 @@ Window {
         anchors.right: parent.right
         anchors.bottomMargin: 112
         anchors.rightMargin: 12
-        text: "Snapshot tanks=" + tankList.count
+    text: "Snapshot tanks=" + tankList.count + "  follow=" + (rootItem.followCamera?"on":"off") + "  (G toggle, H grid) focus=" + rootItem.focus
         color: "#8098a8"
         font.pixelSize: 14
     }

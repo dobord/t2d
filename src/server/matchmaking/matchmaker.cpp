@@ -128,6 +128,7 @@ coro::task<void> run_matchmaker(std::shared_ptr<coro::io_scheduler> scheduler, M
             ctx->match_id = "m_" + std::to_string(seed);
             ctx->tick_rate = cfg.tick_rate;
             ctx->players = group;
+            ctx->initial_player_count = static_cast<uint32_t>(group.size());
             ctx->snapshot_interval_ticks = cfg.snapshot_interval_ticks;
             ctx->full_snapshot_interval_ticks = cfg.full_snapshot_interval_ticks;
             ctx->bot_fire_interval_ticks = cfg.bot_fire_interval_ticks;

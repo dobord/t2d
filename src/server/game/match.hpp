@@ -29,6 +29,7 @@ struct MatchContext
 {
     std::string match_id;
     uint32_t tick_rate{30};
+    uint32_t initial_player_count{0};
     std::vector<std::shared_ptr<t2d::mm::Session>> players;
     std::vector<TankStateSimple> tanks; // parallel by index to players for prototype
     uint64_t server_tick{0};
