@@ -48,6 +48,7 @@ Thumbs.db
 # Local no-Qt and Qt client build dirs
 /build-noqt/
 /build-qt/
+/build-server/
 
 # CTest artifacts created if tests accidentally run from source root
 /Testing/
