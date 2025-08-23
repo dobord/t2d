@@ -1,8 +1,10 @@
+#include "common/logger.hpp"
 #include "common/metrics.hpp"
 #include "server/matchmaking/matchmaker.hpp"
 #include "server/matchmaking/session_manager.hpp"
 #include "server/net/listener.hpp"
 
+#include <coro/default_executor.hpp>
 #include <coro/io_scheduler.hpp>
 #include <yaml-cpp/yaml.h>
 
@@ -29,8 +31,7 @@ static coro::task<void> heartbeat_monitor(std::shared_ptr<coro::io_scheduler> sc
                 continue;
             auto diff = std::chrono::duration_cast<std::chrono::seconds>(now - s->last_heartbeat).count();
             if (diff > timeout_sec) {
-                std::cerr << "[hb] disconnect timeout session=" << s->session_id << " diff=" << diff << "s"
-                          << std::endl;
+                t2d::log::warn("[hb] disconnect timeout session={} diff={}s", s->session_id, diff);
                 t2d::mm::instance().disconnect_session(s);
             }
         }
@@ -90,7 +91,7 @@ std::atomic_bool g_shutdown{false};
 static void handle_signal(int)
 {
     t2d::g_shutdown.store(true);
-    std::cerr << "Signal received, shutting down..." << std::endl;
+    t2d::log::info("Signal received, shutting down...");
 }
 
 int main(int argc, char **argv)
@@ -103,19 +104,19 @@ int main(int argc, char **argv)
     try {
         cfg = t2d::load_config(config_path);
     } catch (const std::exception &ex) {
-        std::cerr << "Failed to load config: " << ex.what() << "\n";
+        t2d::log::error("Failed to load config: {}", ex.what());
         return 1;
     }
 
     std::signal(SIGINT, handle_signal);
     std::signal(SIGTERM, handle_signal);
 
-    std::cout << "t2d server starting (version: " << T2D_VERSION << ")\n";
-    std::cout << "Tick rate: " << cfg.tick_rate << " Hz\n";
-    std::cout << "Listening on port: " << cfg.listen_port << "\n";
+    t2d::log::info("t2d server starting (version: {})", T2D_VERSION);
+    t2d::log::info("Tick rate: {} Hz", cfg.tick_rate);
+    t2d::log::info("Listening on port: {}", cfg.listen_port);
 
     // io_scheduler requires options; construct explicitly
-    auto scheduler = coro::io_scheduler::make_shared();
+    auto scheduler = coro::default_executor::io_executor();
     // Spawn TCP listener coroutine
     scheduler->spawn(t2d::net::run_listener(scheduler, cfg.listen_port));
     // Launch matchmaker coroutine
@@ -135,13 +136,17 @@ int main(int argc, char **argv)
     while (!t2d::g_shutdown.load()) {
         std::this_thread::sleep_for(std::chrono::seconds(1));
     }
-    std::cout << "Shutdown complete." << std::endl;
+    t2d::log::info("Shutdown complete.");
     // Dump snapshot metrics (stdout JSON lines if JSON mode enabled externally in logger)
     auto fullB = t2d::metrics::snapshot().full_bytes.load();
     auto deltaB = t2d::metrics::snapshot().delta_bytes.load();
     auto fullC = t2d::metrics::snapshot().full_count.load();
     auto deltaC = t2d::metrics::snapshot().delta_count.load();
-    std::cout << "{\"metric\":\"snapshot_totals\",\"full_bytes\":" << fullB << ",\"delta_bytes\":" << deltaB
-              << ",\"full_count\":" << fullC << ",\"delta_count\":" << deltaC << "}" << std::endl;
+    t2d::log::info(
+        "{\"metric\":\"snapshot_totals\",\"full_bytes\":{} ,\"delta_bytes\":{} ,\"full_count\":{} ,\"delta_count\":{}}",
+        fullB,
+        deltaB,
+        fullC,
+        deltaC);
     return 0;
 }

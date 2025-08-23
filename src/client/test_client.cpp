@@ -1,8 +1,10 @@
 #include "common/framing.hpp"
+#include "common/logger.hpp"
 #include "game.pb.h"
 
 #include <arpa/inet.h>
 #include <coro/coro.hpp>
+#include <coro/default_executor.hpp>
 #include <coro/io_scheduler.hpp>
 #include <coro/net/tcp/client.hpp>
 
@@ -61,10 +63,10 @@ static coro::task<void> client_flow(std::shared_ptr<coro::io_scheduler> schedule
     coro::net::tcp::client cli{scheduler, {.address = coro::net::ip_address::from_string("127.0.0.1"), .port = port}};
     auto cstatus = co_await cli.connect(5s);
     if (cstatus != coro::net::connect_status::connected) {
-        std::cerr << "Connect failed\n";
+        t2d::log::error("client connect failed");
         co_return;
     }
-    std::cout << "Connected\n";
+    t2d::log::info("client connected");
     // Auth
     t2d::ClientMessage authMsg;
     auto *ar = authMsg.mutable_auth_request();
@@ -82,16 +84,15 @@ static coro::task<void> client_flow(std::shared_ptr<coro::io_scheduler> schedule
         if (!co_await read_frame(cli, sm))
             continue;
         if (sm.has_auth_response()) {
-            std::cout << "AuthResponse success=" << sm.auth_response().success() << std::endl;
+            t2d::log::info("AuthResponse success={} ", sm.auth_response().success());
         } else if (sm.has_queue_status()) {
-            std::cout << "Queue position=" << sm.queue_status().position() << std::endl;
+            t2d::log::debug("Queue position={}", sm.queue_status().position());
         } else if (sm.has_match_start()) {
-            std::cout << "MatchStart id=" << sm.match_start().match_id() << " seed=" << sm.match_start().seed()
-                      << std::endl;
+            t2d::log::info("MatchStart id={} seed={}", sm.match_start().match_id(), sm.match_start().seed());
             co_return;
         }
     }
-    std::cout << "Timeout waiting match start" << std::endl;
+    t2d::log::warn("Timeout waiting match start");
 }
 
 int main(int argc, char **argv)
@@ -99,7 +100,7 @@ int main(int argc, char **argv)
     uint16_t port = 40000;
     if (argc > 1)
         port = static_cast<uint16_t>(std::stoi(argv[1]));
-    auto scheduler = coro::io_scheduler::make_shared();
+    auto scheduler = coro::default_executor::io_executor();
     coro::sync_wait(client_flow(scheduler, port));
     return 0;
 }

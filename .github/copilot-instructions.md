@@ -4,8 +4,14 @@ This repository uses C++20 coroutines with libcoro and yaml-cpp. Please follow t
 
 ## Coroutines and scheduling
 - Do NOT implement coroutines as lambdas with captures. Prefer free functions (or static member functions) with explicit parameters.
-- Every coroutine MUST begin with:
-  - `co_await scheduler->schedule();` to ensure execution on the io_scheduler context before any I/O or blocking operations.
+- Every coroutine MUST begin with one scheduling/yield operation to bind execution to the io_scheduler context BEFORE any I/O or blocking operations. Allowed first await expressions (choose one):
+  - `co_await scheduler->schedule();`
+  - `co_await scheduler->schedule_after(duration);`
+  - `co_await scheduler->schedule_at(time_point);`
+  - `co_await scheduler->yield();`
+  - `co_await scheduler->yield_for(duration);`
+  - `co_await scheduler->yield_until(time_point);`
+  Rationale: any of these establishes cooperative resumption on the correct scheduler thread before proceeding.
 - When spawning background work, use the existing scheduler and pass pointers/references to long‑lived objects owned by the caller; do not construct a new scheduler inside a coroutine.
 - Example pattern:
   ```cpp

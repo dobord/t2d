@@ -1,6 +1,7 @@
 #include "server/net/listener.hpp"
 
 #include "common/framing.hpp"
+#include "common/logger.hpp"
 #include "game.pb.h"
 #include "server/matchmaking/session_manager.hpp"
 
@@ -23,7 +24,7 @@ static coro::task<void> connection_loop(
 coro::task<void> run_listener(std::shared_ptr<coro::io_scheduler> scheduler, uint16_t port)
 {
     co_await scheduler->schedule();
-    std::cout << "[listener] Starting TCP listener on port " << port << std::endl;
+    t2d::log::info("[listener] Starting TCP listener on port {}", port);
     coro::net::tcp::server server{scheduler, coro::net::tcp::server::options{.port = port}};
     while (true) {
         auto status = co_await server.poll();
@@ -34,7 +35,7 @@ coro::task<void> run_listener(std::shared_ptr<coro::io_scheduler> scheduler, uin
                 scheduler->spawn(connection_loop(scheduler, session));
             }
         } else if (status == coro::poll_status::error || status == coro::poll_status::closed) {
-            std::cerr << "[listener] Poll error/closed, exiting listener loop\n";
+            t2d::log::error("[listener] Poll error/closed, exiting listener loop");
             co_return;
         }
     }
@@ -63,7 +64,7 @@ static coro::task<void> connection_loop(
     std::shared_ptr<coro::io_scheduler> scheduler, std::shared_ptr<t2d::mm::Session> session)
 {
     co_await scheduler->schedule();
-    std::cout << "[conn] New connection" << std::endl;
+    t2d::log::info("[conn] New connection");
     t2d::netutil::FrameParseState fps; // streaming frame parser state
     while (true) {
         // Flush pending outbound first (if any)
@@ -95,11 +96,11 @@ static coro::task<void> connection_loop(
         std::string tmp(1024, '\0');
         auto [rstatus, span] = session->client->recv(tmp);
         if (rstatus == coro::net::recv_status::closed) {
-            std::cout << "[conn] Closed by peer" << std::endl;
+            t2d::log::info("[conn] Closed by peer");
             co_return;
         }
         if (rstatus != coro::net::recv_status::ok && rstatus != coro::net::recv_status::would_block) {
-            std::cerr << "[conn] recv error" << std::endl;
+            t2d::log::warn("[conn] recv error");
             co_return;
         }
         if (rstatus == coro::net::recv_status::ok) {
@@ -109,7 +110,7 @@ static coro::task<void> connection_loop(
         while (t2d::netutil::try_extract(fps, payload)) {
             t2d::ClientMessage cmsg;
             if (!cmsg.ParseFromArray(payload.data(), (int)payload.size())) {
-                std::cerr << "[conn] Failed to parse protobuf, dropping connection" << std::endl;
+                t2d::log::warn("[conn] Failed to parse protobuf, dropping connection");
                 co_return;
             }
             t2d::ServerMessage smsg;
@@ -121,7 +122,7 @@ static coro::task<void> connection_loop(
                 resp->set_session_id(sid);
                 resp->set_reason("");
                 t2d::mm::instance().authenticate(session, sid);
-                std::cout << "[conn] AuthRequest -> success sid=" << sid << std::endl;
+                t2d::log::info("[conn] AuthRequest -> success sid={}", sid);
             } else if (cmsg.has_queue_join()) {
                 auto *qs = smsg.mutable_queue_status();
                 qs->set_position(1);
@@ -131,8 +132,7 @@ static coro::task<void> connection_loop(
                 if (session->authenticated) {
                     t2d::mm::instance().enqueue(session);
                 }
-                std::cout << "[conn] QueueJoin received (enqueued=" << (session->authenticated ? "yes" : "no-auth")
-                          << ")" << std::endl;
+                t2d::log::info("[conn] QueueJoin received (enqueued={})", (session->authenticated ? "yes" : "no-auth"));
             } else if (cmsg.has_heartbeat()) {
                 t2d::mm::instance().update_heartbeat(session);
                 auto now_ms = std::chrono::duration_cast<std::chrono::milliseconds>(
@@ -160,7 +160,7 @@ static coro::task<void> connection_loop(
             }
             std::string out;
             if (!smsg.SerializeToString(&out)) {
-                std::cerr << "[conn] Failed serialize server msg" << std::endl;
+                t2d::log::warn("[conn] Failed serialize server msg");
                 continue;
             }
             uint32_t out_len = htonl(static_cast<uint32_t>(out.size()));
@@ -170,12 +170,12 @@ static coro::task<void> connection_loop(
             std::memcpy(frame.data() + 4, out.data(), out.size());
             if (session->client)
                 co_await send_all(*session->client, std::span<const char>(frame.data(), frame.size()));
-            std::cout << "[conn] Sent server message type="
-                      << (smsg.has_auth_response()      ? "AuthResponse"
-                              : smsg.has_queue_status() ? "QueueStatus"
-                              : smsg.has_match_start()  ? "MatchStart"
-                                                        : "Other")
-                      << std::endl;
+            t2d::log::debug(
+                "[conn] Sent server message type={}",
+                (smsg.has_auth_response()      ? "AuthResponse"
+                     : smsg.has_queue_status() ? "QueueStatus"
+                     : smsg.has_match_start()  ? "MatchStart"
+                                               : "Other"));
         }
     }
 }

@@ -86,15 +86,30 @@ endif ()
 find_program(CLANG_FORMAT_BIN clang-format)
 find_program(CMAKE_FORMAT_BIN cmake-format)
 if (CLANG_FORMAT_BIN)
-    file(
-        GLOB_RECURSE
+    # Collect only first-party sources (exclude third_party explicitly)
+    set(T2D_FORMAT_DIRS src include tests)
+    set(ALL_CXX_SOURCE_FILES)
+    foreach (_d IN LISTS T2D_FORMAT_DIRS)
+        if (EXISTS ${CMAKE_CURRENT_SOURCE_DIR}/${_d})
+            file(
+                GLOB_RECURSE
+                _cur
+                CONFIGURE_DEPENDS
+                ${_d}/*.cpp
+                ${_d}/*.hpp
+                ${_d}/*.h
+                ${_d}/*.cc
+                ${_d}/*.cxx)
+            list(APPEND ALL_CXX_SOURCE_FILES ${_cur})
+        endif ()
+    endforeach ()
+    # Defensive filter in case a future path adds third_party via symlink
+    list(
+        FILTER
         ALL_CXX_SOURCE_FILES
-        CONFIGURE_DEPENDS
-        src/*.cpp
-        src/*.hpp
-        src/*.h
-        include/*.hpp
-        include/*.h)
+        EXCLUDE
+        REGEX
+        ".*/third_party/.*")
     # Avoid target name collision if a third_party submodule already defined 'format'
     if (NOT TARGET format)
         add_custom_target(
