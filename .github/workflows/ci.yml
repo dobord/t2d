@@ -83,21 +83,29 @@ jobs:
       - name: Verify dependency manifest
         run: |
           set -e
-          current=$(git submodule status | awk '{print $1, $2}')
-          while read -r name path ref sha; do
-            : # table header skip
-          done < /dev/null
-          # Extract SHAs from DEPENDENCIES.md
-          while read -r line; do
-            if [[ $line == '|'*'|'* ]]; then
-              # | box2d | third_party/box2d | v3.1.1 | <sha> |
-              IFS='|' read -r _ n p r s _ <<<"$line" || true
-              n=$(echo $n | xargs); p=$(echo $p | xargs); s=$(echo $s | xargs)
-              if [[ $n == Name || -z $n ]]; then continue; fi
-              if ! grep -q " $(echo $s | cut -c1-7) $p" <(git submodule status); then
-                echo "Mismatch: $n $p sha $s not found in submodule status" >&2
-                exit 1
-              fi
+          declare -A SUBS
+          while read -r sha path rest; do
+            clean_sha=${sha#-}; clean_sha=${clean_sha#+}; clean_sha=${clean_sha%%-*}
+            SUBS["$path"]=$clean_sha
+          done < <(git submodule status)
+          missing=0
+          while IFS= read -r line; do
+            [[ $line == '|'*'|'* ]] || continue
+            if echo "$line" | grep -qi '| *Name *|'; then continue; fi
+            if echo "$line" | grep -Eq '^\|[- ]+\|'; then continue; fi
+            IFS='|' read -r _ name path ref sha rest <<<"$line" || true
+            name=$(echo "$name" | xargs); path=$(echo "$path" | xargs); sha=$(echo "$sha" | xargs)
+            [[ -z $name || -z $path || -z $sha ]] && continue
+            want=${sha,,}
+            have=${SUBS[$path]:-}
+            if [[ -z $have ]]; then
+              echo "Mismatch: $name $path missing in submodule status" >&2
+              missing=1; continue
+            fi
+            if [[ $have != $want ]]; then
+              echo "Mismatch: $name $path sha expected $want got $have" >&2
+              missing=1
             fi
           done < DEPENDENCIES.md
+          if [[ $missing -ne 0 ]]; then exit 1; fi
           echo "Dependency manifest OK"
