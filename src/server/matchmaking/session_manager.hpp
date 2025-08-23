@@ -22,6 +22,9 @@ struct Session : public std::enable_shared_from_this<Session>
     bool authenticated{false};
     bool in_queue{false};
     bool is_bot{false};
+    // Match association (set when a match starts). Weak reference to avoid lifetime cycles.
+    std::weak_ptr<void> match_ctx; // cast to t2d::game::MatchContext in implementation to avoid circular include
+    uint32_t tank_entity_id{0}; // entity id inside the match (0 if not in a match)
     std::chrono::steady_clock::time_point queue_join_time{};
     std::chrono::steady_clock::time_point last_heartbeat{}; // updated on heartbeat
 

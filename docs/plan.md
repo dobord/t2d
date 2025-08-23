@@ -143,7 +143,7 @@ E. Release workflow publishes artifacts on tag push.
 
 ## 7. Immediate Next Actions (Actionable Backlog)
 - [ ] Projectile ↔ tank collision + DamageEvent tests hardening (edge cases, multi-hit)
-- [ ] TankDestroyed & entity removal on disconnect (currently destruction covered)
+- [x] TankDestroyed & entity removal on disconnect (implemented disconnect detection in match loop)
 - [ ] Desktop client minimal (network connect + log baseline & delta)
 - [ ] CI matrix + artifact upload (server + desktop)
 - [ ] Bash build scripts (install, full/partial build, tests, package)

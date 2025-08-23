@@ -4,6 +4,7 @@
 
 #include <cmath>
 #include <iostream>
+#include <unordered_set>
 
 namespace t2d::game {
 
@@ -23,6 +24,38 @@ coro::task<void> run_match(std::shared_ptr<coro::io_scheduler> scheduler, std::s
         auto tick_start = now;
         next += tick_interval;
         ctx->server_tick++;
+        // Handle disconnects: identify players removed from session manager snapshot
+        {
+            // Build a set of active session_ids from session manager
+            auto active_sessions = t2d::mm::instance().snapshot_all_sessions();
+            std::unordered_set<std::string> active_ids;
+            active_ids.reserve(active_sessions.size());
+            for (auto &sp : active_sessions) {
+                if (!sp->session_id.empty())
+                    active_ids.insert(sp->session_id);
+            }
+            for (size_t i = 0; i < ctx->players.size(); ++i) {
+                auto &sess = ctx->players[i];
+                if (sess->is_bot)
+                    continue; // bots persist until match end
+                if (!sess->session_id.empty() && active_ids.find(sess->session_id) == active_ids.end()) {
+                    // Session disconnected; mark tank dead (if not already) and queue removal if not yet recorded
+                    if (i < ctx->tanks.size()) {
+                        auto &tank = ctx->tanks[i];
+                        if (tank.alive) {
+                            tank.alive = false;
+                            ctx->removed_tanks_since_full.push_back(tank.entity_id);
+                            t2d::ServerMessage tdmsg;
+                            auto *td = tdmsg.mutable_destroyed();
+                            td->set_victim_id(tank.entity_id);
+                            td->set_attacker_id(0); // environment / disconnect
+                            for (auto &pl : ctx->players)
+                                t2d::mm::instance().push_message(pl, tdmsg);
+                        }
+                    }
+                }
+            }
+        }
         // Basic input-driven updates (no collision / bounds yet)
         float dt = 1.0f / static_cast<float>(ctx->tick_rate);
         for (size_t i = 0; i < ctx->tanks.size() && i < ctx->players.size(); ++i) {

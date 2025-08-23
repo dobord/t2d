@@ -81,6 +81,7 @@ coro::task<void> run_matchmaker(std::shared_ptr<coro::io_scheduler> scheduler, M
                     tank.turret_angle = 0.0f;
                 }
                 ctx->tanks.push_back(tank);
+                s->tank_entity_id = tank.entity_id;
                 t2d::ServerMessage smsg;
                 auto *ms = smsg.mutable_match_start();
                 ms->set_match_id(ctx->match_id);
