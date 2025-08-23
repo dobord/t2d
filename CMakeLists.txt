@@ -3,6 +3,7 @@ project(t2d LANGUAGES CXX)
 
 option(T2D_ENABLE_SANITIZERS "Enable Address/Undefined sanitizers (Clang/GCC)" OFF)
 option(T2D_ENABLE_COVERAGE "Enable code coverage instrumentation (GCC/Clang Debug builds)" OFF)
+option(T2D_ENABLE_SNAPSHOT_QUANT "Enable snapshot quantization (reduced bandwidth)" ON)
 
 # Allow user to downgrade adopted policy set (NOT the required CMake program version) via
 # -DCMAKE_POLICY_VERSION_MINIMUM=3.5 (for legacy behavior while still requiring a newer CMake binary).
