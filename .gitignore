@@ -39,6 +39,9 @@ Thumbs.db
 # Local alternative debug build dir
 /build-debug/
 
+# Local zlib-enabled build dir
+/build-zlib/
+
 # CTest artifacts created if tests accidentally run from source root
 /Testing/
 

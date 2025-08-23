@@ -4,6 +4,7 @@ project(t2d LANGUAGES CXX)
 option(T2D_ENABLE_SANITIZERS "Enable Address/Undefined sanitizers (Clang/GCC)" OFF)
 option(T2D_ENABLE_COVERAGE "Enable code coverage instrumentation (GCC/Clang Debug builds)" OFF)
 option(T2D_ENABLE_SNAPSHOT_QUANT "Enable snapshot quantization (reduced bandwidth)" ON)
+option(T2D_ENABLE_ZLIB "Enable zlib compression for snapshots (optional)" OFF)
 
 # Allow user to downgrade adopted policy set (NOT the required CMake program version) via
 # -DCMAKE_POLICY_VERSION_MINIMUM=3.5 (for legacy behavior while still requiring a newer CMake binary).
@@ -150,6 +151,11 @@ if (T2D_BUILD_SERVER)
     target_sources(t2d_server PRIVATE src/server/auth/auth_provider.cpp)
     target_include_directories(t2d_server PRIVATE src)
     target_link_libraries(t2d_server PRIVATE t2d_proto yaml-cpp libcoro box2d)
+    if (T2D_ENABLE_ZLIB)
+        find_package(ZLIB REQUIRED)
+        target_link_libraries(t2d_server PRIVATE ZLIB::ZLIB)
+        target_compile_definitions(t2d_server PRIVATE T2D_HAS_ZLIB=1)
+    endif ()
     target_compile_definitions(t2d_server PRIVATE T2D_VERSION="${T2D_VERSION_STR}")
 endif ()
 

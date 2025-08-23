@@ -3,6 +3,9 @@
 #include "common/rle.hpp"
 
 #include <string>
+#ifdef T2D_HAS_ZLIB
+#    include <zlib.h>
+#endif
 
 // Attempt RLE compression and track compressed size metrics; return possibly compressed string or original.
 std::string rle_try(const std::string &in)
@@ -18,4 +21,23 @@ std::string rle_try(const std::string &in)
         return out;
     }
     return in;
+}
+
+// Optional zlib compression attempt (if built with -DT2D_HAS_ZLIB). Returns compressed if smaller.
+std::string zlib_try(const std::string &in)
+{
+#ifdef T2D_HAS_ZLIB
+    uLongf bound = compressBound(in.size());
+    std::string buf;
+    buf.resize(bound);
+    auto *src = reinterpret_cast<const Bytef *>(in.data());
+    auto *dst = reinterpret_cast<Bytef *>(buf.data());
+    if (compress2(dst, &bound, src, in.size(), Z_BEST_SPEED) == Z_OK) {
+        if (bound < in.size()) {
+            buf.resize(bound);
+            return buf;
+        }
+    }
+#endif
+    return in; // fallback no-op if not smaller or zlib absent
 }
