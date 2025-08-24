@@ -23,6 +23,18 @@ Window {
     focus: true
     property bool followCamera: false // default off so movement is visible
     property bool showGrid: true
+    // Mouse / camera control state
+    property bool mouseAimEnabled: true
+    property real userZoom: 1.0
+    property real cameraOffsetX: 0.0 // world units pan (used when followCamera == false)
+    property real cameraOffsetY: 0.0
+    property bool isMiddleDragging: false
+    property real dragStartX: 0
+    property real dragStartY: 0
+    property real dragOrigOffsetX: 0
+    property real dragOrigOffsetY: 0
+    // Internal cached last computed desired turret angle (degrees)
+    property real desiredTurretAngleDeg: 0
     Component.onCompleted: { rootItem.forceActiveFocus(); }
 
     // Keyboard state flags (simple set of currently pressed movement keys)
@@ -48,8 +60,10 @@ Window {
         if (inputState.turn !== tr) inputState.turn = tr
         // Turret turn
         var tt = 0
-        if (keyE && !keyQ) tt = 1
-        else if (keyQ && !keyE) tt = -1
+        if (!mouseAimEnabled) { // keyboard turret control only when mouse aim disabled
+            if (keyE && !keyQ) tt = 1
+            else if (keyQ && !keyE) tt = -1
+        }
         if (inputState.turretTurn !== tt) inputState.turretTurn = tt
     // Fire (held space)
         var fr = keySpace
@@ -73,6 +87,10 @@ Window {
     case Qt.Key_Shift: keyShift = true; break;
     case Qt.Key_G: rootItem.followCamera = !rootItem.followCamera; console.debug('followCamera='+rootItem.followCamera); break;
     case Qt.Key_H: rootItem.showGrid = !rootItem.showGrid; console.debug('showGrid='+rootItem.showGrid); break;
+    case Qt.Key_M: mouseAimEnabled = !mouseAimEnabled; console.debug('mouseAimEnabled='+mouseAimEnabled); if (!mouseAimEnabled) { inputState.turretTurn = 0; } break;
+    case Qt.Key_Plus:
+    case Qt.Key_Equal: userZoom /= 0.9; userZoom = Math.min(userZoom, 5.0); break;
+    case Qt.Key_Minus: userZoom *= 0.9; userZoom = Math.max(userZoom, 0.1); break;
         default: return;
         }
         ev.accepted = true;
@@ -111,7 +129,8 @@ Window {
             // World units currently arbitrary; assume tank nominal radius = 1 world unit.
             const tankWorldRadius = 1.0;
             const targetScreenRadius = Math.min(width, height) * 0.10; // 10% of min dimension
-            const scale = targetScreenRadius / tankWorldRadius;
+            const baseScale = targetScreenRadius / tankWorldRadius;
+            const scale = baseScale * rootItem.userZoom;
             let centerX = 0;
             let centerY = 0;
             if (ownIndex >= 0) {
@@ -122,8 +141,11 @@ Window {
             ctx.save();
             ctx.translate(width/2, height/2);
             ctx.scale(scale, scale);
-            if (rootItem.followCamera)
+            if (rootItem.followCamera) {
                 ctx.translate(-centerX, -centerY);
+            } else {
+                ctx.translate(-rootItem.cameraOffsetX, -rootItem.cameraOffsetY);
+            }
             // Optional background grid for movement perception
             if (rootItem.showGrid) {
                 const gridSpacing = 5; // world units
@@ -195,6 +217,93 @@ Window {
             ctx.restore();
         }
         Timer { interval: 16; running: true; repeat: true; onTriggered: { timingState.update(); scene.requestPaint(); } }
+
+        // Mouse interaction overlay for aiming, zoom, and panning
+        MouseArea {
+            anchors.fill: parent
+            hoverEnabled: true
+            acceptedButtons: Qt.LeftButton | Qt.RightButton | Qt.MiddleButton
+            onWheel: function(ev) {
+                if (ev.angleDelta.y > 0) rootItem.userZoom /= 0.9; else rootItem.userZoom *= 0.9;
+                rootItem.userZoom = Math.max(0.1, Math.min(5.0, rootItem.userZoom));
+                ev.accepted = true;
+            }
+            onPressed: function(ev) {
+                if (ev.button === Qt.RightButton) {
+                    // toggle follow camera
+                    rootItem.followCamera = !rootItem.followCamera;
+                    if (rootItem.followCamera) { rootItem.cameraOffsetX = 0; rootItem.cameraOffsetY = 0; }
+                } else if (ev.button === Qt.MiddleButton) {
+                    rootItem.isMiddleDragging = true;
+                    rootItem.dragStartX = ev.x; rootItem.dragStartY = ev.y;
+                    rootItem.dragOrigOffsetX = rootItem.cameraOffsetX;
+                    rootItem.dragOrigOffsetY = rootItem.cameraOffsetY;
+                } else if (ev.button === Qt.LeftButton) {
+                    // left button can act as fire (hold)
+                    inputState.fire = true;
+                }
+            }
+            onReleased: function(ev) {
+                if (ev.button === Qt.MiddleButton) {
+                    rootItem.isMiddleDragging = false;
+                } else if (ev.button === Qt.LeftButton) {
+                    inputState.fire = false;
+                }
+            }
+            onPositionChanged: function(ev) {
+                const a = timingState.alpha;
+                let ownIndex = entityModel.count() > 0 ? 0 : -1;
+                if (ownIndex < 0) return;
+                // World transform parameters must match paint() logic
+                const tankWorldRadius = 1.0;
+                const targetScreenRadius = Math.min(width, height) * 0.10;
+                const baseScale = targetScreenRadius / tankWorldRadius;
+                const scale = baseScale * rootItem.userZoom;
+                const cx = entityModel.interpX(ownIndex,a);
+                const cy = entityModel.interpY(ownIndex,a);
+                // Inverse transform from screen to world
+                let worldX = (ev.x - width/2) / scale;
+                let worldY = (ev.y - height/2) / scale;
+                if (rootItem.followCamera) {
+                    worldX += cx;
+                    worldY += cy;
+                } else {
+                    worldX += rootItem.cameraOffsetX;
+                    worldY += rootItem.cameraOffsetY;
+                }
+                if (rootItem.isMiddleDragging && !rootItem.followCamera) {
+                    // Update pan offsets; compute delta in world units relative to drag start
+                    let startWorldX = (rootItem.dragStartX - width/2) / scale + rootItem.cameraOffsetX;
+                    let startWorldY = (rootItem.dragStartY - height/2) / scale + rootItem.cameraOffsetY;
+                    let dxWorld = worldX - startWorldX;
+                    let dyWorld = worldY - startWorldY;
+                    rootItem.cameraOffsetX = rootItem.dragOrigOffsetX - dxWorld;
+                    rootItem.cameraOffsetY = rootItem.dragOrigOffsetY - dyWorld;
+                }
+                if (mouseAimEnabled) {
+                    // Compute desired turret angle
+                    const dx = worldX - cx;
+                    const dy = worldY - cy;
+                    if (Math.abs(dx) > 1e-4 || Math.abs(dy) > 1e-4) {
+                        let desiredRad = Math.atan2(dy, dx);
+                        let desiredDeg = desiredRad * 180.0 / Math.PI;
+                        desiredTurretAngleDeg = desiredDeg;
+                        // Current turret angle
+                        let curDeg = entityModel.interpTurretAngle(ownIndex,a);
+                        // Shortest diff
+                        let diff = (desiredDeg - curDeg + 540.0) % 360.0 - 180.0;
+                        let turnCmd = 0.0;
+                        const deadZone = 1.0; // degrees
+                        if (Math.abs(diff) > deadZone) {
+                            // Scale to [-1,1] relative to 45 deg error
+                            turnCmd = Math.max(-1.0, Math.min(1.0, diff / 45.0));
+                        }
+                        if (inputState.turretTurn !== turnCmd) inputState.turretTurn = turnCmd;
+                    }
+                }
+            }
+            onCanceled: { rootItem.isMiddleDragging = false; }
+        }
     }
 
     ListView {
@@ -274,7 +383,12 @@ Window {
         anchors.right: parent.right
         anchors.bottomMargin: 112
         anchors.rightMargin: 12
-    text: "Snapshot tanks=" + tankList.count + "  follow=" + (rootItem.followCamera?"on":"off") + "  (G toggle, H grid) focus=" + rootItem.focus
+    text: "Snapshot tanks=" + tankList.count
+          + "  follow=" + (rootItem.followCamera?"on":"off") + "(G)"
+          + "  grid=" + (rootItem.showGrid?"on":"off") + "(H)"
+          + "  mouseAim=" + (rootItem.mouseAimEnabled?"on":"off") + "(M)"
+          + "  zoom=" + rootItem.userZoom.toFixed(2) + "(+/- wheel)"
+          + "  focus=" + rootItem.focus
         color: "#8098a8"
         font.pixelSize: 14
     }
