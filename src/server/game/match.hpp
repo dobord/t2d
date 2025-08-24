@@ -44,7 +44,7 @@ struct MatchContext
     uint32_t projectile_damage{25};
     float reload_interval_sec{3.0f};
     float projectile_speed{5.0f};
-    // Cache of last sent tank states for delta computation
+    bool disable_bot_fire{false}; // when true bots never set fire input
     std::vector<TankStateSimple> last_sent_tanks;
 
     struct ProjectileSimple

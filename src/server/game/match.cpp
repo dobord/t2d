@@ -197,8 +197,12 @@ coro::task<void> run_match(std::shared_ptr<coro::io_scheduler> scheduler, std::s
             if (sess->is_bot) {
                 input.turn_dir = 0.0f;
                 input.move_dir = 0.0f;
-                uint32_t interval = ctx->bot_fire_interval_ticks == 0 ? 1 : ctx->bot_fire_interval_ticks;
-                input.fire = (ctx->server_tick % interval) == 0;
+                if (!ctx->disable_bot_fire) {
+                    uint32_t interval = ctx->bot_fire_interval_ticks == 0 ? 1 : ctx->bot_fire_interval_ticks;
+                    input.fire = (ctx->server_tick % interval) == 0;
+                } else {
+                    input.fire = false;
+                }
                 t2d::mm::Session::InputState upd = input;
                 t2d::mm::instance().set_bot_input(sess, upd);
             }

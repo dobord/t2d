@@ -25,6 +25,7 @@ struct MatchConfig
     uint32_t projectile_damage{25};
     float reload_interval_sec{3.0f};
     float projectile_speed{5.0f};
+    bool disable_bot_fire{false};
 };
 
 static uint32_t random_seed()
@@ -136,6 +137,7 @@ coro::task<void> run_matchmaker(std::shared_ptr<coro::io_scheduler> scheduler, M
             ctx->projectile_damage = cfg.projectile_damage;
             ctx->reload_interval_sec = cfg.reload_interval_sec;
             ctx->projectile_speed = cfg.projectile_speed;
+            ctx->disable_bot_fire = cfg.disable_bot_fire;
             uint32_t eid = 1;
             uint32_t bot_index = 0; // sequential index for bots to enforce spacing
             for (auto &s : group) {

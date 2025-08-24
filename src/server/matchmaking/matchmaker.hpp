@@ -22,6 +22,7 @@ struct MatchConfig
     uint32_t projectile_damage{25};
     float reload_interval_sec{3.0f};
     float projectile_speed{5.0f};
+    bool disable_bot_fire{false};
 };
 
 coro::task<void> run_matchmaker(std::shared_ptr<coro::io_scheduler> scheduler, MatchConfig cfg);

@@ -69,6 +69,7 @@ struct ServerConfig
     uint32_t projectile_damage{25};
     float reload_interval_sec{3.0f};
     float projectile_speed{5.0f};
+    bool disable_bot_fire{false};
 };
 
 static ServerConfig load_config(const std::string &path)
@@ -139,13 +140,26 @@ static void handle_signal(int)
 
 int main(int argc, char **argv)
 {
+    t2d::ServerConfig cfg; // allocate early so CLI flags can set fields before/after file load
     std::string config_path = "config/server.yaml";
-    if (argc > 1)
-        config_path = argv[1];
-
-    t2d::ServerConfig cfg;
+    bool cli_disable_bot_fire = false;
+    // Simple arg parsing: first non-flag = config path; recognize --no-bot-fire
+    for (int i = 1; i < argc; ++i) {
+        std::string a = argv[i];
+        if (a == "--no-bot-fire") {
+            cli_disable_bot_fire = true;
+        } else if (!a.empty() && a[0] != '-') {
+            config_path = a;
+        }
+    }
     try {
         cfg = t2d::load_config(config_path);
+        if (std::getenv("T2D_NO_BOT_FIRE")) {
+            cfg.disable_bot_fire = true;
+        }
+        if (cli_disable_bot_fire) {
+            cfg.disable_bot_fire = true;
+        }
     } catch (const std::exception &ex) {
         t2d::log::error("Failed to load config: {}", ex.what());
         return 1;
@@ -171,6 +185,9 @@ int main(int argc, char **argv)
     t2d::log::info("Tick rate: {} Hz", cfg.tick_rate);
     t2d::log::info("Listening on port: {}", cfg.listen_port);
     t2d::log::info("Auth mode: {}", cfg.auth_mode);
+    if (cfg.disable_bot_fire) {
+        t2d::log::info("Bot firing disabled (--no-bot-fire)");
+    }
 
     // io_scheduler requires options; construct explicitly
     auto scheduler = coro::default_executor::io_executor();
@@ -190,7 +207,8 @@ int main(int argc, char **argv)
             cfg.movement_speed,
             cfg.projectile_damage,
             cfg.reload_interval_sec,
-            cfg.projectile_speed}));
+            cfg.projectile_speed,
+            cfg.disable_bot_fire}));
     // Launch heartbeat monitor
     scheduler->spawn(heartbeat_monitor(scheduler, cfg.heartbeat_timeout_seconds));
     if (cfg.metrics_port != 0) {
