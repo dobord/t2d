@@ -10,9 +10,7 @@ Window {
     title: "t2d Qt Client"
     Component.onCompleted: root.requestActivate()
 
-    // Global handler ensures inner item keeps focus; actual logic lives in rootItem
-    Keys.onPressed: function(ev) { if (!rootItem.focus) rootItem.forceActiveFocus(); }
-    Keys.onReleased: function(ev) { }
+    // Removed Keys attached handlers on Window (not an Item) to avoid runtime warning.
 
     Item { // focusable container for key handling
         id: rootItem
