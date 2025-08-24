@@ -190,13 +190,16 @@ inline void format_and_write(level lv, const std::string &m, std::chrono::system
         std::cerr << "\"}" << std::endl;
     } else {
         std::lock_guard lk(g_io_mtx);
-        char buf[16];
-        std::strftime(buf, sizeof(buf), "%H:%M:%S", &tm);
+        char dtbuf[32];
+        std::strftime(dtbuf, sizeof(dtbuf), "%Y-%m-%d %H:%M:%S", &tm);
         const char *tag = lv == level::debug ? "D" : lv == level::info ? "I" : lv == level::warn ? "W" : "E";
+        // Requested format: [date time] [app_id] [LEVEL] message
+        // app_id part omitted if disabled/empty.
+        std::cerr << '[' << dtbuf << ']';
         if (g_app_id_enabled.load(std::memory_order_relaxed) && !g_app_id.empty()) {
-            std::cerr << g_app_id << ' ';
+            std::cerr << " [" << g_app_id << ']';
         }
-        std::cerr << '[' << tag << ' ' << buf << "] " << m << std::endl;
+        std::cerr << " [" << tag << "] " << m << std::endl;
     }
     if (auto cb = load_cb())
         cb((int)lv, m.c_str(), g_cb_ud.load(std::memory_order_relaxed));
