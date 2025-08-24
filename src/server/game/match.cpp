@@ -491,8 +491,14 @@ coro::task<void> run_match(std::shared_ptr<coro::io_scheduler> scheduler, std::s
             if (alive_count <= 1 && ctx->initial_player_count > 1) {
                 ctx->match_over = true;
                 ctx->winner_entity = last_alive_id;
-            } else if (ctx->server_tick > ctx->tick_rate * 30) { // fallback timeout ~30s
-                ctx->match_over = true;
+            } else {
+                // Base fallback timeout depends on configuration:
+                //  - disable_bot_fire: extend greatly so player can observe movement without premature end
+                //  - otherwise default 60s (was 30s previously)
+                uint64_t fallback_ticks = ctx->tick_rate * (ctx->disable_bot_fire ? 300ull : 60ull);
+                if (ctx->server_tick > fallback_ticks) {
+                    ctx->match_over = true;
+                }
             }
             if (ctx->match_over) {
                 t2d::ServerMessage endmsg;
@@ -506,8 +512,11 @@ coro::task<void> run_match(std::shared_ptr<coro::io_scheduler> scheduler, std::s
             }
         }
         // Extended max duration if single real player (avoid too-short session): 120s else 10s proto cap
-        uint64_t hard_cap_ticks = (ctx->initial_player_count <= 1) ? (ctx->tick_rate * 120ull)
-                                                                   : (ctx->tick_rate * 10ull);
+        // Hard cap: ensure eventual termination. If only one real player (initial count 1), long cap.
+        // Multi-player (or bots) sessions get larger cap now (60s normally, 300s if bot fire disabled).
+        uint64_t hard_cap_ticks = (ctx->initial_player_count <= 1)
+            ? (ctx->tick_rate * 120ull)
+            : (ctx->tick_rate * (ctx->disable_bot_fire ? 300ull : 60ull));
         if (ctx->match_over || ctx->server_tick > hard_cap_ticks) {
             t2d::log::info("[match] end id={}", ctx->match_id);
             // Destroy remaining projectile bodies
