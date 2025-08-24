@@ -280,14 +280,14 @@ Window {
                     rootItem.cameraOffsetX = rootItem.dragOrigOffsetX - dxWorld;
                     rootItem.cameraOffsetY = rootItem.dragOrigOffsetY - dyWorld;
                 }
-                if (mouseAimEnabled) {
+                if (rootItem.mouseAimEnabled) {
                     // Compute desired turret angle
                     const dx = worldX - cx;
                     const dy = worldY - cy;
                     if (Math.abs(dx) > 1e-4 || Math.abs(dy) > 1e-4) {
                         let desiredRad = Math.atan2(dy, dx);
                         let desiredDeg = desiredRad * 180.0 / Math.PI;
-                        desiredTurretAngleDeg = desiredDeg;
+                        rootItem.desiredTurretAngleDeg = desiredDeg;
                         // Current turret angle
                         let curDeg = entityModel.interpTurretAngle(ownIndex,a);
                         // Shortest diff
