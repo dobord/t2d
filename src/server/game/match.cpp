@@ -91,7 +91,13 @@ static void process_contacts(
         }
         auto body_it = projectile_bodies.find(proj_id);
         if (body_it != projectile_bodies.end()) {
-            to_destroy_projectiles.push_back(proj_id);
+            // Ensure body still valid (might have been queued earlier this tick by bounds logic)
+            if (b2Body_IsValid(body_it->second)) {
+                to_destroy_projectiles.push_back(proj_id);
+            } else {
+                // Already invalid, just erase mapping now to keep map consistent
+                projectile_bodies.erase(body_it);
+            }
         }
         ctx.removed_projectiles_since_full.push_back(proj_id);
         ctx.projectiles.erase(pit);
@@ -101,7 +107,9 @@ static void process_contacts(
         for (auto pid : to_destroy_projectiles) {
             auto it = projectile_bodies.find(pid);
             if (it != projectile_bodies.end()) {
-                t2d::phys::destroy_body(it->second);
+                if (b2Body_IsValid(it->second)) {
+                    t2d::phys::destroy_body(it->second);
+                }
                 projectile_bodies.erase(it);
             }
         }
@@ -254,9 +262,10 @@ coro::task<void> run_match(std::shared_ptr<coro::io_scheduler> scheduler, std::s
             if (adv.fire_cooldown_cur > 0.f)
                 adv.fire_cooldown_cur = std::max(0.f, adv.fire_cooldown_cur - dt);
         }
-        // Update projectiles
-        // Physics step (tanks + future projectiles). Projectiles still manual for now.
+        // Physics step (tanks + projectiles) then process contacts before any projectile body destruction
         t2d::phys::step(phys_world, dt);
+        // Handle projectile vs tank impacts (must run before bounds cull destroys bodies)
+        process_contacts(phys_world, projectile_bodies, *ctx);
         // Sync tank state (position + angles) from advanced bodies
         for (size_t i = 0; i < ctx->tanks.size() && i < ctx->adv_tanks.size(); ++i) {
             auto &t = ctx->tanks[i];
@@ -308,8 +317,7 @@ coro::task<void> run_match(std::shared_ptr<coro::io_scheduler> scheduler, std::s
                 }
             }
         }
-        // Contact-based projectile vs tank collision using Box2D contact events
-        process_contacts(phys_world, projectile_bodies, *ctx);
+        // (Contact processing already performed earlier this tick)
         if (ctx->snapshot_interval_ticks > 0 && ctx->server_tick % ctx->snapshot_interval_ticks == 0) {
             bool send_full = (ctx->server_tick - ctx->last_full_snapshot_tick >= ctx->full_snapshot_interval_ticks);
             if (send_full) {
