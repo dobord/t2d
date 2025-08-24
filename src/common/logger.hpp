@@ -50,6 +50,8 @@ inline std::atomic<int> g_level{static_cast<int>(level::info)};
 inline std::atomic<bool> g_json{false};
 inline std::atomic<bool> g_started{false};
 inline std::atomic<bool> g_running{false};
+inline std::atomic<bool> g_app_id_enabled{false};
+inline std::string g_app_id; // guarded by g_io_mtx when modified/read for output
 inline std::mutex g_q_mtx;
 inline std::condition_variable g_q_cv;
 inline std::deque<item> g_queue;
@@ -191,6 +193,9 @@ inline void format_and_write(level lv, const std::string &m, std::chrono::system
         char buf[16];
         std::strftime(buf, sizeof(buf), "%H:%M:%S", &tm);
         const char *tag = lv == level::debug ? "D" : lv == level::info ? "I" : lv == level::warn ? "W" : "E";
+        if (g_app_id_enabled.load(std::memory_order_relaxed) && !g_app_id.empty()) {
+            std::cerr << g_app_id << ' ';
+        }
         std::cerr << '[' << tag << ' ' << buf << "] " << m << std::endl;
     }
     if (auto cb = load_cb())
@@ -242,6 +247,13 @@ inline void start()
         g_level.store(parse_level(lvl), std::memory_order_relaxed);
     if (std::getenv("T2D_LOG_JSON"))
         g_json.store(true, std::memory_order_relaxed);
+    if (const char *app = std::getenv("T2D_LOG_APP_ID")) {
+        if (*app) {
+            std::lock_guard lk(g_io_mtx);
+            g_app_id.assign(app);
+            g_app_id_enabled.store(true, std::memory_order_relaxed);
+        }
+    }
     if (!g_started.exchange(true, std::memory_order_acq_rel)) {
         g_running.store(true, std::memory_order_release);
         g_thread = std::thread([] { consumer_thread(); });
@@ -253,6 +265,18 @@ inline void start()
 inline void init()
 {
     detail::start();
+}
+
+inline void set_app_id(std::string id)
+{
+    std::lock_guard lk(detail::g_io_mtx);
+    detail::g_app_id = std::move(id);
+    detail::g_app_id_enabled.store(true, std::memory_order_relaxed);
+}
+
+inline void disable_app_id()
+{
+    detail::g_app_id_enabled.store(false, std::memory_order_relaxed);
 }
 
 inline bool enabled(level lv) noexcept

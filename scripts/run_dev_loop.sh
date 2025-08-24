@@ -83,12 +83,12 @@ run_once(){
   ensure_build
   kill_existing
   log "Starting server"
-  "${SERVER_BIN}" &
+  T2D_LOG_APP_ID="srv" "${SERVER_BIN}" &
   SERVER_PID=$!
   log "Server PID=${SERVER_PID}"
   wait_port || { log "Server failed to open port"; kill ${SERVER_PID} || true; return 1; }
   log "Starting Qt client"
-  "${CLIENT_BIN}" &
+  T2D_LOG_APP_ID="qt" "${CLIENT_BIN}" &
   CLIENT_PID=$!
   log "Client PID=${CLIENT_PID}"
   wait -n ${SERVER_PID} ${CLIENT_PID}
