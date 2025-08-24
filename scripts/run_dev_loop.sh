@@ -34,7 +34,11 @@ ROOT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 SERVER_BIN="${ROOT_DIR}/${BUILD_DIR}/t2d_server"
 CLIENT_BIN="${ROOT_DIR}/${BUILD_DIR}/t2d_qt_client"
 
-log(){ echo "[run_dev] $*"; }
+APP_ID="run_dev"
+_ts(){ date '+%Y-%m-%d %H:%M:%S'; }
+log(){ echo "[$(_ts)] [$APP_ID] [I] $*"; }
+log_warn(){ echo "[$(_ts)] [$APP_ID] [W] $*"; }
+log_err(){ echo "[$(_ts)] [$APP_ID] [E] $*" >&2; }
 [[ "$VERBOSE" == 1 ]] && set -x
 
 ensure_build(){
