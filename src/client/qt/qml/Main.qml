@@ -42,6 +42,18 @@ Window {
     property bool keySpace: false
     property bool keyShift: false // brake
 
+    // Unified logging helpers to match C++ logger format: [date time] [qml] [L] message
+    function _pad(n) { return n < 10 ? '0'+n : ''+n; }
+    function _ts() {
+        var d = new Date();
+        return d.getFullYear() + '-' + _pad(d.getMonth()+1) + '-' + _pad(d.getDate()) + ' '
+             + _pad(d.getHours()) + ':' + _pad(d.getMinutes()) + ':' + _pad(d.getSeconds());
+    }
+    function logD(msg) { console.debug('['+_ts()+'] [qml] [D] ' + msg); }
+    function logI(msg) { console.log('['+_ts()+'] [qml] [I] ' + msg); }
+    function logW(msg) { console.warn('['+_ts()+'] [qml] [W] ' + msg); }
+    function logE(msg) { console.error('['+_ts()+'] [qml] [E] ' + msg); }
+
     function recomputeInput() {
         // Movement forward/backward
         var mv = 0
@@ -67,7 +79,7 @@ Window {
     var br = keyShift
     if (inputState.brake !== br) inputState.brake = br
     // Debug log
-    console.debug(`INPUT mv=${inputState.move} turn=${inputState.turn} turret=${inputState.turretTurn} fire=${inputState.fire}`)
+    logD(`INPUT mv=${inputState.move} turn=${inputState.turn} turret=${inputState.turretTurn} fire=${inputState.fire}`)
     }
 
     Keys.onPressed: function(ev) {
@@ -80,9 +92,9 @@ Window {
         case Qt.Key_E: keyE = true; break;
     case Qt.Key_Space: keySpace = true; break;
     case Qt.Key_Shift: keyShift = true; break;
-    case Qt.Key_G: rootItem.followCamera = !rootItem.followCamera; console.debug('followCamera='+rootItem.followCamera); break;
-    case Qt.Key_H: rootItem.showGrid = !rootItem.showGrid; console.debug('showGrid='+rootItem.showGrid); break;
-    case Qt.Key_M: mouseAimEnabled = !mouseAimEnabled; console.debug('mouseAimEnabled='+mouseAimEnabled); if (!mouseAimEnabled) { inputState.turretTurn = 0; } break;
+    case Qt.Key_G: rootItem.followCamera = !rootItem.followCamera; logD('followCamera='+rootItem.followCamera); break;
+    case Qt.Key_H: rootItem.showGrid = !rootItem.showGrid; logD('showGrid='+rootItem.showGrid); break;
+    case Qt.Key_M: mouseAimEnabled = !mouseAimEnabled; logD('mouseAimEnabled='+mouseAimEnabled); if (!mouseAimEnabled) { inputState.turretTurn = 0; } break;
     case Qt.Key_Plus:
     case Qt.Key_Equal: userZoom /= 0.9; userZoom = Math.min(userZoom, 5.0); break;
     case Qt.Key_Minus: userZoom *= 0.9; userZoom = Math.max(userZoom, 0.1); break;
