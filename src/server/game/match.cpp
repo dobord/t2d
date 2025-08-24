@@ -6,6 +6,7 @@
 #include "server/game/physics.hpp"
 #include "server/game/snapshot_compress.hpp"
 
+#include <algorithm>
 #include <cmath>
 #include <unordered_map>
 #include <unordered_set>
@@ -114,12 +115,17 @@ coro::task<void> run_match(std::shared_ptr<coro::io_scheduler> scheduler, std::s
 {
     co_await scheduler->schedule();
     t2d::log::info("[match] start id={} players={}", ctx->match_id, ctx->players.size());
-    // Phase 1 physics integration: create Box2D world and bodies mirroring current tanks
+    // Physics world (advanced tank physics with hull+turret)
     t2d::phys::World phys_world({0.0f, 0.0f}); // no gravity for top-down
     ProjectileMap projectile_bodies; // projectile id -> body id
-    if (phys_world.tank_bodies.size() != ctx->tanks.size()) {
+    if (ctx->adv_tanks.size() != ctx->tanks.size()) {
+        ctx->adv_tanks.clear();
+        ctx->adv_tanks.reserve(ctx->tanks.size());
         for (auto &t : ctx->tanks) {
-            t2d::phys::create_tank(phys_world, t.x, t.y);
+            auto adv = t2d::phys::create_tank_with_turret(phys_world, t.x, t.y, t.entity_id);
+            ctx->adv_tanks.push_back(adv);
+            // Keep hull body id list for legacy projectile collision path
+            phys_world.tank_bodies.push_back(adv.hull);
         }
     }
     using clock = std::chrono::steady_clock;
@@ -174,6 +180,7 @@ coro::task<void> run_match(std::shared_ptr<coro::io_scheduler> scheduler, std::s
         float dt = 1.0f / static_cast<float>(ctx->tick_rate);
         for (size_t i = 0; i < ctx->tanks.size() && i < ctx->players.size(); ++i) {
             auto &t = ctx->tanks[i];
+            auto &adv = ctx->adv_tanks[i];
             if (!t.alive)
                 continue; // skip dead tanks
             auto &sess = ctx->players[i];
@@ -187,52 +194,49 @@ coro::task<void> run_match(std::shared_ptr<coro::io_scheduler> scheduler, std::s
                 t2d::mm::Session::InputState upd = input;
                 t2d::mm::instance().set_bot_input(sess, upd);
             }
-            // Apply turning
-            t.hull_angle += input.turn_dir * turn_speed_deg() * dt;
-            if (t.hull_angle < 0)
-                t.hull_angle += 360.f;
-            else if (t.hull_angle >= 360.f)
-                t.hull_angle -= 360.f;
-            t.turret_angle += input.turret_turn * turret_turn_speed_deg() * dt;
-            if (t.turret_angle < 0)
-                t.turret_angle += 360.f;
-            else if (t.turret_angle >= 360.f)
-                t.turret_angle -= 360.f;
-            // Move forward/backward along hull direction (very naive)
-            float rad = t.hull_angle * 3.14159265f / 180.f;
-            // Apply velocity to physics body (phase 1: simple set linear velocity each tick)
-            if (i < phys_world.tank_bodies.size()) {
-                auto id = phys_world.tank_bodies[i];
-                t2d::phys::set_body_velocity(
-                    id,
-                    std::cos(rad) * input.move_dir * ctx->movement_speed,
-                    std::sin(rad) * input.move_dir * ctx->movement_speed);
-            } else {
-                t.x += std::cos(rad) * input.move_dir * ctx->movement_speed * dt;
-                t.y += std::sin(rad) * input.move_dir * ctx->movement_speed * dt;
+            // Advanced drive forces
+            t2d::phys::TankDriveInput drive{};
+            drive.drive_forward = std::clamp(input.move_dir, -1.f, 1.f);
+            drive.turn = std::clamp(input.turn_dir, -1.f, 1.f);
+            drive.brake = input.brake; // new brake input
+            t2d::phys::apply_tracked_drive(drive, adv, dt);
+
+            // Turret aim: accumulate turret angle (convert from degrees to target world angle incrementally)
+            if (std::fabs(input.turret_turn) > 0.0001f) {
+                // current turret world angle
+                b2Transform xt = b2Body_GetTransform(adv.turret);
+                float current = std::atan2(xt.q.s, xt.q.c);
+                float desired =
+                    current + input.turret_turn * t2d::game::turret_turn_speed_deg() * dt * float(M_PI / 180.0);
+                t2d::phys::TurretAimInput aim{};
+                aim.target_angle_world = desired;
+                t2d::phys::update_turret_aim(aim, adv);
             }
             if (input.fire && t.ammo > 0) {
-                float speed = ctx->projectile_speed;
+                float forward_offset = 3.3f;
                 auto pid = ctx->next_projectile_id++;
-                // Use current tank position (already synced) and offset spawn slightly forward to avoid immediate
-                // self-collision logic
-                // Spawn projectile just beyond barrel tip: hull half length (3.0) + barrel length (4.0) + safety margin
-                // (0.2)
-                // Previous forward_offset (7.2) caused instant hits at 7-unit center spacing (projectile spawned inside
-                // next tank hull). Use front hull half-length (3.0) + small safety margin (0.3) so projectile starts
-                // just ahead of firing hull and travels through the barrel visually (barrel length is cosmetic only for
-                // now).
-                float forward_offset = 3.0f + 0.3f; // 3.3 units
-                float ox = t.x + std::cos(rad) * forward_offset;
-                float oy = t.y + std::sin(rad) * forward_offset;
-                ctx->projectiles.push_back({pid, ox, oy, std::cos(rad) * speed, std::sin(rad) * speed, t.entity_id});
-                // Create physics body for projectile at the same offset position
-                auto body =
-                    t2d::phys::create_projectile(phys_world, ox, oy, std::cos(rad) * speed, std::sin(rad) * speed);
-                projectile_bodies.emplace(pid, body);
-                t.ammo--;
-                if (sess->is_bot)
-                    t2d::mm::instance().clear_bot_fire(sess);
+                // Use advanced firing (spawns projectile and applies cooldown/ammo)
+                uint32_t fired =
+                    t2d::phys::fire_projectile_if_ready(adv, phys_world, ctx->projectile_speed, forward_offset, pid);
+                if (fired) {
+                    // Record projectile meta for snapshots (position will sync from physics later)
+                    // Get muzzle position from turret transform again
+                    b2Transform xt = b2Body_GetTransform(adv.turret);
+                    b2Vec2 dir{xt.q.c, xt.q.s};
+                    b2Vec2 pos{xt.p.x + dir.x * forward_offset, xt.p.y + dir.y * forward_offset};
+                    ctx->projectiles.push_back(
+                        {fired,
+                         pos.x,
+                         pos.y,
+                         dir.x * ctx->projectile_speed,
+                         dir.y * ctx->projectile_speed,
+                         t.entity_id});
+                    // map projectile body for collision processing
+                    projectile_bodies.emplace(fired, phys_world.projectile_bodies.back());
+                    t.ammo = adv.ammo; // sync ammo back
+                    if (sess->is_bot)
+                        t2d::mm::instance().clear_bot_fire(sess);
+                }
             }
             // Reload timer update
             auto &rt = ctx->reload_timers[i];
@@ -246,15 +250,28 @@ coro::task<void> run_match(std::shared_ptr<coro::io_scheduler> scheduler, std::s
                 rt = 0.f; // full ammo, keep timer reset
             }
         }
+        for (auto &adv : ctx->adv_tanks) {
+            if (adv.fire_cooldown_cur > 0.f)
+                adv.fire_cooldown_cur = std::max(0.f, adv.fire_cooldown_cur - dt);
+        }
         // Update projectiles
         // Physics step (tanks + future projectiles). Projectiles still manual for now.
         t2d::phys::step(phys_world, dt);
-        // Sync tank positions back from physics bodies
-        for (size_t i = 0; i < ctx->tanks.size() && i < phys_world.tank_bodies.size(); ++i) {
-            auto id = phys_world.tank_bodies[i];
-            auto pos = t2d::phys::get_body_position(id);
-            ctx->tanks[i].x = pos.x;
-            ctx->tanks[i].y = pos.y;
+        // Sync tank state (position + angles) from advanced bodies
+        for (size_t i = 0; i < ctx->tanks.size() && i < ctx->adv_tanks.size(); ++i) {
+            auto &t = ctx->tanks[i];
+            auto &adv = ctx->adv_tanks[i];
+            auto pos = t2d::phys::get_body_position(adv.hull);
+            t.x = pos.x;
+            t.y = pos.y;
+            b2Transform xh = b2Body_GetTransform(adv.hull);
+            b2Transform xt = b2Body_GetTransform(adv.turret);
+            float hull_rad = std::atan2(xh.q.s, xh.q.c);
+            float tur_rad = std::atan2(xt.q.s, xt.q.c);
+            t.hull_angle = hull_rad * 180.f / 3.14159265f;
+            t.turret_angle = tur_rad * 180.f / 3.14159265f;
+            t.hp = adv.hp;
+            t.ammo = adv.ammo;
         }
         // Sync projectile positions from physics bodies (remove invalid)
         for (auto &p : ctx->projectiles) {

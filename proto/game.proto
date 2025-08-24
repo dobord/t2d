@@ -45,6 +45,7 @@ message InputCommand {
   float turn_dir = 4;  // -1..1 rotate hull
   float turret_turn = 5; // -1..1 rotate turret
   bool fire = 6;
+  bool brake = 7; // hold to apply braking force
 }
 
 message TankState {

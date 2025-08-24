@@ -201,6 +201,7 @@ if (T2D_BUILD_SERVER)
         t2d_server
         src/common/framing.cpp
         src/server/game/match.cpp
+        src/server/game/physics.cpp
         src/server/game/snapshot_compress.cpp
         src/server/main.cpp
         src/server/matchmaking/matchmaker.cpp

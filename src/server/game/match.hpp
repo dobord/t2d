@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: Apache-2.0
 #pragma once
 #include "game.pb.h"
+#include "server/game/physics.hpp"
 #include "server/matchmaking/session_manager.hpp"
 
 #include <coro/coro.hpp>
@@ -32,6 +33,8 @@ struct MatchContext
     uint32_t initial_player_count{0};
     std::vector<std::shared_ptr<t2d::mm::Session>> players;
     std::vector<TankStateSimple> tanks; // parallel by index to players for prototype
+    // Advanced physics tanks (hull + turret bodies); index aligned with tanks vector
+    std::vector<t2d::phys::TankWithTurret> adv_tanks;
     uint64_t server_tick{0};
     uint32_t last_full_snapshot_tick{0};
     uint32_t snapshot_interval_ticks{5};

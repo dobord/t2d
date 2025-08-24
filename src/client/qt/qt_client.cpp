@@ -120,13 +120,15 @@ coro::task<void> run_network(
             ic->set_turn_dir(input->turn());
             ic->set_turret_turn(input->turretTurn());
             ic->set_fire(input->fire());
+            ic->set_brake(input->brake());
             t2d::log::debug(
-                "[qt] send_input ctick={} move={} turn={} turret={} fire={}",
+                "[qt] send_input ctick={} move={} turn={} turret={} fire={} brake= {}",
                 loop_iter,
                 input->move(),
                 input->turn(),
                 input->turretTurn(),
-                input->fire());
+                input->fire(),
+                input->brake());
             co_await send_frame(cli, in);
         }
         t2d::ServerMessage sm;

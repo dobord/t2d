@@ -33,6 +33,7 @@ Window {
     property bool keyQ: false   // turret left
     property bool keyE: false   // turret right
     property bool keySpace: false
+    property bool keyShift: false // brake
 
     function recomputeInput() {
         // Movement forward/backward
@@ -50,9 +51,12 @@ Window {
         if (keyE && !keyQ) tt = 1
         else if (keyQ && !keyE) tt = -1
         if (inputState.turretTurn !== tt) inputState.turretTurn = tt
-        // Fire (held space)
+    // Fire (held space)
         var fr = keySpace
         if (inputState.fire !== fr) inputState.fire = fr
+    // Brake (held Shift)
+    var br = keyShift
+    if (inputState.brake !== br) inputState.brake = br
     // Debug log
     console.debug(`INPUT mv=${inputState.move} turn=${inputState.turn} turret=${inputState.turretTurn} fire=${inputState.fire}`)
     }
@@ -65,7 +69,8 @@ Window {
         case Qt.Key_D: keyD = true; break;
         case Qt.Key_Q: keyQ = true; break;
         case Qt.Key_E: keyE = true; break;
-        case Qt.Key_Space: keySpace = true; break;
+    case Qt.Key_Space: keySpace = true; break;
+    case Qt.Key_Shift: keyShift = true; break;
     case Qt.Key_G: rootItem.followCamera = !rootItem.followCamera; console.debug('followCamera='+rootItem.followCamera); break;
     case Qt.Key_H: rootItem.showGrid = !rootItem.showGrid; console.debug('showGrid='+rootItem.showGrid); break;
         default: return;
@@ -82,7 +87,8 @@ Window {
         case Qt.Key_D: keyD = false; break;
         case Qt.Key_Q: keyQ = false; break;
         case Qt.Key_E: keyE = false; break;
-        case Qt.Key_Space: keySpace = false; break;
+    case Qt.Key_Space: keySpace = false; break;
+    case Qt.Key_Shift: keyShift = false; break;
         default: return;
         }
         ev.accepted = true;
@@ -138,7 +144,7 @@ Window {
                 ctx.stroke();
                 ctx.restore();
             }
-            // Draw tanks with geometry: hull 3x6 (width x length), tracks 6x0.3, turret radius 1.3, barrel 4x0.1
+            // Draw tanks (composite hull + turret)
             for(let i=0;i<entityModel.count();++i){
                 const wx = entityModel.interpX(i,a);
                 const wy = entityModel.interpY(i,a);
@@ -149,22 +155,32 @@ Window {
                 ctx.save();
                 ctx.translate(wx, wy);
                 ctx.rotate(hullRad);
-                // Tracks: length 6 along X, width 0.3 along Y. Centered at +/- (1.5 - 0.15) = 1.35
                 ctx.fillStyle = '#202a32';
-                const trackLen = 6.0; const trackWidth = 0.3; const halfHullWidth = 1.5; const trackOffset = 1.35;
-                ctx.fillRect(-trackLen/2, trackOffset - trackWidth/2, trackLen, trackWidth); // upper (+Y)
-                ctx.fillRect(-trackLen/2, -trackOffset - trackWidth/2, trackLen, trackWidth); // lower (-Y)
-                // Hull body
+                const trackLen = 6.4; const trackWidth = 0.35; const trackOffset = 2.4 - trackWidth/2;
+                ctx.fillRect(-trackLen/2, trackOffset - trackWidth/2, trackLen, trackWidth);
+                ctx.fillRect(-trackLen/2, -trackOffset - trackWidth/2, trackLen, trackWidth);
                 ctx.fillStyle = (i===ownIndex)? '#6cff5d' : '#3fa7ff';
-                ctx.fillRect(-3.0, -1.5, 6.0, 3.0); // length 6 along X, width 3 along Y (centered)
-                // Turret (independent rotation around center)
+                ctx.beginPath();
+                ctx.moveTo(-3.2, -2.4);
+                ctx.lineTo(-3.2, -1.0);
+                ctx.lineTo(-2.79, -1.0);
+                ctx.lineTo(-2.79, 1.0);
+                ctx.lineTo(-3.2, 1.0);
+                ctx.lineTo(-3.2, 2.4);
+                ctx.lineTo(3.2, 2.4);
+                ctx.lineTo(3.2, 1.0);
+                ctx.lineTo(2.79, 1.0);
+                ctx.lineTo(2.79, -1.0);
+                ctx.lineTo(3.2, -1.0);
+                ctx.lineTo(3.2, -2.4);
+                ctx.closePath();
+                ctx.fill();
                 ctx.save();
-                ctx.rotate(turretRad - hullRad); // apply relative rotation
+                ctx.rotate(turretRad - hullRad);
                 ctx.fillStyle = '#44525d';
-                ctx.beginPath(); ctx.arc(0,0,1.3,0,Math.PI*2); ctx.fill();
-                // Barrel
+                ctx.beginPath(); ctx.arc(0,0,1.2,0,Math.PI*2); ctx.fill();
                 ctx.fillStyle = '#cccccc';
-                ctx.fillRect(0, -0.05, 4.0, 0.1);
+                ctx.fillRect(0, -0.05, 3.3, 0.1);
                 ctx.restore();
                 ctx.restore();
             }

@@ -38,6 +38,7 @@ struct Session : public std::enable_shared_from_this<Session>
         float turn_dir{0.f};
         float turret_turn{0.f};
         bool fire{false};
+        bool brake{false};
         uint32_t last_client_tick{0};
     } input;
 

@@ -12,6 +12,7 @@ class InputState : public QObject
     Q_PROPERTY(float turn READ turn WRITE setTurn NOTIFY changed)
     Q_PROPERTY(float turretTurn READ turretTurn WRITE setTurretTurn NOTIFY changed)
     Q_PROPERTY(bool fire READ fire WRITE setFire NOTIFY changed)
+    Q_PROPERTY(bool brake READ brake WRITE setBrake NOTIFY changed)
 
 public:
     explicit InputState(QObject *parent = nullptr) : QObject(parent) {}
@@ -23,6 +24,8 @@ public:
     float turretTurn() const { return turretTurn_; }
 
     bool fire() const { return fire_; }
+
+    bool brake() const { return brake_; }
 
     void setMove(float v)
     {
@@ -56,6 +59,14 @@ public:
         }
     }
 
+    void setBrake(bool v)
+    {
+        if (brake_ != v) {
+            brake_ = v;
+            emit changed();
+        }
+    }
+
 signals:
     void changed();
 
@@ -64,4 +75,5 @@ private:
     float turn_{0.f};
     float turretTurn_{0.f};
     bool fire_{false};
+    bool brake_{false};
 };

@@ -1,9 +1,11 @@
 // SPDX-License-Identifier: Apache-2.0
-// physics.hpp - minimal Box2D integration for tank movement & projectile bodies (prototype)
+// physics.hpp - Tank physics (hull + turret) and projectile integration
 #pragma once
 #include <box2d/box2d.h>
 
+#include <algorithm>
 #include <cstdint>
+#include <optional>
 #include <vector>
 
 namespace t2d::phys {
@@ -11,8 +13,8 @@ namespace t2d::phys {
 struct World
 {
     b2WorldId id{b2_nullWorldId};
-    std::vector<b2BodyId> tank_bodies;
-    std::vector<b2BodyId> projectile_bodies;
+    std::vector<b2BodyId> tank_bodies; // hull bodies
+    std::vector<b2BodyId> projectile_bodies; // projectile bodies
 
     explicit World(const b2Vec2 &gravity)
     {
@@ -26,28 +28,47 @@ struct World
 enum Category : uint32_t
 {
     CAT_TANK = 0x0001,
-    CAT_PROJECTILE = 0x0002,
+    CAT_PROJECTILE = 0x0002
 };
 
-inline b2BodyId create_tank(World &w, float x, float y)
+struct TankWithTurret
 {
-    b2BodyDef bd = b2DefaultBodyDef();
-    bd.type = b2_dynamicBody;
-    bd.position = {x, y};
-    b2BodyId body = b2CreateBody(w.id, &bd);
-    b2ShapeDef sd = b2DefaultShapeDef();
-    sd.density = 1.0f;
-    sd.material.friction = 0.3f;
-    sd.enableContactEvents = true;
-    sd.filter.categoryBits = CAT_TANK;
-    sd.filter.maskBits = CAT_PROJECTILE | CAT_TANK; // tank vs projectile (and optionally tank vs tank for later)
-    // Hull rectangle 3x6 -> half extents 1.5 (width), 3.0 (length). We keep forward direction logical; Box2D body not
-    // rotated yet.
-    b2Polygon box = b2MakeBox(1.5f, 3.0f);
-    b2CreatePolygonShape(body, &sd, &box);
-    w.tank_bodies.push_back(body);
-    return body;
-}
+    b2BodyId hull{b2_nullBodyId};
+    b2BodyId turret{b2_nullBodyId};
+    b2JointId turret_joint{b2_nullJointId};
+    uint32_t entity_id{0};
+    uint16_t hp{100};
+    uint16_t ammo{20};
+    float fire_cooldown_max{0.5f};
+    float fire_cooldown_cur{0.0f};
+};
+
+struct TankDriveInput
+{
+    float drive_forward{0.f};
+    float turn{0.f};
+    bool brake{false};
+};
+
+struct TurretAimInput
+{
+    std::optional<float> target_angle_world; // radians
+};
+
+struct BodyFrame
+{
+    b2Vec2 forward;
+    b2Vec2 right;
+};
+
+// Retrieve local forward/right vectors for body frame
+BodyFrame get_body_frame(b2BodyId body);
+// Create tank hull + turret bodies and revolute joint
+TankWithTurret create_tank_with_turret(World &world, float x, float y, uint32_t entity_id);
+void apply_tracked_drive(const TankDriveInput &in, TankWithTurret &tank, float step_dt);
+void update_turret_aim(const TurretAimInput &aim, TankWithTurret &tank);
+uint32_t fire_projectile_if_ready(
+    TankWithTurret &tank, World &world, float speed, float forward_offset, uint32_t next_projectile_id);
 
 inline b2BodyId create_projectile(World &w, float x, float y, float vx, float vy)
 {
@@ -68,12 +89,6 @@ inline b2BodyId create_projectile(World &w, float x, float y, float vx, float vy
     b2Body_SetLinearVelocity(body, vel);
     w.projectile_bodies.push_back(body);
     return body;
-}
-
-inline void set_body_velocity(b2BodyId id, float vx, float vy)
-{
-    b2Vec2 vel{vx, vy};
-    b2Body_SetLinearVelocity(id, vel);
 }
 
 inline b2Vec2 get_body_position(b2BodyId id)
