@@ -69,6 +69,21 @@ for f in "${STAGED_CXX[@]}"; do
   esac
 done
 
+# Also include modified (but not yet staged) tracked C/C++ files for auto-formatting
+while read -r _c; do
+  [ -z "$_c" ] && continue
+  case "$_c" in
+    third_party/*) continue;;
+    *.c|*.cc|*.cxx|*.cpp|*.h|*.hpp) ;; # allowed
+    *) continue;;
+  esac
+  if git ls-files --error-unmatch "$_c" >/dev/null 2>&1; then
+    if ! printf '%s\n' "${FILTERED[@]}" | grep -Fxq "$_c"; then
+      FILTERED+=("$_c")
+    fi
+  fi
+done < <(git diff --name-only --diff-filter=ACMRT | grep -E '\.(c|cc|cxx|cpp|h|hpp)$' || true)
+
 # QML sources
 mapfile -t STAGED_QML < <(echo "$STAGED_ALL" | grep -E '\.qml$' || true)
 QML_FILTERED=()
@@ -112,7 +127,8 @@ done
 
 # Run clang-format directly on filtered staged files (if available)
 if command -v clang-format >/dev/null 2>&1 && [ ${#FILTERED[@]} -gt 0 ]; then
-  clang-format -i "${FILTERED[@]}" || true
+  echo "[pre-commit] clang-format formatting ${#FILTERED[@]} C/C++ file(s)" >&2
+  clang-format -i "${FILTERED[@]}" || echo "[pre-commit] WARNING: clang-format failed" >&2
 fi
 
 # Discover qmlformat (prefer PATH, else from CMakeCache)
