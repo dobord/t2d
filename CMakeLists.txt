@@ -377,6 +377,11 @@ if (NOT QMLFORMAT_BIN)
 endif ()
 if (QMLFORMAT_BIN)
     message(STATUS "Found qmlformat: ${QMLFORMAT_BIN}")
+else ()
+    message(
+        STATUS
+            "qmlformat NOT found - QML auto-format disabled. Install Qt tools providing qmlformat or set CMAKE_PREFIX_PATH to your Qt installation root."
+    )
 endif ()
 if (QMLFORMAT_BIN)
     file(
