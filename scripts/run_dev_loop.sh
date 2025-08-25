@@ -11,17 +11,17 @@
 #  - Ctrl-C cleanly stops both and exits.
 #
 # Environment / flags:
-#  PORT (default 40000)
-#  BUILD_DIR (default ./build)
-#  BUILD_TYPE (default Debug) — can be overridden via -r/--release flag (Release) or explicitly export BUILD_TYPE=RelWithDebInfo, etc.
-#  CMAKE_ARGS (extra args, e.g. "-DT2D_ENABLE_SANITIZERS=ON")
-#  LOOP=0 disables restart loop (single run)
-#  NO_BUILD=1 skip build step (just run existing binaries)
-#  VERBOSE=1 extra logging (enables shell trace and, if LOG_LEVEL unset, forces LOG_LEVEL=DEBUG)
-#  LOG_LEVEL (DEBUG|INFO|WARN|ERROR) minimum severity to print (default INFO)
-#  QML_LOG_LEVEL (debug|info|warn|error) overrides QML logging level (defaults to LOG_LEVEL if set)
-#  NO_BOT_FIRE=1 disable bot firing (passes --no-bot-fire to server)  # convenience wrapper for config/env
-#  -r | --release flag: shorthand to set BUILD_TYPE=Release (overrides BUILD_TYPE env)
+#  PORT (default 40000)                          flag: -p|--port <num>
+#  BUILD_DIR (default ./build)                   flag: -d|--build-dir <dir>
+#  BUILD_TYPE (default Debug)                    flag: -t|--build-type <type>, -r|--release (sets Release)
+#  CMAKE_ARGS (extra cmake args)                 flag: --cmake-args "<args>" (can repeat)
+#  LOOP=0 disables restart loop                  flag: --once (sets LOOP=0) or --loop <0|1>
+#  NO_BUILD=1 skip build                         flag: --no-build
+#  VERBOSE=1 extra logging                       flag: -v|--verbose
+#  LOG_LEVEL (DEBUG|INFO|WARN|ERROR)             flag: --log-level <lvl>
+#  QML_LOG_LEVEL (debug|info|warn|error)         flag: --qml-log-level <lvl>
+#  NO_BOT_FIRE=1 disable bot firing              flag: --no-bot-fire
+#  -h|--help prints this help
 #
 # Examples:
 #   ./scripts/run_dev_loop.sh
@@ -71,15 +71,36 @@ log_err(){ _should_log ERROR && echo "[$(_ts)] [$APP_ID] [E] $*" >&2; }
 log_debug(){ _should_log DEBUG && echo "[$(_ts)] [$APP_ID] [D] $*"; }
 [[ "$VERBOSE" == 1 ]] && set -x && log_debug "Shell trace enabled (VERBOSE=1)"
 
-# Parse simple flags from command line (only release shortcut for now)
-for arg in "$@"; do
-  case "$arg" in
-    -r|--release)
-      BUILD_TYPE=Release;
-      ;;
+# Parse flags (override env defaults)
+print_help(){ sed -n '1,/^set -euo pipefail/p' "$0" | sed 's/^# \{0,1\}//' | grep -E '^(run_dev_loop|PORT|BUILD_DIR|BUILD_TYPE|CMAKE_ARGS|LOOP=|NO_BUILD|VERBOSE|LOG_LEVEL|QML_LOG_LEVEL|NO_BOT_FIRE|-p|Usage:| -r| -d| -t| --cmake-args| --no-build| --once| --loop| --log-level| --qml-log-level| --no-bot-fire| -v)'; echo; echo "Example: $0 -d build-debug -p 40100 -r --no-bot-fire --cmake-args '-DT2D_ENABLE_SANITIZERS=ON'"; }
+
+PENDING_CMAKE_ARGS=()
+while [[ $# -gt 0 ]]; do
+  case "$1" in
+    -p|--port) PORT="$2"; shift 2;;
+    -d|--build-dir) BUILD_DIR="$2"; shift 2;;
+    -t|--build-type) BUILD_TYPE="$2"; shift 2;;
+    -r|--release) BUILD_TYPE=Release; shift;;
+    --cmake-args) PENDING_CMAKE_ARGS+=("$2"); shift 2;;
+    --loop) LOOP="$2"; shift 2;;
+    --once) LOOP=0; shift;;
+    --no-build) NO_BUILD=1; shift;;
+    -v|--verbose) VERBOSE=1; shift;;
+    --log-level) LOG_LEVEL="$2"; shift 2;;
+    --qml-log-level) QML_LOG_LEVEL="$2"; shift 2;;
+    --no-bot-fire) NO_BOT_FIRE=1; shift;;
+    -h|--help) print_help; exit 0;;
+    --) shift; break;;
+    *) log_warn "Unknown argument: $1"; shift;;
   esac
 done
-log_debug "Using BUILD_TYPE=${BUILD_TYPE}"
+if ((${#PENDING_CMAKE_ARGS[@]})); then
+  # Append with space separation preserving ordering
+  for a in "${PENDING_CMAKE_ARGS[@]}"; do
+    if [[ -z "$CMAKE_ARGS" ]]; then CMAKE_ARGS="$a"; else CMAKE_ARGS+=" $a"; fi
+  done
+fi
+log_debug "Effective flags: PORT=$PORT BUILD_DIR=$BUILD_DIR BUILD_TYPE=$BUILD_TYPE LOOP=$LOOP NO_BUILD=$NO_BUILD VERBOSE=$VERBOSE LOG_LEVEL=$LOG_LEVEL QML_LOG_LEVEL=$QML_LOG_LEVEL NO_BOT_FIRE=${NO_BOT_FIRE:-0} CMAKE_ARGS='$CMAKE_ARGS'"
 
 # Run code formatting targets before building (mandatory auto-format step)
 run_format(){
