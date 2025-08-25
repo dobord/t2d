@@ -49,9 +49,11 @@ Window {
         property bool lastMouseValid: false
 
         // QML logging helpers & level filtering
-        property string qmlLogLevel: "INFO" // default (can be overridden by args)
+        property string qmlLogLevel: "INFO" // default (override via --qml-log-level or --log-level; supports TRACE|DEBUG|INFO|WARN|ERROR)
         function _levelValue(lv) {
             switch (lv.toUpperCase()) {
+            case 'TRACE':
+                return 5;
             case 'DEBUG':
                 return 10;
             case 'INFO':
@@ -69,9 +71,16 @@ Window {
         function _pad(n) {
             return n < 10 ? '0' + n : '' + n;
         }
+        function _ms3(n) {
+            return n < 10 ? '00' + n : (n < 100 ? '0' + n : '' + n);
+        }
         function _ts() {
             var d = new Date();
-            return d.getFullYear() + '-' + _pad(d.getMonth() + 1) + '-' + _pad(d.getDate()) + ' ' + _pad(d.getHours()) + ':' + _pad(d.getMinutes()) + ':' + _pad(d.getSeconds());
+            return d.getFullYear() + '-' + _pad(d.getMonth() + 1) + '-' + _pad(d.getDate()) + ' ' + _pad(d.getHours()) + ':' + _pad(d.getMinutes()) + ':' + _pad(d.getSeconds()) + '.' + _ms3(d.getMilliseconds());
+        }
+        function logT(msg) {
+            if (_shouldLog('TRACE'))
+                console.debug('[' + _ts() + '] [qml] [T] ' + msg);
         }
         function logD(msg) {
             if (_shouldLog('DEBUG'))
@@ -196,7 +205,7 @@ Window {
             if (!mouseAimEnabled) {
                 if (!joystick.target_empty) {
                     var desiredRad = Math.atan2(joystick.target_y, joystick.target_x);
-                    var ownIndex = entityModel.count() > 0 ? 0 : -1;
+                    var ownIndex = timingState.myEntityId > 0 ? entityModel.rowForEntity(timingState.myEntityId) : -1;
                     if (ownIndex >= 0) {
                         var curDeg = entityModel.interpTurretAngle(ownIndex, timingState.alpha);
                         var desiredDeg = desiredRad * 180.0 / Math.PI;
@@ -220,7 +229,7 @@ Window {
             if (!mouseAimEnabled || !lastMouseValid)
                 return;
             const a = timingState.alpha;
-            const ownIndex = entityModel.count() > 0 ? 0 : -1;
+            const ownIndex = timingState.myEntityId > 0 ? entityModel.rowForEntity(timingState.myEntityId) : -1;
             if (ownIndex < 0)
                 return;
             const scale = rootItem.worldToScreenScale;
@@ -369,7 +378,7 @@ Window {
                 ctx.fillStyle = '#162028';
                 ctx.fillRect(0, 0, width, height);
                 const a = timingState.alpha;
-                const ownIndex = entityModel.count() > 0 ? 0 : -1;
+                const ownIndex = timingState.myEntityId > 0 ? entityModel.rowForEntity(timingState.myEntityId) : -1;
                 const scale = rootItem.worldToScreenScale;
                 ctx.save();
                 ctx.translate(width / 2, height / 2);
@@ -678,7 +687,7 @@ Window {
                 }
                 onPositionChanged: function (ev) {
                     const a = timingState.alpha;
-                    let ownIndex = entityModel.count() > 0 ? 0 : -1;
+                    let ownIndex = timingState.myEntityId > 0 ? entityModel.rowForEntity(timingState.myEntityId) : -1;
                     if (ownIndex < 0)
                         return;
                     const scale = rootItem.worldToScreenScale;
@@ -772,7 +781,11 @@ Window {
                             verticalAlignment: Text.AlignVCenter
                             anchors.fill: parent
                         }
-                        onClicked: tankPanel.collapsed = !tankPanel.collapsed
+                        onClicked: {
+                            tankPanel.collapsed = !tankPanel.collapsed;
+                            // Force focus back to main game input container to keep WASD working
+                            rootItem.forceActiveFocus();
+                        }
                     }
                 }
                 ListView {
@@ -864,7 +877,10 @@ Window {
                             verticalAlignment: Text.AlignVCenter
                             anchors.fill: parent
                         }
-                        onClicked: projectilePanel.collapsed = !projectilePanel.collapsed
+                        onClicked: {
+                            projectilePanel.collapsed = !projectilePanel.collapsed;
+                            rootItem.forceActiveFocus();
+                        }
                     }
                 }
                 ListView {
@@ -930,7 +946,7 @@ Window {
             anchors.top: parent.top
             anchors.horizontalCenter: parent.horizontalCenter
             anchors.topMargin: 10
-            text: "Snapshot tanks=" + tankList.count + "  follow=" + (rootItem.followCamera ? "on" : "off") + "(G)" + "  grid=" + (rootItem.showGrid ? "on" : "off") + "(H)" + "  mouseAim=" + (rootItem.mouseAimEnabled ? "on" : "off") + "(M)" + "  zoom=" + rootItem.userZoom.toFixed(2) + "(+/- wheel)" + "  focus=" + rootItem.focus
+            text: "Snapshot tanks=" + tankList.count + "  follow=" + (rootItem.followCamera ? "on" : "off") + "(G)" + "  grid=" + (rootItem.showGrid ? "on" : "off") + "(H)" + "  mouseAim=" + (rootItem.mouseAimEnabled ? "on" : "off") + "(M)" + "  zoom=" + rootItem.userZoom.toFixed(2) + "(+/- wheel)" + (timingState.matchOver ? "  MATCH OVER" : (timingState.remainingHardCapSeconds > 0 ? ("  time=" + timingState.remainingHardCapSeconds + "s") : ""))
             color: "#d0dde5"
             font.pixelSize: 14
             Rectangle {
@@ -941,6 +957,113 @@ Window {
                 color: "#101820cc"
                 border.color: "#2e4450"
                 z: -1
+            }
+        }
+
+        // Center match end overlay
+        Item {
+            id: matchEndOverlay
+            z: 30
+            anchors.fill: parent
+            visible: timingState.matchOver
+            Rectangle {
+                id: overlayPanel
+                width: Math.min(parent.width * 0.5, 420)
+                height: 200
+                radius: 12
+                color: "#101820dd"
+                border.color: "#3a5866"
+                anchors.horizontalCenter: parent.horizontalCenter
+                anchors.verticalCenter: parent.verticalCenter
+                ColumnLayout {
+                    anchors.fill: parent
+                    anchors.margins: 24
+                    spacing: 18
+                    Text {
+                        id: resultText
+                        Layout.alignment: Qt.AlignHCenter
+                        text: timingState.matchOutcome === 1 ? "Victory" : (timingState.matchOutcome === -1 ? "Defeat" : "Draw")
+                        color: timingState.matchOutcome === 1 ? "#6dff6d" : (timingState.matchOutcome === -1 ? "#ff6464" : "#e0e0e0")
+                        font.pixelSize: 38
+                        font.bold: true
+                    }
+                    Text {
+                        Layout.alignment: Qt.AlignHCenter
+                        text: timingState.autoReturnSeconds > 0 ? ("Returning to lobby in " + timingState.autoReturnSeconds + "s") : "Returning..."
+                        color: "#c7d4df"
+                        font.pixelSize: 18
+                    }
+                    RowLayout {
+                        Layout.alignment: Qt.AlignHCenter
+                        spacing: 14
+                        Button {
+                            id: lobbyNowBtn
+                            text: "Return to Lobby"
+                            font.pixelSize: 16
+                            onClicked: timingState.requestRequeueNow()
+                        }
+                    }
+                }
+            }
+        }
+
+        // Lobby status panel (shown when not in active match and not in matchOver countdown)
+        Rectangle {
+            id: lobbyPanel
+            z: 8
+            visible: !timingState.matchActive && !timingState.matchOver
+            anchors.horizontalCenter: parent.horizontalCenter
+            anchors.top: parent.top
+            anchors.topMargin: 54
+            color: "#1b262ecc"
+            radius: 8
+            border.color: "#35505c"
+            Column {
+                anchors.fill: parent
+                anchors.margins: 10
+                spacing: 4
+                Text {
+                    id: lobbyStateText
+                    color: "#d0dde5"
+                    font.pixelSize: 16
+                    text: {
+                        if (!lobbyState)
+                            return "";
+                        var s = "";
+                        switch (lobbyState.state) {
+                        case 0:
+                            s = "Waiting for Players";
+                            break;
+                        case 1:
+                            s = "Forming Match";
+                            break;
+                        case 2:
+                            s = "Starting Match";
+                            break;
+                        default:
+                            s = "Lobby";
+                            break;
+                        }
+                        return s;
+                    }
+                }
+                Text {
+                    color: "#b9c7d2"
+                    font.pixelSize: 14
+                    text: lobbyState ? ("Queue: " + lobbyState.position + "  players: " + lobbyState.playersInQueue + "  needed: " + lobbyState.neededForMatch) : ""
+                }
+                Text {
+                    visible: lobbyState && lobbyState.lobbyCountdown > 0
+                    color: "#c7d4df"
+                    font.pixelSize: 14
+                    text: lobbyState ? ("Start in: " + lobbyState.lobbyCountdown + "s") : ""
+                }
+                Text {
+                    visible: lobbyState && lobbyState.projectedBotFill > 0
+                    color: "#c59f4a"
+                    font.pixelSize: 13
+                    text: lobbyState ? ("Bots to add: " + lobbyState.projectedBotFill) : ""
+                }
             }
         }
     } // end rootItem

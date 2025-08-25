@@ -6,6 +6,7 @@
 #include "entity_model.hpp"
 #include "game.pb.h"
 #include "input_state.hpp"
+#include "lobby_state.hpp"
 #include "projectile_model.hpp"
 #include "timing_state.hpp"
 
@@ -56,23 +57,48 @@ coro::task<void> send_frame(coro::net::tcp::client &client, const t2d::ClientMes
     }
 }
 
-coro::task<bool> read_one(coro::net::tcp::client &client, t2d::ServerMessage &out)
+// Attempts to extract one message; returns 1=message parsed, 0=need more data (no message yet), -1=connection closed
+coro::task<int> read_one(coro::net::tcp::client &client, t2d::ServerMessage &out)
 {
-    static t2d::netutil::FrameParseState state;
-    co_await client.poll(coro::poll_op::read);
+    static t2d::netutil::FrameParseState state; // per-process (single connection prototype)
+    // Try extract without new read first
+    {
+        std::string payload;
+        if (t2d::netutil::try_extract(state, payload)) {
+            if (out.ParseFromArray(payload.data(), (int)payload.size()))
+                co_return 1;
+            co_return -1;
+        }
+    }
+    // Perform a NON-BLOCKING-ish poll with tiny timeout so outer loop can progress to send heartbeats & inputs.
+    auto pstat = co_await client.poll(coro::poll_op::read, std::chrono::milliseconds(1));
+    if (pstat == coro::poll_status::timeout) {
+        co_return 0; // no data ready right now
+    }
+    if (pstat == coro::poll_status::error || pstat == coro::poll_status::closed) {
+        // Attempt final extraction before declaring closed
+        std::string payload;
+        if (t2d::netutil::try_extract(state, payload) && out.ParseFromArray(payload.data(), (int)payload.size()))
+            co_return 1;
+        co_return -1;
+    }
     std::string tmp(4096, '\0');
     auto [st, span] = client.recv(tmp);
-    if (st == coro::net::recv_status::closed)
-        co_return false;
+    if (st == coro::net::recv_status::closed) {
+        std::string payload;
+        if (t2d::netutil::try_extract(state, payload) && out.ParseFromArray(payload.data(), (int)payload.size()))
+            co_return 1;
+        co_return -1;
+    }
     if (st != coro::net::recv_status::ok)
-        co_return false;
+        co_return 0; // would_block or other transient
     state.buffer.insert(state.buffer.end(), span.begin(), span.end());
     std::string payload;
     if (!t2d::netutil::try_extract(state, payload))
-        co_return false;
+        co_return 0;
     if (!out.ParseFromArray(payload.data(), (int)payload.size()))
-        co_return false;
-    co_return true;
+        co_return -1;
+    co_return 1;
 }
 
 coro::task<void> run_network(
@@ -83,6 +109,7 @@ coro::task<void> run_network(
     CrateModel *crateModel,
     InputState *input,
     TimingState *timing,
+    LobbyState *lobby,
     std::string host,
     uint16_t port)
 {
@@ -104,6 +131,11 @@ coro::task<void> run_network(
     co_await send_frame(cli, q);
     std::string session_id;
     bool in_match = false;
+    uint32_t myEntityId = 0; // authoritative from MatchStart
+    // lobbyState now tracked via LobbyState object in QML
+    uint64_t tickRate = 20; // default
+    uint64_t hardCapTicks = 0;
+    uint64_t matchStartServerTick = 0;
     uint64_t loop_iter = 0;
     while (!g_shutdown.load()) {
         if ((loop_iter % 50) == 0) {
@@ -114,6 +146,7 @@ coro::task<void> run_network(
                                std::chrono::steady_clock::now().time_since_epoch())
                                .count());
             co_await send_frame(cli, hb);
+            t2d::log::debug("heartbeat sent loop_iter={} in_match={} myEntityId={}", loop_iter, in_match, myEntityId);
         }
         if (in_match && (loop_iter % 5) == 0) {
             t2d::ClientMessage in;
@@ -125,8 +158,9 @@ coro::task<void> run_network(
             ic->set_turret_turn(input->turretTurn());
             ic->set_fire(input->fire());
             ic->set_brake(input->brake());
+            // Diagnostics: revert to debug (no longer needed at info level).
             t2d::log::debug(
-                "[qt] send_input ctick={} move={} turn={} turret={} fire={} brake= {}",
+                "send_input ctick={} move={} turn={} turret={} fire={} brake={}",
                 loop_iter,
                 input->move(),
                 input->turn(),
@@ -135,26 +169,86 @@ coro::task<void> run_network(
                 input->brake());
             co_await send_frame(cli, in);
         }
-        t2d::ServerMessage sm;
-        if (co_await read_one(cli, sm)) {
-            if (sm.has_auth_response()) {
-                session_id = sm.auth_response().session_id();
-            } else if (sm.has_match_start()) {
-                in_match = true;
-            } else if (sm.has_snapshot()) {
-                tankModel->applyFull(sm.snapshot());
-                projModel->applyFull(sm.snapshot());
-                ammoModel->applyFull(sm.snapshot());
-                crateModel->applyFull(sm.snapshot());
-                timing->markServerTick();
-            } else if (sm.has_delta_snapshot()) {
-                tankModel->applyDelta(sm.delta_snapshot());
-                projModel->applyDelta(sm.delta_snapshot());
-                crateModel->applyDelta(sm.delta_snapshot());
-                timing->markServerTick();
+        // Drain currently available complete frames without stalling long.
+        for (int drain = 0; drain < 64; ++drain) { // hard cap per outer iteration
+            t2d::ServerMessage sm;
+            int r = co_await read_one(cli, sm);
+            if (r == 1) {
+                if (sm.has_auth_response()) {
+                    session_id = sm.auth_response().session_id();
+                } else if (sm.has_match_start()) {
+                    in_match = true;
+                    timing->setMatchActive(true);
+                    tickRate = sm.match_start().tick_rate();
+                    if (tickRate > 0) {
+                        timing->setTickIntervalMs((int)(1000 / tickRate));
+                    }
+                    myEntityId = sm.match_start().my_entity_id();
+                    timing->setMyEntityId(myEntityId);
+                    t2d::log::info(
+                        "match_start received match_id={} my_entity_id={} tick_rate={} initial_players={} "
+                        "disable_bot_fire={}",
+                        sm.match_start().match_id(),
+                        myEntityId,
+                        tickRate,
+                        sm.match_start().initial_player_count(),
+                        sm.match_start().disable_bot_fire());
+                    uint32_t ipc = sm.match_start().initial_player_count();
+                    bool dbf = sm.match_start().disable_bot_fire();
+                    uint64_t secs = (ipc <= 1) ? 120ull : (dbf ? 300ull : 60ull);
+                    hardCapTicks = tickRate * secs;
+                    matchStartServerTick = 0;
+                    timing->setHardCap(matchStartServerTick, tickRate, hardCapTicks);
+                } else if (sm.has_snapshot()) {
+                    tankModel->applyFull(sm.snapshot());
+                    projModel->applyFull(sm.snapshot());
+                    ammoModel->applyFull(sm.snapshot());
+                    crateModel->applyFull(sm.snapshot());
+                    timing->markServerTick();
+                    timing->setServerTick(sm.snapshot().server_tick());
+                    // myEntityId already known; no heuristic needed now.
+                } else if (sm.has_delta_snapshot()) {
+                    tankModel->applyDelta(sm.delta_snapshot());
+                    projModel->applyDelta(sm.delta_snapshot());
+                    crateModel->applyDelta(sm.delta_snapshot());
+                    timing->markServerTick();
+                    timing->setServerTick(sm.delta_snapshot().server_tick());
+                } else if (sm.has_match_end()) {
+                    t2d::log::info(
+                        "match_end received winner_entity={} my_entity={} server_tick={}",
+                        sm.match_end().winner_entity_id(),
+                        myEntityId,
+                        sm.match_end().server_tick());
+                    timing->onMatchEnd(sm.match_end().winner_entity_id(), myEntityId);
+                    in_match = false;
+                    timing->setMatchActive(false);
+                } else if (sm.has_queue_status()) {
+                    if (lobby)
+                        lobby->updateFromQueue(sm.queue_status());
+                }
+                // continue draining until read_one returns 0 or cap reached
+                continue;
             }
+            if (r == -1) {
+                // Connection closed or fatal parse; break loop (no further frames)
+                break;
+            }
+            // r == 0: no complete frame currently
+            break;
         }
         ++loop_iter;
+        timing->tickFrame();
+        if (timing->consumeRequeueRequest()) {
+            // Reset state for next match
+            in_match = false;
+            myEntityId = 0;
+            t2d::ClientMessage qj;
+            auto *qjoin = qj.mutable_queue_join();
+            if (!session_id.empty())
+                qjoin->set_session_id(session_id);
+            co_await send_frame(cli, qj);
+            t2d::log::info("requeue requested");
+        }
         co_await sched->yield_for(20ms);
     }
     t2d::log::info("qt_client network loop exit");
@@ -196,12 +290,14 @@ int main(int argc, char **argv)
     InputState input;
     TimingState timing;
     QQmlApplicationEngine engine;
+    LobbyState lobby; // lobby state (must be set before engine.load so QML bindings find it)
     engine.rootContext()->setContextProperty("entityModel", &tankModel);
     engine.rootContext()->setContextProperty("projectileModel", &projectileModel);
     engine.rootContext()->setContextProperty("inputState", &input);
     engine.rootContext()->setContextProperty("ammoBoxModel", &ammoBoxModel);
     engine.rootContext()->setContextProperty("crateModel", &crateModel);
     engine.rootContext()->setContextProperty("timingState", &timing);
+    engine.rootContext()->setContextProperty("lobbyState", &lobby);
     // The generated resource uses path prefix including source-relative directories; load via full embedded path.
     engine.load(QUrl("qrc:/T2DClient/src/client/qt/qml/Main.qml"));
     if (engine.rootObjects().isEmpty()) {
@@ -223,14 +319,13 @@ int main(int argc, char **argv)
                 {
                     rootItem->setProperty("mapWidth", tankModel.mapWidth());
                     rootItem->setProperty("mapHeight", tankModel.mapHeight());
-                    t2d::log::info(
-                        "[qt] map dimensions received w={} h={}", tankModel.mapWidth(), tankModel.mapHeight());
+                    t2d::log::info("map dimensions received w={} h={}", tankModel.mapWidth(), tankModel.mapHeight());
                 });
         }
     }
     auto sched = coro::default_executor::io_executor();
     sched->spawn(run_network(
-        sched, &tankModel, &projectileModel, &ammoBoxModel, &crateModel, &input, &timing, "127.0.0.1", 40000));
+        sched, &tankModel, &projectileModel, &ammoBoxModel, &crateModel, &input, &timing, &lobby, "127.0.0.1", 40000));
     int rc = app.exec();
     g_shutdown.store(true);
     return rc;

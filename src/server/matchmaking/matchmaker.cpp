@@ -105,6 +105,7 @@ coro::task<void> run_matchmaker(std::shared_ptr<coro::io_scheduler> scheduler, M
                 qs->set_timeout_seconds_left(lobby_countdown);
                 qs->set_lobby_countdown(lobby_countdown);
                 qs->set_projected_bot_fill(projected_bot_fill);
+                qs->set_lobby_state(0); // queued
                 mgr.push_message(sess, smsg);
             }
         }
@@ -184,6 +185,11 @@ coro::task<void> run_matchmaker(std::shared_ptr<coro::io_scheduler> scheduler, M
                 ms->set_match_id(ctx->match_id);
                 ms->set_tick_rate(cfg.tick_rate);
                 ms->set_seed(seed);
+                // Provide initial player count (including bots) so client can derive hard-cap timer.
+                ms->set_initial_player_count(static_cast<uint32_t>(group.size()));
+                ms->set_disable_bot_fire(cfg.disable_bot_fire);
+                // Per-recipient entity id (own tank)
+                ms->set_my_entity_id(s->tank_entity_id);
                 mgr.push_message(s, smsg);
                 t2d::log::info(std::string("MatchStart queued session=") + s->session_id);
             }

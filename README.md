@@ -172,19 +172,34 @@ Environment flags affecting the hook:
 | `T2D_FORMAT_BLOCK=1` or git config `t2d.formatBlock=true` | Abort commit after formatting (user must re-stage) |
 
 ### Dev Loop Script (`scripts/run_dev_loop.sh`)
-Automated local iteration helper (server + Qt client auto-restart). Key environment variables:
+Automated local iteration helper (server + Qt client auto-restart).
 
-| Var | Default | Meaning |
-|-----|---------|---------|
-| `PORT` | 40000 | Server listen / client connect port |
-| `BUILD_DIR` | `build` | Build directory used for both targets |
-| `CMAKE_ARGS` | (empty) | Extra configure flags |
-| `LOOP` | 1 | If 0 runs once, else restart loop |
-| `NO_BUILD` | 0 | Skip build (requires existing binaries) |
-| `VERBOSE` | 0 | Shell trace + elevate LOG_LEVEL to DEBUG if unset |
-| `LOG_LEVEL` | INFO | Minimum script log verbosity (DEBUG/INFO/WARN/ERROR) |
-| `QML_LOG_LEVEL` | (inherits `LOG_LEVEL`) | QML UI log level passed as `--qml-log-level=` |
-| `NO_BOT_FIRE` | 0 | Pass `--no-bot-fire` to server |
+Environment variables / CLI flags (all can be set as env vars or via flags shown):
+
+| Var / Flag | Default | Values | Effect |
+|------------|---------|--------|--------|
+| `PORT` / `-p <num>` | 40000 | int | Server listen & client connect port |
+| `BUILD_DIR` / `-d <dir>` | build | path | Build directory containing artifacts |
+| `BUILD_TYPE` / `-t <type>` / `-r` | Debug | Debug/Release/RelWithDebInfo/etc. | CMake build type ( `-r` forces Release ) |
+| `CMAKE_ARGS` / `--cmake-args "..."` | (empty) | string | Extra CMake configure args (repeat flag to append) |
+| `LOOP` / `--once` / `--loop <0|1>` | 1 | 0/1 | Auto-restart loop (0 = single run) |
+| `NO_BUILD` / `--no-build` | 0 | 0/1 | Skip build step (assumes binaries present) |
+| `VERBOSE` / `-v` | 0 | 0/1 | Enables bash trace + sets default LOG_LEVEL=DEBUG |
+| `LOG_LEVEL` / `--log-level <lvl>` | INFO | TRACE/DEBUG/INFO/WARN/ERROR | Script log filtering + seeds `T2D_LOG_LEVEL` (lowercased) if that env unset |
+| `QML_LOG_LEVEL` / `--qml-log-level <lvl>` | (inherits LOG_LEVEL) | trace/debug/info/warn/error | Passed to Qt client `--qml-log-level` |
+| `NO_BOT_FIRE` / `--no-bot-fire` | 0 | 0/1 | Disables bot firing (server flag) |
+| `NO_BOT_AI` / `--no-bot-ai` | 0 | 0/1 | Disables all bot movement/aim/fire (server flag) |
+
+Script log levels (LOG_LEVEL) are independent from C++ runtime levels but propagate: the script exports `T2D_LOG_LEVEL` (in lowercase) for server & client if not already set externally. TRACE is the most verbose.
+
+Generated/consumed runtime environment for server/client inside the loop:
+
+| Exported | Purpose |
+|----------|---------|
+| `T2D_LOG_LEVEL` | Minimum C++ logger level (trace→error) |
+| `T2D_LOG_APP_ID` | Set per process (`srv` / `qt`) for log prefixes |
+
+Timestamps in script logs include milliseconds aligning with C++ logger output.
 
 Behavior:
 * Runs formatting targets before each build (`format_all` → fallback chain).
@@ -201,7 +216,8 @@ The pre-commit hook and CMake tool discovery reuse these paths when searching fo
 
 ### Logging (C++ & QML)
 The C++ logger (see `src/common/logger.hpp`) supports:
-* Levels: debug / info / warn / error via `T2D_LOG_LEVEL` env
+* Levels: trace / debug / info / warn / error via `T2D_LOG_LEVEL` env (trace is the most verbose)
+* Millisecond timestamp precision in plain and JSON formats
 * JSON mode when `T2D_LOG_JSON` is set
 * Optional per-process `T2D_LOG_APP_ID` tag (e.g. `srv`, `qt`)
 
@@ -213,6 +229,8 @@ Runtime examples:
 ```bash
 ./build/t2d_server config/server.yaml &
 T2D_LOG_LEVEL=debug ./build/t2d_qt_client --qml-log-level=warn
+# Full tracing (very verbose):
+T2D_LOG_LEVEL=trace ./build/t2d_qt_client --qml-log-level=trace
 ```
 
 Network input debug spam can be silenced by elevating QML log level above DEBUG.
@@ -224,7 +242,7 @@ Network input debug spam can be silenced by elevating QML log level above DEBUG.
 ### Environment Variables Summary (Runtime)
 | Env Var | Component | Purpose |
 |---------|-----------|---------|
-| `T2D_LOG_LEVEL` | server / client | Minimum C++ log level |
+| `T2D_LOG_LEVEL` | server / client | Minimum C++ log level (trace|debug|info|warn|error) |
 | `T2D_LOG_JSON` | server / client | Enable JSON log output |
 | `T2D_LOG_APP_ID` | both | Short tag in log prefix |
 | `T2D_QML_FORMAT_REQUIRED` | git hook | Enforce presence of `qmlformat` when QML changes |

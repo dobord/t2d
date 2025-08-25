@@ -248,6 +248,20 @@ coro::task<void> run_match(std::shared_ptr<coro::io_scheduler> scheduler, std::s
                 continue; // dead
             auto &sess = ctx->players[i];
             auto input = t2d::mm::instance().get_input_copy(sess);
+            // One-shot per tick diagnostic when a human player's input is non-zero (temporary instrumentation)
+            if (!sess->is_bot
+                && (std::fabs(input.move_dir) > 0.01f || std::fabs(input.turn_dir) > 0.01f
+                    || std::fabs(input.turret_turn) > 0.01f || input.fire || input.brake)) {
+                t2d::log::trace(
+                    "[drive] tick={} eid={} move={} turn={} turret={} fire={} brake={}",
+                    ctx->server_tick,
+                    adv.entity_id,
+                    input.move_dir,
+                    input.turn_dir,
+                    input.turret_turn,
+                    input.fire,
+                    input.brake);
+            }
             // Basic bot AI: if bot, synthesize movement & periodic fire
             if (sess->is_bot) {
                 if (ctx->disable_bot_ai) {
@@ -746,20 +760,16 @@ coro::task<void> run_match(std::shared_ptr<coro::io_scheduler> scheduler, std::s
                     last_alive_id = t.entity_id;
                 }
             }
-            // If match started with only 1 player (all others bots), allow longer duration before auto-end.
+            // Determine fallback timeout (soft end) independent of alive_count branch.
+            uint64_t fallback_ticks = ctx->tick_rate * (ctx->disable_bot_fire ? 300ull : 60ull);
+            bool timeout_reached = ctx->server_tick > fallback_ticks;
             if (alive_count <= 1 && ctx->initial_player_count > 1) {
                 ctx->match_over = true;
-                ctx->winner_entity = last_alive_id;
-            } else {
-                // Base fallback timeout depends on configuration:
-                //  - disable_bot_fire: extend greatly so player can observe movement without premature end
-                //  - otherwise default 60s (was 30s previously)
-                uint64_t fallback_ticks = ctx->tick_rate * (ctx->disable_bot_fire ? 300ull : 60ull);
-                if (ctx->server_tick > fallback_ticks) {
-                    ctx->match_over = true;
-                }
+                ctx->winner_entity = last_alive_id; // could be 0 if no survivors
+            } else if (timeout_reached) {
+                ctx->match_over = true; // draw if winner_entity not set
             }
-            if (ctx->match_over) {
+            if (ctx->match_over && !ctx->match_end_sent) {
                 t2d::ServerMessage endmsg;
                 auto *me = endmsg.mutable_match_end();
                 me->set_match_id(ctx->match_id);
@@ -767,6 +777,7 @@ coro::task<void> run_match(std::shared_ptr<coro::io_scheduler> scheduler, std::s
                 me->set_server_tick(static_cast<uint32_t>(ctx->server_tick));
                 for (auto &pl : ctx->players)
                     t2d::mm::instance().push_message(pl, endmsg);
+                ctx->match_end_sent = true;
                 t2d::log::info("[match] over id={} winner_entity={}", ctx->match_id, ctx->winner_entity);
             }
         }
@@ -776,7 +787,19 @@ coro::task<void> run_match(std::shared_ptr<coro::io_scheduler> scheduler, std::s
         uint64_t hard_cap_ticks = (ctx->initial_player_count <= 1)
             ? (ctx->tick_rate * 120ull)
             : (ctx->tick_rate * (ctx->disable_bot_fire ? 300ull : 60ull));
-        if (ctx->match_over || ctx->server_tick > hard_cap_ticks) {
+        if ((ctx->match_over && ctx->match_end_sent) || ctx->server_tick > hard_cap_ticks) {
+            if (!ctx->match_end_sent) {
+                // Ensure we always emit MatchEnd exactly once before exiting (hard cap emergency path)
+                t2d::ServerMessage endmsg;
+                auto *me = endmsg.mutable_match_end();
+                me->set_match_id(ctx->match_id);
+                me->set_winner_entity_id(ctx->winner_entity);
+                me->set_server_tick(static_cast<uint32_t>(ctx->server_tick));
+                for (auto &pl : ctx->players)
+                    t2d::mm::instance().push_message(pl, endmsg);
+                ctx->match_end_sent = true;
+                t2d::log::info("[match] over (hard cap) id={} winner_entity={}", ctx->match_id, ctx->winner_entity);
+            }
             t2d::log::info("[match] end id={}", ctx->match_id);
             // Destroy remaining projectile bodies
             for (auto &kv : projectile_bodies) {

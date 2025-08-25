@@ -52,6 +52,24 @@ public:
 
     Q_INVOKABLE int count() const { return static_cast<int>(rows_.size()); }
 
+    Q_INVOKABLE uint32_t entityId(int row) const
+    {
+        std::scoped_lock lk(m_);
+        if (row < 0 || (size_t)row >= rows_.size())
+            return 0;
+        return rows_[row].id;
+    }
+
+    Q_INVOKABLE int rowForEntity(uint32_t id) const
+    {
+        std::scoped_lock lk(m_);
+        for (size_t i = 0; i < rows_.size(); ++i) {
+            if (rows_[i].id == id)
+                return (int)i;
+        }
+        return -1;
+    }
+
     Q_INVOKABLE float interpX(int row, float alpha) const
     {
         std::scoped_lock lk(m_);

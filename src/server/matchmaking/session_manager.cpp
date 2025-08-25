@@ -105,6 +105,7 @@ void SessionManager::update_input(const std::shared_ptr<Session> &s, const t2d::
     s->input.fire = cmd.fire();
     s->input.brake = cmd.brake();
     if (!s->is_bot && (move_changed || turn_changed || turret_changed || fire_changed || brake_changed)) {
+        // Revert to debug (was temporarily elevated to info).
         t2d::log::debug(
             "[input] session={} ctick={} move={} turn={} turret={} fire={} brake={}",
             s->session_id,

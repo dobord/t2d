@@ -29,12 +29,17 @@ message QueueStatusUpdate {
   uint32 lobby_countdown = 5; // 0 if unknown/not started
   // Dynamic bot pacing: how many bots would be added if countdown expired now (hint to client UI)
   uint32 projected_bot_fill = 6; // 0 if none
+  // Lobby state machine hint: 0=queued(waiting players),1=forming(match picked, waiting start),2=spawning,3=unknown
+  uint32 lobby_state = 7;
 }
 
 message MatchStart {
   string match_id = 1;
   uint32 tick_rate = 2;
   uint32 seed = 3; // RNG seed for deterministic elements
+  uint32 initial_player_count = 4; // number of players (including human) at match formation
+  bool disable_bot_fire = 5;       // propagate server config impacting duration caps
+  uint32 my_entity_id = 6;          // authoritative entity id for this client
 }
 
 // Player input (authoritative server model)

@@ -49,18 +49,22 @@ Features:
 * Clean shutdown & restart of server and Qt client when either exits
 * Optional single-run mode (`LOOP=0`)
 
-Key environment variables:
-| Var | Default | Description |
-|-----|---------|-------------|
-| `PORT` | 40000 | Server/client port |
-| `BUILD_DIR` | build | Shared build dir |
-| `NO_BUILD` | 0 | Skip compile phase |
-| `VERBOSE` | 0 | Shell trace + promote LOG_LEVEL to DEBUG if unset |
-| `LOG_LEVEL` | INFO | Script log min level (DEBUG/INFO/WARN/ERROR) |
-| `QML_LOG_LEVEL` | (inherits) | QML filter passed as `--qml-log-level` |
-| `NO_BOT_FIRE` | 0 | Pass `--no-bot-fire` to server |
+Key environment variables / flags:
+| Var / Flag | Default | Values | Description |
+|------------|---------|--------|-------------|
+| `PORT` / `-p` | 40000 | int | Server/client TCP port |
+| `BUILD_DIR` / `-d` | build | path | Shared build directory |
+| `BUILD_TYPE` / `-t` / `-r` | Debug | CMake types | CMake build type (`-r` = Release shortcut) |
+| `CMAKE_ARGS` / `--cmake-args` | (empty) | string | Extra CMake configure args (repeat to append) |
+| `LOOP` / `--once` / `--loop` | 1 | 0/1 | Auto-restart loop (0 single run) |
+| `NO_BUILD` / `--no-build` | 0 | 0/1 | Skip build phase |
+| `VERBOSE` / `-v` | 0 | 0/1 | Enable bash trace + default LOG_LEVEL=DEBUG |
+| `LOG_LEVEL` / `--log-level` | INFO | TRACE/DEBUG/INFO/WARN/ERROR | Script log filter + seeds `T2D_LOG_LEVEL` if unset |
+| `QML_LOG_LEVEL` / `--qml-log-level` | (inherits LOG_LEVEL) | trace..error | QML logging level passed to client |
+| `NO_BOT_FIRE` / `--no-bot-fire` | 0 | 0/1 | Disable bot firing (server) |
+| `NO_BOT_AI` / `--no-bot-ai` | 0 | 0/1 | Disable all bot AI (server) |
 
-Script log levels only affect the script’s own output; runtime of server/client uses `T2D_LOG_LEVEL` and QML-specific flags described below.
+Script log levels only affect the script’s own output; runtime of server/client uses exported `T2D_LOG_LEVEL` (lowercased) and QML-specific flags. Millisecond timestamps used for alignment with C++ logs.
 
 ## 4. Logging (C++ & QML)
 
@@ -68,8 +72,8 @@ Script log levels only affect the script’s own output; runtime of server/clien
 Environment variables:
 | Env | Effect |
 |-----|--------|
-| `T2D_LOG_LEVEL` | Minimum level (`debug|info|warn|error`) |
-| `T2D_LOG_JSON` | Structured JSON output instead of plain text |
+| `T2D_LOG_LEVEL` | Minimum level (`trace|debug|info|warn|error`) |
+| `T2D_LOG_JSON` | Structured JSON output (millisecond timestamp) |
 | `T2D_LOG_APP_ID` | Short tag in prefix (e.g. `srv`, `qt`) |
 
 ### Qt/QML Logging
@@ -78,7 +82,7 @@ QML implements its own lightweight level filter separate from the C++ logger. Re
 2. Fallback: `--log-level=<level>` argument (passed through dev loop)
 3. Default: `INFO`
 
-Helper functions (logD/logI/logW/logE) prefix with the same timestamp + `[qml]` format for visual alignment with C++ logs.
+Helper functions (logT/logD/logI/logW/logE) prefix with millisecond timestamp + `[qml]` format for visual alignment with C++ logs.
 
 ### Command-line Flags (Client)
 | Flag | Purpose |
@@ -89,6 +93,8 @@ Helper functions (logD/logI/logW/logE) prefix with the same timestamp + `[qml]` 
 Example:
 ```bash
 T2D_LOG_LEVEL=debug ./build/t2d_qt_client --qml-log-level=warn
+# Full trace (very verbose):
+T2D_LOG_LEVEL=trace ./build/t2d_qt_client --qml-log-level=trace
 ```
 
 ## 5. Failure Handling

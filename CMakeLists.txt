@@ -289,6 +289,7 @@ if (T2D_BUILD_QT_CLIENT)
                 src/client/qt/crate_model.cpp
                 src/client/qt/entity_model.cpp
                 src/client/qt/input_state.cpp
+                src/client/qt/lobby_state.cpp
                 src/client/qt/projectile_model.cpp
                 src/client/qt/qt_client.cpp
                 src/client/qt/timing_state.hpp)

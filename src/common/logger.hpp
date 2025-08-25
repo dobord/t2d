@@ -3,7 +3,7 @@
 // Simplified to use a dedicated background thread instead of coroutine queue
 // to avoid dependency on coroutine mutex/queue types that are not enabled in
 // current libcoro build. Provides:
-//  - Level filtering via T2D_LOG_LEVEL (debug|info|warn|error)
+//  - Level filtering via T2D_LOG_LEVEL (trace|debug|info|warn|error)
 //  - JSON mode via T2D_LOG_JSON presence
 //  - Non-blocking enqueue (bounded by memory) with fallback synchronous path
 //  - Optional external callback (set_callback)
@@ -30,8 +30,11 @@
 
 namespace t2d::log {
 
+// Logging levels (ordered by verbosity; lower numeric = more verbose)
+// Added trace level for extremely chatty diagnostics (per-tick physics, etc.).
 enum class level
 {
+    trace = -1,
     debug = 0,
     info = 1,
     warn = 2,
@@ -68,6 +71,8 @@ inline cb_sig load_cb()
 inline const char *level_name(level lv)
 {
     switch (lv) {
+        case level::trace:
+            return "trace";
         case level::debug:
             return "debug";
         case level::info:
@@ -88,6 +93,8 @@ inline int parse_level(const std::string &s)
         v.push_back(std::tolower(static_cast<unsigned char>(c)));
     if (v == "debug")
         return (int)level::debug;
+    if (v == "trace")
+        return (int)level::trace;
     if (v == "info")
         return (int)level::info;
     if (v == "warn" || v == "warning")
@@ -177,10 +184,12 @@ inline void format_and_write(level lv, const std::string &m, std::chrono::system
 #else
     localtime_r(&tt, &tm);
 #endif
+    // Milliseconds component (0-999) extracted from the original time_point.
+    auto ms = std::chrono::duration_cast<std::chrono::milliseconds>(tp.time_since_epoch()) % 1000;
     if (g_json.load(std::memory_order_relaxed)) {
         std::lock_guard lk(g_io_mtx);
-        std::cerr << '{' << "\"ts\":\"" << std::put_time(&tm, "%Y-%m-%dT%H:%M:%S") << "\",\"level\":\""
-                  << level_name(lv) << "\",\"msg\":\"";
+        std::cerr << '{' << "\"ts\":\"" << std::put_time(&tm, "%Y-%m-%dT%H:%M:%S") << '.' << std::setw(3)
+                  << std::setfill('0') << ms.count() << "\",\"level\":\"" << level_name(lv) << "\",\"msg\":\"";
         for (char c : m) {
             if (c == '"')
                 std::cerr << "\\\"";
@@ -192,10 +201,14 @@ inline void format_and_write(level lv, const std::string &m, std::chrono::system
         std::lock_guard lk(g_io_mtx);
         char dtbuf[32];
         std::strftime(dtbuf, sizeof(dtbuf), "%Y-%m-%d %H:%M:%S", &tm);
-        const char *tag = lv == level::debug ? "D" : lv == level::info ? "I" : lv == level::warn ? "W" : "E";
+        const char *tag = lv == level::trace ? "T"
+            : lv == level::debug             ? "D"
+            : lv == level::info              ? "I"
+            : lv == level::warn              ? "W"
+                                             : "E";
         // Requested format: [date time] [app_id] [LEVEL] message
         // app_id part omitted if disabled/empty.
-        std::cerr << '[' << dtbuf << ']';
+        std::cerr << '[' << dtbuf << '.' << std::setw(3) << std::setfill('0') << ms.count() << ']';
         if (g_app_id_enabled.load(std::memory_order_relaxed) && !g_app_id.empty()) {
             std::cerr << " [" << g_app_id << ']';
         }
@@ -322,6 +335,11 @@ inline void debug(std::string_view m)
     write(level::debug, m);
 }
 
+inline void trace(std::string_view m)
+{
+    write(level::trace, m);
+}
+
 inline void info(std::string_view m)
 {
     write(level::info, m);
@@ -343,6 +361,13 @@ inline void debug(const char *fmt, Args &&...args)
 {
     if (enabled(level::debug))
         write(level::debug, detail_format::tiny_format(fmt, std::forward<Args>(args)...));
+}
+
+template <typename... Args>
+inline void trace(const char *fmt, Args &&...args)
+{
+    if (enabled(level::trace))
+        write(level::trace, detail_format::tiny_format(fmt, std::forward<Args>(args)...));
 }
 
 template <typename... Args>

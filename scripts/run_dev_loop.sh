@@ -18,7 +18,7 @@
 #  LOOP=0 disables restart loop                  flag: --once (sets LOOP=0) or --loop <0|1>
 #  NO_BUILD=1 skip build                         flag: --no-build
 #  VERBOSE=1 extra logging                       flag: -v|--verbose
-#  LOG_LEVEL (DEBUG|INFO|WARN|ERROR)             flag: --log-level <lvl>
+#  LOG_LEVEL (TRACE|DEBUG|INFO|WARN|ERROR)       flag: --log-level <lvl>
 #  QML_LOG_LEVEL (debug|info|warn|error)         flag: --qml-log-level <lvl>
 #  NO_BOT_FIRE=1 disable bot firing              flag: --no-bot-fire
 #  NO_BOT_AI=1 disable all bot AI (movement/aim/fire) flag: --no-bot-ai
@@ -44,10 +44,11 @@ SERVER_BIN="${ROOT_DIR}/${BUILD_DIR}/t2d_server"
 CLIENT_BIN="${ROOT_DIR}/${BUILD_DIR}/t2d_qt_client"
 
 APP_ID="run_dev"
-_ts(){ date '+%Y-%m-%d %H:%M:%S'; }
+_ts(){ date '+%Y-%m-%d %H:%M:%S.%3N'; }
 _level_value(){
   case "$1" in
-    DEBUG) echo 10;;
+  TRACE) echo 5;;
+  DEBUG) echo 10;;
     INFO)  echo 20;;
     WARN)  echo 30;;
     ERROR) echo 40;;
@@ -63,6 +64,7 @@ log(){ if _should_log INFO; then echo  "[$(_ts)] [$APP_ID] [I] $*"; fi; return 0
 log_warn(){ if _should_log WARN; then echo "[$(_ts)] [$APP_ID] [W] $*"; fi; return 0; }
 log_err(){ if _should_log ERROR; then echo "[$(_ts)] [$APP_ID] [E] $*" >&2; fi; return 0; }
 log_debug(){ if _should_log DEBUG; then echo "[$(_ts)] [$APP_ID] [D] $*"; fi; return 0; }
+log_trace(){ if _should_log TRACE; then echo "[$(_ts)] [$APP_ID] [T] $*"; fi; return 0; }
 
 # Parse flags (override env defaults)
 print_help(){ sed -n '1,/^set -euo pipefail/p' "$0" | sed 's/^# \{0,1\}//' | grep -E '^(run_dev_loop|PORT|BUILD_DIR|BUILD_TYPE|CMAKE_ARGS|LOOP=|NO_BUILD|VERBOSE|LOG_LEVEL|QML_LOG_LEVEL|NO_BOT_FIRE|NO_BOT_AI|-p|Usage:| -r| -d| -t| --cmake-args| --no-build| --once| --loop| --log-level| --qml-log-level| --no-bot-fire| --no-bot-ai| -v)'; echo; echo "Example: $0 -d build-debug -p 40100 -r --no-bot-fire --no-bot-ai --cmake-args '-DT2D_ENABLE_SANITIZERS=ON'"; }
