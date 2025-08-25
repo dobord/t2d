@@ -36,11 +36,9 @@ set -euo pipefail
 ROOT="$(git rev-parse --show-toplevel)"
 BUILD_DIR="$ROOT/build"
 
-# Silence if no formatting tools present
-if ! command -v clang-format >/dev/null 2>&1; then
-  # Nothing to do
-  exit 0
-fi
+have_any=0
+command -v clang-format >/dev/null 2>&1 && have_any=1
+command -v cmake-format >/dev/null 2>&1 && have_any=1 || true
 
 if [ ! -d "$BUILD_DIR" ]; then
   cmake -S "$ROOT" -B "$BUILD_DIR" >/dev/null
@@ -93,8 +91,8 @@ for f in "${FILTERED[@]}" "${QML_FILTERED[@]}"; do
   fi
 done
 
-# Run clang-format directly on filtered staged files
-if [ ${#FILTERED[@]} -gt 0 ]; then
+# Run clang-format directly on filtered staged files (if available)
+if command -v clang-format >/dev/null 2>&1 && [ ${#FILTERED[@]} -gt 0 ]; then
   clang-format -i "${FILTERED[@]}" || true
 fi
 
@@ -116,6 +114,10 @@ if [ -z "$QMLFORMAT_BIN" ] && [ -f "$ROOT/qt_local.cmake" ]; then
     fi
   done < <(grep -Eo '/[^" ]+/gcc_64' "$ROOT/qt_local.cmake" | sort -u)
 fi
+if [ -n "$QMLFORMAT_BIN" ] && [ -x "$QMLFORMAT_BIN" ]; then
+  have_any=1
+fi
+
 if [ -n "$QMLFORMAT_BIN" ] && [ -x "$QMLFORMAT_BIN" ] && [ ${#QML_FILTERED[@]} -gt 0 ]; then
   # Filter out empty files (qmlformat errors on empty)
   QML_TO_FORMAT=()
@@ -132,6 +134,11 @@ if command -v cmake-format >/dev/null 2>&1; then
   if git ls-files --error-unmatch CMakeLists.txt >/dev/null 2>&1; then
     cmake-format -i CMakeLists.txt || true
   fi
+fi
+
+# If truly no formatting tools available, exit early (after all detection attempts)
+if [ $have_any -eq 0 ]; then
+  exit 0
 fi
 
 # Re-stage any changes produced (only our filtered set + root CMakeLists)
