@@ -33,6 +33,11 @@ cat >"$HOOK_PATH" <<'EOF'
 #!/usr/bin/env bash
 set -euo pipefail
 
+# Enable bash xtrace when debugging requested
+if [ "${T2D_PRECOMMIT_DEBUG:-0}" = 1 ]; then
+  set -x
+fi
+
 ROOT="$(git rev-parse --show-toplevel)"
 BUILD_DIR="$ROOT/build"
 
