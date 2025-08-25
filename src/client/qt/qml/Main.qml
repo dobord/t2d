@@ -43,6 +43,10 @@ Window {
         property real worldToScreenScale: Math.min(scene.width, scene.height) * targetTankScreenFraction / tankWorldRadius * userZoom
         // Internal cached last computed desired turret angle (degrees)
         property real desiredTurretAngleDeg: 0
+        // Last known mouse position (scene coords) for continuous aim updates while tank/camera move.
+        property real lastMouseX: 0
+        property real lastMouseY: 0
+        property bool lastMouseValid: false
 
         // QML logging helpers & level filtering
         property string qmlLogLevel: "INFO" // default (can be overridden by args)
@@ -209,6 +213,46 @@ Window {
                         inputState.turretTurn = 0;
                 }
             }
+        }
+
+        // Recompute turret turn command based on last stored mouse position, keeping aim stable
+        function updateMouseAim() {
+            if (!mouseAimEnabled || !lastMouseValid)
+                return;
+            const a = timingState.alpha;
+            const ownIndex = entityModel.count() > 0 ? 0 : -1;
+            if (ownIndex < 0)
+                return;
+            const scale = rootItem.worldToScreenScale;
+            const cx = entityModel.interpX(ownIndex, a);
+            const cy = entityModel.interpY(ownIndex, a);
+            // Reconstruct world coords under cursor using current camera transforms
+            let worldX = (lastMouseX - scene.width / 2) / scale;
+            let worldY = (lastMouseY - scene.height / 2) / scale;
+            if (rootItem.followCamera) {
+                worldX += cx;
+                worldY += cy;
+            } else {
+                worldX += rootItem.cameraOffsetX;
+                worldY += rootItem.cameraOffsetY;
+            }
+            const dx = worldX - cx;
+            const dy = worldY - cy;
+            if (Math.abs(dx) < 1e-6 && Math.abs(dy) < 1e-6)
+                return;
+            const desiredRad = Math.atan2(dy, dx);
+            const desiredDeg = desiredRad * 180.0 / Math.PI;
+            rootItem.desiredTurretAngleDeg = desiredDeg;
+            const curDeg = entityModel.interpTurretAngle(ownIndex, a);
+            const diff = (desiredDeg - curDeg + 540.0) % 360.0 - 180.0;
+            const deadZone = 0.75; // slightly smaller deadzone for more responsive fine aim
+            let turnCmd = 0.0;
+            if (Math.abs(diff) > deadZone) {
+                // Scale: full speed for >= 50 deg difference, smooth near center.
+                turnCmd = Math.max(-1.0, Math.min(1.0, diff / 50.0));
+            }
+            if (inputState.turretTurn !== turnCmd)
+                inputState.turretTurn = turnCmd;
         }
 
         Keys.onPressed: function (ev) {
@@ -592,6 +636,7 @@ Window {
                     timingState.update();
                     scene.requestPaint();
                     rootItem.joystick_update();
+                    rootItem.updateMouseAim(); // keep mouse aim tracking while tank/camera move
                 }
             }
             MouseArea {
@@ -639,6 +684,10 @@ Window {
                     const scale = rootItem.worldToScreenScale;
                     const cx = entityModel.interpX(ownIndex, a);
                     const cy = entityModel.interpY(ownIndex, a);
+                    // Store last mouse position for per-frame updates
+                    rootItem.lastMouseX = ev.x;
+                    rootItem.lastMouseY = ev.y;
+                    rootItem.lastMouseValid = true;
                     let worldX = (ev.x - width / 2) / scale;
                     let worldY = (ev.y - height / 2) / scale;
                     if (rootItem.followCamera) {
@@ -659,26 +708,13 @@ Window {
                         rootItem.cameraOffsetY = rootItem.dragOrigOffsetY - dyWorld;
                     }
                     if (rootItem.mouseAimEnabled) {
-                        const dx = worldX - cx;
-                        const dy = worldY - cy;
-                        if (Math.abs(dx) > 1e-4 || Math.abs(dy) > 1e-4) {
-                            let desiredRad = Math.atan2(dy, dx);
-                            let desiredDeg = desiredRad * 180.0 / Math.PI;
-                            rootItem.desiredTurretAngleDeg = desiredDeg;
-                            let curDeg = entityModel.interpTurretAngle(ownIndex, a);
-                            let diff = (desiredDeg - curDeg + 540.0) % 360.0 - 180.0;
-                            let turnCmd = 0.0;
-                            const deadZone = 1.0;
-                            if (Math.abs(diff) > deadZone) {
-                                turnCmd = Math.max(-1.0, Math.min(1.0, diff / 45.0));
-                            }
-                            if (inputState.turretTurn !== turnCmd)
-                                inputState.turretTurn = turnCmd;
-                        }
+                        // Immediate update this event; subsequent frames handled by updateMouseAim()
+                        rootItem.updateMouseAim();
                     }
                 }
                 onCanceled: {
                     rootItem.isMiddleDragging = false;
+                    rootItem.lastMouseValid = false;
                 }
             }
         }
