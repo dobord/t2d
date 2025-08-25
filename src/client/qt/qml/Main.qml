@@ -509,7 +509,7 @@ Window {
             anchors.left: parent.left
             anchors.top: parent.top
             anchors.margins: 10
-            property bool collapsed: false
+            property bool collapsed: true
             width: collapsed ? 34 : 270
             height: collapsed ? 34 : Math.min(parent.height * 0.55, 380)
             border.color: "#35505c"
@@ -528,9 +528,24 @@ Window {
                     Item { Layout.fillWidth: true }
                     Button {
                         id: tankToggle
-                        text: tankPanel.collapsed ? "+" : "−"
                         width: 24; height: 24
                         Layout.alignment: Qt.AlignRight
+                        opacity: hovered ? 0.9 : 0.45
+                        hoverEnabled: true
+                        background: Rectangle {
+                            radius: 4
+                            color: tankPanel.collapsed ? "#4d6c7a" : "#5a7582"
+                            border.color: "#86a9b6"
+                            opacity: 0.6
+                        }
+                        contentItem: Text {
+                            text: tankPanel.collapsed ? "+" : "−"
+                            color: "#e0eef5"
+                            font.pixelSize: 16
+                            horizontalAlignment: Text.AlignHCenter
+                            verticalAlignment: Text.AlignVCenter
+                            anchors.fill: parent
+                        }
                         onClicked: tankPanel.collapsed = !tankPanel.collapsed
                     }
                 }
@@ -569,7 +584,7 @@ Window {
             anchors.top: parent.top
             anchors.right: parent.right
             anchors.margins: 10
-            property bool collapsed: false
+            property bool collapsed: true
             width: collapsed ? 34 : 200
             height: collapsed ? 34 : Math.min(parent.height * 0.45, 300)
             border.color: "#35505c"
@@ -588,9 +603,24 @@ Window {
                     Item { Layout.fillWidth: true }
                     Button {
                         id: projToggle
-                        text: projectilePanel.collapsed ? "+" : "−"
                         width: 24; height: 24
                         Layout.alignment: Qt.AlignRight
+                        opacity: hovered ? 0.9 : 0.45
+                        hoverEnabled: true
+                        background: Rectangle {
+                            radius: 4
+                            color: projectilePanel.collapsed ? "#4d6c7a" : "#5a7582"
+                            border.color: "#86a9b6"
+                            opacity: 0.6
+                        }
+                        contentItem: Text {
+                            text: projectilePanel.collapsed ? "+" : "−"
+                            color: "#e0eef5"
+                            font.pixelSize: 16
+                            horizontalAlignment: Text.AlignHCenter
+                            verticalAlignment: Text.AlignVCenter
+                            anchors.fill: parent
+                        }
                         onClicked: projectilePanel.collapsed = !projectilePanel.collapsed
                     }
                 }
