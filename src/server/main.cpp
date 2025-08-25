@@ -200,8 +200,9 @@ int main(int argc, char **argv)
     std::signal(SIGINT, handle_signal);
     std::signal(SIGTERM, handle_signal);
 
-    // Apply logging config via environment emulation before first log init
-    if (!cfg.log_level.empty()) {
+    // Apply logging config via environment emulation before first log init.
+    // Do NOT override an explicit external setting (e.g. run_dev_loop --log-level).
+    if (!cfg.log_level.empty() && std::getenv("T2D_LOG_LEVEL") == nullptr) {
         setenv("T2D_LOG_LEVEL", cfg.log_level.c_str(), 1);
     }
     if (cfg.log_json) {

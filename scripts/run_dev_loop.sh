@@ -92,10 +92,11 @@ if ((${#PENDING_CMAKE_ARGS[@]})); then
     if [[ -z "$CMAKE_ARGS" ]]; then CMAKE_ARGS="$a"; else CMAKE_ARGS+=" $a"; fi
   done
 fi
-# Finalize LOG_LEVEL now that VERBOSE/log-level flags parsed
+# Finalize LOG_LEVEL now that VERBOSE/log-level flags parsed; export lowecase for server before it starts
 if [[ -z "$LOG_LEVEL" ]]; then
   if [[ "$VERBOSE" == 1 ]]; then LOG_LEVEL=DEBUG; else LOG_LEVEL=INFO; fi
 fi
+export T2D_LOG_LEVEL="${LOG_LEVEL,,}"
 _threshold=$(_level_value "$LOG_LEVEL")
 [[ "$VERBOSE" == 1 ]] && set -x && log_debug "Shell trace enabled (VERBOSE=1)"
 log_debug "Effective flags: PORT=$PORT BUILD_DIR=$BUILD_DIR BUILD_TYPE=$BUILD_TYPE LOOP=$LOOP NO_BUILD=$NO_BUILD VERBOSE=$VERBOSE LOG_LEVEL=$LOG_LEVEL QML_LOG_LEVEL=$QML_LOG_LEVEL NO_BOT_FIRE=${NO_BOT_FIRE:-0} CMAKE_ARGS='$CMAKE_ARGS'"
@@ -209,11 +210,8 @@ run_once(){
   kill_existing
   log "Starting server"
   local server_args=()
-  # Propagate log level to C++ logger unless already set externally
-  if [[ -n "$LOG_LEVEL" && -z "${T2D_LOG_LEVEL:-}" ]]; then
-    export T2D_LOG_LEVEL="${LOG_LEVEL,,}"
-    log_debug "Exported T2D_LOG_LEVEL=${T2D_LOG_LEVEL}"
-  fi
+  # T2D_LOG_LEVEL already exported earlier; just log if verbose
+  log_debug "T2D_LOG_LEVEL=${T2D_LOG_LEVEL} (propagated)"
   if [[ "${NO_BOT_FIRE:-0}" == 1 ]]; then
     server_args+=("--no-bot-fire")
     log "Bot firing disabled via NO_BOT_FIRE=1"
