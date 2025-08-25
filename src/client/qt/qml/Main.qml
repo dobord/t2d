@@ -131,11 +131,13 @@ Window {
                     mv = -1;
                 if (inputState.move !== mv)
                     inputState.move = mv;
+                // Turn mapping: positive -> CCW (left), negative -> CW (right)
                 var tr = 0;
-                if (keyD && !keyA)
+                if (keyA && !keyD)
                     tr = 1;
-                else if (keyA && !keyD)
-                    tr = -1;
+                    // CCW
+                else if (keyD && !keyA)
+                    tr = -1;  // CW
                 if (inputState.turn !== tr)
                     inputState.turn = tr;
             }
@@ -174,8 +176,9 @@ Window {
             if (!joystick.drive_empty) {
                 if (Math.abs(joystick.drive_y - inputState.move) > 0.001)
                     inputState.move = joystick.drive_y;
-                if (Math.abs(joystick.drive_x - inputState.turn) > 0.001)
-                    inputState.turn = joystick.drive_x;
+                // Invert joystick X to align with keyboard: left (negative drive_x) -> positive turn (CCW)
+                if (Math.abs((-joystick.drive_x) - inputState.turn) > 0.001)
+                    inputState.turn = -joystick.drive_x;
             } else
             // When joystick released, allow keyboard recompute to reassert state
             // (Do nothing here; recomputeInput() will run on key events.)
