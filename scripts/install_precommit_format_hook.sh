@@ -54,17 +54,29 @@ run_target() {
 }
 
 STAGED_ALL=$(git diff --cached --name-only --diff-filter=ACMR || true)
-mapfile -t STAGED < <(echo "$STAGED_ALL" | grep -E '\\.(c|cc|cxx|cpp|h|hpp)$' || true)
+
+# C/C++ sources
+mapfile -t STAGED_CXX < <(echo "$STAGED_ALL" | grep -E '\\.(c|cc|cxx|cpp|h|hpp)$' || true)
 FILTERED=()
-for f in "${STAGED[@]}"; do
+for f in "${STAGED_CXX[@]}"; do
   case "$f" in
     third_party/*) continue;;
     *) FILTERED+=("$f");;
   esac
 done
 
+# QML sources
+mapfile -t STAGED_QML < <(echo "$STAGED_ALL" | grep -E '\\.qml$' || true)
+QML_FILTERED=()
+for f in "${STAGED_QML[@]}"; do
+  case "$f" in
+    third_party/*) continue;;
+    *) QML_FILTERED+=("$f");;
+  esac
+done
+
 # Auto-add SPDX header to new first-party C/C++ files missing it.
-for f in "${FILTERED[@]}"; do
+for f in "${FILTERED[@]}" "${QML_FILTERED[@]}"; do
   # Only operate on files that exist in the working tree
   [ -f "$f" ] || continue
   if ! grep -E -q 'SPDX-License-Identifier:\s*Apache-2.0' "$f"; then
@@ -85,6 +97,35 @@ if [ ${#FILTERED[@]} -gt 0 ]; then
   clang-format -i "${FILTERED[@]}" || true
 fi
 
+# Discover qmlformat (prefer PATH, else from CMakeCache)
+QMLFORMAT_BIN=""
+if command -v qmlformat >/dev/null 2>&1; then
+  QMLFORMAT_BIN="$(command -v qmlformat)"
+elif [ -f "$BUILD_DIR/CMakeCache.txt" ]; then
+  QMLFORMAT_BIN="$(grep -E '^QMLFORMAT_BIN:FILEPATH=' "$BUILD_DIR/CMakeCache.txt" | cut -d= -f2 || true)"
+fi
+# If still not found, inspect qt_local.cmake for custom Qt prefixes (gcc_64 style) and look in their bin dirs
+if [ -z "$QMLFORMAT_BIN" ] && [ -f "$ROOT/qt_local.cmake" ]; then
+  while read -r qt_prefix; do
+    cand="$qt_prefix/bin/qmlformat"
+    if [ -x "$cand" ]; then
+      QMLFORMAT_BIN="$cand"
+      echo "[pre-commit] qmlformat discovered via qt_local.cmake: $QMLFORMAT_BIN" >&2
+      break
+    fi
+  done < <(grep -Eo '/[^" ]+/gcc_64' "$ROOT/qt_local.cmake" | sort -u)
+fi
+if [ -n "$QMLFORMAT_BIN" ] && [ -x "$QMLFORMAT_BIN" ] && [ ${#QML_FILTERED[@]} -gt 0 ]; then
+  # Filter out empty files (qmlformat errors on empty)
+  QML_TO_FORMAT=()
+  for qf in "${QML_FILTERED[@]}"; do
+    [ -s "$qf" ] && QML_TO_FORMAT+=("$qf") || echo "[pre-commit] Skipping empty QML: $qf" >&2
+  done
+  if [ ${#QML_TO_FORMAT[@]} -gt 0 ]; then
+    "$QMLFORMAT_BIN" --inplace "${QML_TO_FORMAT[@]}" || true
+  fi
+fi
+
 # Optionally format root CMakeLists.txt (first-party) if cmake-format exists
 if command -v cmake-format >/dev/null 2>&1; then
   if git ls-files --error-unmatch CMakeLists.txt >/dev/null 2>&1; then
@@ -94,8 +135,10 @@ fi
 
 # Re-stage any changes produced (only our filtered set + root CMakeLists)
 CHANGED=0
-if ! git diff --quiet -- "${FILTERED[@]}" CMakeLists.txt 2>/dev/null; then
-  git add "${FILTERED[@]}" 2>/dev/null || true
+FILES_TO_CHECK=("${FILTERED[@]}" "${QML_FILTERED[@]}")
+if ! git diff --quiet -- "${FILES_TO_CHECK[@]}" CMakeLists.txt 2>/dev/null; then
+  [ ${#FILTERED[@]} -gt 0 ] && git add "${FILTERED[@]}" 2>/dev/null || true
+  [ ${#QML_FILTERED[@]} -gt 0 ] && git add "${QML_FILTERED[@]}" 2>/dev/null || true
   if [ -f CMakeLists.txt ]; then git add CMakeLists.txt 2>/dev/null || true; fi
   CHANGED=1
 fi
