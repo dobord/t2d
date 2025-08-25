@@ -12,6 +12,7 @@
 # Usage:
 #   scripts/build_android.sh                               # build debug
 #   scripts/build_android.sh --release                     # build release
+#   scripts/build_android.sh -r                            # build release (short alias)
 #   scripts/build_android.sh --install                     # build debug then adb install -r
 #   scripts/build_android.sh --release --install
 #   scripts/build_android.sh --variant debug               # explicit variant
@@ -42,7 +43,7 @@ err(){ echo "[android][err] $*" >&2; }
 
 while [[ $# -gt 0 ]]; do
   case "$1" in
-    --release) VARIANT="release"; shift;;
+  -r|--release) VARIANT="release"; shift;;
     --debug) VARIANT="debug"; shift;;
     --variant) VARIANT="${2:-}"; shift 2;;
   --install) DO_INSTALL=1; shift;;
