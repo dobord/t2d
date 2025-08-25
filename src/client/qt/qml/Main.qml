@@ -33,7 +33,7 @@ Window {
         property real dragOrigOffsetY: 0
     // Global scale parameters (world -> screen). We target a tank radius (1.0 world unit) occupying
     // targetTankScreenFraction of the shorter screen dimension at zoom=1. userZoom multiplies this.
-    property real tankWorldRadius: 1.0
+    property real tankWorldRadius: 3.0
     property real targetTankScreenFraction: 0.10
     // Effective world->screen scale used everywhere (painting & camera drag math).
     property real worldToScreenScale: Math.min(scene.width, scene.height) * targetTankScreenFraction / tankWorldRadius * userZoom
@@ -275,12 +275,12 @@ Window {
                 const scale = rootItem.worldToScreenScale;
                 ctx.save();
                 ctx.translate(width / 2, height / 2);
+                ctx.scale(scale, scale);
                 if (rootItem.followCamera && ownIndex >= 0) {
                     ctx.translate(-entityModel.interpX(ownIndex, a), -entityModel.interpY(ownIndex, a));
                 } else {
                     ctx.translate(-rootItem.cameraOffsetX, -rootItem.cameraOffsetY);
                 }
-                ctx.scale(scale, scale);
                 // Grid
                 if (rootItem.showGrid) {
                     const gridSpacing = 5;
