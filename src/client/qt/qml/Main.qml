@@ -32,7 +32,7 @@ Window {
         property real dragOrigOffsetX: 0
         property real dragOrigOffsetY: 0
     // Global scale parameters (world -> screen). We target a tank radius (1.0 world unit) occupying
-    // targetTankScreenFraction of the shorter screen dimension at zoom=1. userZoom multiplies this.
+     // targetTankScreenFraction of the shorter screen dimension at zoom=1. userZoom multiplies this.
     property real tankWorldRadius: 3.0
     property real targetTankScreenFraction: 0.10
     // Effective world->screen scale used everywhere (painting & camera drag math).
