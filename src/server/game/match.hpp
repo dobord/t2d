@@ -38,6 +38,7 @@ struct MatchContext
     float hull_density{1.0f};
     float turret_density{0.5f};
     bool disable_bot_fire{false}; // when true bots never set fire input
+    bool disable_bot_ai{false}; // when true bots receive zero input (idle)
     bool test_mode{false}; // toggles test-oriented balancing clamps
     // Map dimensions (authoritative bounds) and static wall bodies created at match start.
     float map_width{300.f};

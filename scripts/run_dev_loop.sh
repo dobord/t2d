@@ -21,6 +21,7 @@
 #  LOG_LEVEL (DEBUG|INFO|WARN|ERROR)             flag: --log-level <lvl>
 #  QML_LOG_LEVEL (debug|info|warn|error)         flag: --qml-log-level <lvl>
 #  NO_BOT_FIRE=1 disable bot firing              flag: --no-bot-fire
+#  NO_BOT_AI=1 disable all bot AI (movement/aim/fire) flag: --no-bot-ai
 #  -h|--help prints this help
 #
 # Examples:
@@ -64,7 +65,7 @@ log_err(){ if _should_log ERROR; then echo "[$(_ts)] [$APP_ID] [E] $*" >&2; fi; 
 log_debug(){ if _should_log DEBUG; then echo "[$(_ts)] [$APP_ID] [D] $*"; fi; return 0; }
 
 # Parse flags (override env defaults)
-print_help(){ sed -n '1,/^set -euo pipefail/p' "$0" | sed 's/^# \{0,1\}//' | grep -E '^(run_dev_loop|PORT|BUILD_DIR|BUILD_TYPE|CMAKE_ARGS|LOOP=|NO_BUILD|VERBOSE|LOG_LEVEL|QML_LOG_LEVEL|NO_BOT_FIRE|-p|Usage:| -r| -d| -t| --cmake-args| --no-build| --once| --loop| --log-level| --qml-log-level| --no-bot-fire| -v)'; echo; echo "Example: $0 -d build-debug -p 40100 -r --no-bot-fire --cmake-args '-DT2D_ENABLE_SANITIZERS=ON'"; }
+print_help(){ sed -n '1,/^set -euo pipefail/p' "$0" | sed 's/^# \{0,1\}//' | grep -E '^(run_dev_loop|PORT|BUILD_DIR|BUILD_TYPE|CMAKE_ARGS|LOOP=|NO_BUILD|VERBOSE|LOG_LEVEL|QML_LOG_LEVEL|NO_BOT_FIRE|NO_BOT_AI|-p|Usage:| -r| -d| -t| --cmake-args| --no-build| --once| --loop| --log-level| --qml-log-level| --no-bot-fire| --no-bot-ai| -v)'; echo; echo "Example: $0 -d build-debug -p 40100 -r --no-bot-fire --no-bot-ai --cmake-args '-DT2D_ENABLE_SANITIZERS=ON'"; }
 
 PENDING_CMAKE_ARGS=()
 while [[ $# -gt 0 ]]; do
@@ -81,6 +82,7 @@ while [[ $# -gt 0 ]]; do
     --log-level) LOG_LEVEL="$2"; shift 2;;
     --qml-log-level) QML_LOG_LEVEL="$2"; shift 2;;
     --no-bot-fire) NO_BOT_FIRE=1; shift;;
+  --no-bot-ai) NO_BOT_AI=1; shift;;
     -h|--help) print_help; exit 0;;
     --) shift; break;;
     *) log_warn "Unknown argument: $1"; shift;;
@@ -99,7 +101,7 @@ fi
 export T2D_LOG_LEVEL="${LOG_LEVEL,,}"
 _threshold=$(_level_value "$LOG_LEVEL")
 [[ "$VERBOSE" == 1 ]] && set -x && log_debug "Shell trace enabled (VERBOSE=1)"
-log_debug "Effective flags: PORT=$PORT BUILD_DIR=$BUILD_DIR BUILD_TYPE=$BUILD_TYPE LOOP=$LOOP NO_BUILD=$NO_BUILD VERBOSE=$VERBOSE LOG_LEVEL=$LOG_LEVEL QML_LOG_LEVEL=$QML_LOG_LEVEL NO_BOT_FIRE=${NO_BOT_FIRE:-0} CMAKE_ARGS='$CMAKE_ARGS'"
+log_debug "Effective flags: PORT=$PORT BUILD_DIR=$BUILD_DIR BUILD_TYPE=$BUILD_TYPE LOOP=$LOOP NO_BUILD=$NO_BUILD VERBOSE=$VERBOSE LOG_LEVEL=$LOG_LEVEL QML_LOG_LEVEL=$QML_LOG_LEVEL NO_BOT_FIRE=${NO_BOT_FIRE:-0} NO_BOT_AI=${NO_BOT_AI:-0} CMAKE_ARGS='$CMAKE_ARGS'"
 
 # Run code formatting targets before building (mandatory auto-format step)
 run_format(){
@@ -215,6 +217,10 @@ run_once(){
   if [[ "${NO_BOT_FIRE:-0}" == 1 ]]; then
     server_args+=("--no-bot-fire")
     log "Bot firing disabled via NO_BOT_FIRE=1"
+  fi
+  if [[ "${NO_BOT_AI:-0}" == 1 ]]; then
+    server_args+=("--no-bot-ai")
+    log "Bot AI disabled via NO_BOT_AI=1"
   fi
   T2D_LOG_APP_ID="srv" "${SERVER_BIN}" "${server_args[@]}" &
   SERVER_PID=$!

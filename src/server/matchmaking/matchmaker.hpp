@@ -27,6 +27,7 @@ struct MatchConfig
     float hull_density{1.0f};
     float turret_density{0.5f};
     bool disable_bot_fire{false};
+    bool disable_bot_ai{false};
     bool test_mode{false};
     float map_width{300.f};
     float map_height{200.f};

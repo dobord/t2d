@@ -250,85 +250,95 @@ coro::task<void> run_match(std::shared_ptr<coro::io_scheduler> scheduler, std::s
             auto input = t2d::mm::instance().get_input_copy(sess);
             // Basic bot AI: if bot, synthesize movement & periodic fire
             if (sess->is_bot) {
-                // Acquire current tank transform
-                b2Transform myHull = b2Body_GetTransform(adv.hull);
-                b2Transform myTurret = b2Body_GetTransform(adv.turret);
-                float myHullRad = std::atan2(myHull.q.s, myHull.q.c);
-                float myTurretRad = std::atan2(myTurret.q.s, myTurret.q.c);
-                // Bot AI: wandering + target acquisition + LOS-aware firing.
-                // 1. Target selection (cache per tick minimal for prototype)
-                int target_index = -1;
-                float best_score = 1e30f;
-                for (size_t j = 0; j < ctx->tanks.size(); ++j) {
-                    if (j == i)
-                        continue;
-                    const auto &ot = ctx->tanks[j];
-                    if (ot.hp == 0)
-                        continue;
-                    b2Transform oHull = b2Body_GetTransform(ot.hull);
-                    float dx = oHull.p.x - myHull.p.x;
-                    float dy = oHull.p.y - myHull.p.y;
-                    float d2 = dx * dx + dy * dy;
-                    // Prefer real players by reducing effective distance
-                    if (!ctx->players[j]->is_bot)
-                        d2 *= 0.5f;
-                    if (d2 < best_score) {
-                        best_score = d2;
-                        target_index = (int)j;
-                    }
-                }
-                float desired_rad = myHullRad;
-                float last_align_err = 9999.f;
-                // 2. Movement: wander if no target; pursue/strafe if target
-                if (target_index >= 0) {
-                    const auto &tt = ctx->tanks[target_index];
-                    b2Transform ttHull = b2Body_GetTransform(tt.hull);
-                    float dx = ttHull.p.x - myHull.p.x;
-                    float dy = ttHull.p.y - myHull.p.y;
-                    desired_rad = std::atan2(dy, dx);
-                    float base_turn = desired_rad - myHullRad;
-                    while (base_turn > (float)M_PI)
-                        base_turn -= 2.f * (float)M_PI;
-                    while (base_turn < -(float)M_PI)
-                        base_turn += 2.f * (float)M_PI;
-                    input.turn_dir = std::clamp(base_turn * 180.f / 120.f / (float)M_PI, -1.f, 1.f);
-                    float dist2 = dx * dx + dy * dy;
-                    if (dist2 > 900.f) { // far
-                        input.move_dir = 1.0f;
-                    } else if (dist2 < 100.f) { // too close -> back off slowly
-                        input.move_dir = -0.3f;
-                    } else {
-                        // strafe: alternate slight forward/back using server_tick parity
-                        input.move_dir = ((ctx->server_tick / 30) % 2) == 0 ? 0.4f : -0.2f;
-                    }
-                    // Turret aim independent for faster tracking
-                    float tdiff = desired_rad - myTurretRad;
-                    while (tdiff > (float)M_PI)
-                        tdiff -= 2.f * (float)M_PI;
-                    while (tdiff < -(float)M_PI)
-                        tdiff += 2.f * (float)M_PI;
-                    last_align_err = std::fabs(tdiff) * 180.f / (float)M_PI;
-                    input.turret_turn = std::clamp(tdiff * 180.f / (60.f * (float)M_PI), -1.f, 1.f);
+                if (ctx->disable_bot_ai) {
+                    // Force idle inputs
+                    input.move_dir = 0.f;
+                    input.turn_dir = 0.f;
+                    input.turret_turn = 0.f;
+                    input.fire = false;
+                    t2d::mm::Session::InputState upd_idle = input;
+                    t2d::mm::instance().set_bot_input(sess, upd_idle);
                 } else {
-                    // Wander: slow rotation + occasional forward bursts
-                    input.turn_dir = 0.3f;
-                    input.move_dir = (ctx->server_tick % 120) < 40 ? 0.5f : 0.0f;
-                    input.turret_turn = 0.2f;
-                }
-                // 3. Firing logic: only when turret roughly aligned AND predicted lead not required (simple LOS).
-                if (!ctx->disable_bot_fire) {
-                    uint32_t interval = ctx->bot_fire_interval_ticks == 0 ? 1 : ctx->bot_fire_interval_ticks;
-                    bool cadence = (ctx->server_tick % interval) == 0;
-                    if (cadence && target_index >= 0) {
-                        input.fire = (last_align_err < 10.f); // stricter alignment for smarter shots
+                    // Acquire current tank transform
+                    b2Transform myHull = b2Body_GetTransform(adv.hull);
+                    b2Transform myTurret = b2Body_GetTransform(adv.turret);
+                    float myHullRad = std::atan2(myHull.q.s, myHull.q.c);
+                    float myTurretRad = std::atan2(myTurret.q.s, myTurret.q.c);
+                    // Bot AI: wandering + target acquisition + LOS-aware firing.
+                    // 1. Target selection (cache per tick minimal for prototype)
+                    int target_index = -1;
+                    float best_score = 1e30f;
+                    for (size_t j = 0; j < ctx->tanks.size(); ++j) {
+                        if (j == i)
+                            continue;
+                        const auto &ot = ctx->tanks[j];
+                        if (ot.hp == 0)
+                            continue;
+                        b2Transform oHull = b2Body_GetTransform(ot.hull);
+                        float dx = oHull.p.x - myHull.p.x;
+                        float dy = oHull.p.y - myHull.p.y;
+                        float d2 = dx * dx + dy * dy;
+                        // Prefer real players by reducing effective distance
+                        if (!ctx->players[j]->is_bot)
+                            d2 *= 0.5f;
+                        if (d2 < best_score) {
+                            best_score = d2;
+                            target_index = (int)j;
+                        }
+                    }
+                    float desired_rad = myHullRad;
+                    float last_align_err = 9999.f;
+                    // 2. Movement: wander if no target; pursue/strafe if target
+                    if (target_index >= 0) {
+                        const auto &tt = ctx->tanks[target_index];
+                        b2Transform ttHull = b2Body_GetTransform(tt.hull);
+                        float dx = ttHull.p.x - myHull.p.x;
+                        float dy = ttHull.p.y - myHull.p.y;
+                        desired_rad = std::atan2(dy, dx);
+                        float base_turn = desired_rad - myHullRad;
+                        while (base_turn > (float)M_PI)
+                            base_turn -= 2.f * (float)M_PI;
+                        while (base_turn < -(float)M_PI)
+                            base_turn += 2.f * (float)M_PI;
+                        input.turn_dir = std::clamp(base_turn * 180.f / 120.f / (float)M_PI, -1.f, 1.f);
+                        float dist2 = dx * dx + dy * dy;
+                        if (dist2 > 900.f) { // far
+                            input.move_dir = 1.0f;
+                        } else if (dist2 < 100.f) { // too close -> back off slowly
+                            input.move_dir = -0.3f;
+                        } else {
+                            // strafe: alternate slight forward/back using server_tick parity
+                            input.move_dir = ((ctx->server_tick / 30) % 2) == 0 ? 0.4f : -0.2f;
+                        }
+                        // Turret aim independent for faster tracking
+                        float tdiff = desired_rad - myTurretRad;
+                        while (tdiff > (float)M_PI)
+                            tdiff -= 2.f * (float)M_PI;
+                        while (tdiff < -(float)M_PI)
+                            tdiff += 2.f * (float)M_PI;
+                        last_align_err = std::fabs(tdiff) * 180.f / (float)M_PI;
+                        input.turret_turn = std::clamp(tdiff * 180.f / (60.f * (float)M_PI), -1.f, 1.f);
+                    } else {
+                        // Wander: slow rotation + occasional forward bursts
+                        input.turn_dir = 0.3f;
+                        input.move_dir = (ctx->server_tick % 120) < 40 ? 0.5f : 0.0f;
+                        input.turret_turn = 0.2f;
+                    }
+                    // 3. Firing logic: only when turret roughly aligned AND predicted lead not required (simple LOS).
+                    if (!ctx->disable_bot_fire) {
+                        uint32_t interval = ctx->bot_fire_interval_ticks == 0 ? 1 : ctx->bot_fire_interval_ticks;
+                        bool cadence = (ctx->server_tick % interval) == 0;
+                        if (cadence && target_index >= 0) {
+                            input.fire = (last_align_err < 10.f); // stricter alignment for smarter shots
+                        } else {
+                            input.fire = false;
+                        }
                     } else {
                         input.fire = false;
                     }
-                } else {
-                    input.fire = false;
+                    t2d::mm::Session::InputState upd = input;
+                    t2d::mm::instance().set_bot_input(sess, upd);
                 }
-                t2d::mm::Session::InputState upd = input;
-                t2d::mm::instance().set_bot_input(sess, upd);
             }
             // Advanced drive forces
             t2d::phys::TankDriveInput drive{};

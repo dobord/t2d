@@ -74,6 +74,7 @@ struct ServerConfig
     float hull_density{1.0f};
     float turret_density{0.5f};
     bool disable_bot_fire{false};
+    bool disable_bot_ai{false}; // when true, bots receive zeroed inputs (no movement/aim/fire)
     bool test_mode{false}; // enables aggressive clamps & boosts for rapid automated tests
     // Map dimensions (world playable area). Walls will be created at perimeter.
     float map_width{300.f};
@@ -149,6 +150,9 @@ static ServerConfig load_config(const std::string &path)
     if (root["disable_bot_fire"]) {
         cfg.disable_bot_fire = root["disable_bot_fire"].as<bool>();
     }
+    if (root["disable_bot_ai"]) {
+        cfg.disable_bot_ai = root["disable_bot_ai"].as<bool>();
+    }
     if (root["test_mode"]) {
         cfg.test_mode = root["test_mode"].as<bool>();
     }
@@ -175,11 +179,14 @@ int main(int argc, char **argv)
     t2d::ServerConfig cfg; // allocate early so CLI flags can set fields before/after file load
     std::string config_path = "config/server.yaml";
     bool cli_disable_bot_fire = false;
-    // Simple arg parsing: first non-flag = config path; recognize --no-bot-fire
+    bool cli_disable_bot_ai = false;
+    // Simple arg parsing: first non-flag = config path; recognize --no-bot-fire / --no-bot-ai
     for (int i = 1; i < argc; ++i) {
         std::string a = argv[i];
         if (a == "--no-bot-fire") {
             cli_disable_bot_fire = true;
+        } else if (a == "--no-bot-ai") {
+            cli_disable_bot_ai = true;
         } else if (!a.empty() && a[0] != '-') {
             config_path = a;
         }
@@ -191,6 +198,12 @@ int main(int argc, char **argv)
         }
         if (cli_disable_bot_fire) {
             cfg.disable_bot_fire = true;
+        }
+        if (std::getenv("T2D_NO_BOT_AI")) {
+            cfg.disable_bot_ai = true;
+        }
+        if (cli_disable_bot_ai) {
+            cfg.disable_bot_ai = true;
         }
     } catch (const std::exception &ex) {
         t2d::log::error("Failed to load config: {}", ex.what());
@@ -221,6 +234,9 @@ int main(int argc, char **argv)
     if (cfg.disable_bot_fire) {
         t2d::log::info("Bot firing disabled (--no-bot-fire)");
     }
+    if (cfg.disable_bot_ai) {
+        t2d::log::info("Bot AI disabled (--no-bot-ai)");
+    }
 
     // io_scheduler requires options; construct explicitly
     auto scheduler = coro::default_executor::io_executor();
@@ -246,6 +262,7 @@ int main(int argc, char **argv)
             cfg.hull_density,
             cfg.turret_density,
             cfg.disable_bot_fire,
+            cfg.disable_bot_ai,
             cfg.test_mode,
             cfg.map_width,
             cfg.map_height}));

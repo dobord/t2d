@@ -137,6 +137,7 @@ coro::task<void> run_matchmaker(std::shared_ptr<coro::io_scheduler> scheduler, M
             ctx->hull_density = cfg.hull_density;
             ctx->turret_density = cfg.turret_density;
             ctx->disable_bot_fire = cfg.disable_bot_fire;
+            ctx->disable_bot_ai = cfg.disable_bot_ai;
             ctx->test_mode = cfg.test_mode;
             ctx->map_width = cfg.map_width;
             ctx->map_height = cfg.map_height;
