@@ -328,19 +328,22 @@ if (CLANG_FORMAT_BIN)
             format
             COMMAND ${CLANG_FORMAT_BIN} -i ${ALL_CXX_SOURCE_FILES}
             WORKING_DIRECTORY ${CMAKE_CURRENT_SOURCE_DIR}
-            COMMENT "Formatting C/C++ sources with clang-format")
+            COMMENT "Formatting C/C++ sources with clang-format (project sources only)")
+        set(T2D_PRIMARY_FORMAT_TARGET format)
     else ()
-        add_custom_target(
-            t2d_format
-            COMMAND ${CLANG_FORMAT_BIN} -i ${ALL_CXX_SOURCE_FILES}
-            WORKING_DIRECTORY ${CMAKE_CURRENT_SOURCE_DIR}
-            COMMENT
-                "Formatting t2d C/C++ sources with clang-format (dependency already defines 'format')"
-        )
-        message(
-            STATUS
-                "Dependency already defines target 'format'; added 't2d_format' for project sources."
-        )
+        # A third_party dependency already defined 'format'; create dedicated project target
+        if (NOT TARGET t2d_format)
+            add_custom_target(
+                t2d_format
+                COMMAND ${CLANG_FORMAT_BIN} -i ${ALL_CXX_SOURCE_FILES}
+                WORKING_DIRECTORY ${CMAKE_CURRENT_SOURCE_DIR}
+                COMMENT
+                    "Formatting t2d C/C++ sources with clang-format (avoids third_party 'format')")
+            message(
+                STATUS
+                    "Third-party target 'format' detected; using 't2d_format' for project sources.")
+        endif ()
+        set(T2D_PRIMARY_FORMAT_TARGET t2d_format)
     endif ()
 endif ()
 
@@ -411,10 +414,11 @@ endif ()
 
 # Aggregate formatting target (format_all) to run all available formatting steps (C++, CMake, QML)
 set(_fmt_targets)
-if (TARGET format)
-    list(APPEND _fmt_targets format)
-elseif (TARGET t2d_format)
+if (TARGET t2d_format)
     list(APPEND _fmt_targets t2d_format)
+elseif (TARGET format)
+    # Only append generic 'format' if we did not create t2d_format (i.e. it's project-owned)
+    list(APPEND _fmt_targets format)
 endif ()
 if (TARGET format_cmake)
     list(APPEND _fmt_targets format_cmake)
