@@ -284,6 +284,13 @@ inline void disable_app_id()
 
 inline bool enabled(level lv) noexcept
 {
+    // Ensure logger is started so environment-based configuration (T2D_LOG_LEVEL, etc.)
+    // is applied before we decide to filter out this message. Previously, calls to
+    // t2d::log::info()/debug() before an explicit t2d::log::init() (or even right
+    // after, due to inline enabled() checks in wrappers) could observe the default
+    // level (info) because start() had not yet run. Calling start() here makes
+    // level filtering robust regardless of initialization order.
+    detail::start();
     return (int)lv >= detail::g_level.load(std::memory_order_relaxed);
 }
 
