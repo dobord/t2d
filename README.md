@@ -147,6 +147,94 @@ scripts/format_check.sh            # verify
 scripts/format_check.sh --apply    # auto-fix
 ```
 
+### Formatting & Tooling Overview
+First‑party sources (C/C++, QML, CMake) are auto‑formatted via a layered setup:
+
+| Target / Script | Purpose | Notes |
+|-----------------|---------|-------|
+| `t2d_format` | clang-format on C/C++ (excludes `third_party/`) | Always safe to run |
+| `format_qml` | Runs `qmlformat` on QML files | Created only if Qt's `qmlformat` located |
+| `format_cmake` (if present) | Formats CMakeLists / *.cmake | Requires `cmake-format` |
+| `format_all` | Aggregates the above found targets | Only present when at least one underlying target exists |
+| `scripts/install_precommit_format_hook.sh` | Installs git pre-commit that formats staged & modified tracked C/C++/QML + injects SPDX if missing | Honors `T2D_FORMAT_BLOCK` / `t2d.formatBlock` and `T2D_QML_FORMAT_REQUIRED` |
+
+Pre-commit hook discovery of `qmlformat` order:
+1. PATH lookup
+2. CMake cache variable `QMLFORMAT_BIN`
+3. `qt_local.cmake` custom prefix (e.g. `/opt/Qt/6.8.3/gcc_64`)
+4. On QML change without tool: a light CMake reconfigure is attempted
+
+Environment flags affecting the hook:
+| Variable | Effect |
+|----------|--------|
+| `T2D_PRECOMMIT_DEBUG=1` | Enables bash `set -x` tracing inside hook |
+| `T2D_QML_FORMAT_REQUIRED=1` | Fail commit if QML changed but `qmlformat` not found |
+| `T2D_FORMAT_BLOCK=1` or git config `t2d.formatBlock=true` | Abort commit after formatting (user must re-stage) |
+
+### Dev Loop Script (`scripts/run_dev_loop.sh`)
+Automated local iteration helper (server + Qt client auto-restart). Key environment variables:
+
+| Var | Default | Meaning |
+|-----|---------|---------|
+| `PORT` | 40000 | Server listen / client connect port |
+| `BUILD_DIR` | `build` | Build directory used for both targets |
+| `CMAKE_ARGS` | (empty) | Extra configure flags |
+| `LOOP` | 1 | If 0 runs once, else restart loop |
+| `NO_BUILD` | 0 | Skip build (requires existing binaries) |
+| `VERBOSE` | 0 | Shell trace + elevate LOG_LEVEL to DEBUG if unset |
+| `LOG_LEVEL` | INFO | Minimum script log verbosity (DEBUG/INFO/WARN/ERROR) |
+| `QML_LOG_LEVEL` | (inherits `LOG_LEVEL`) | QML UI log level passed as `--qml-log-level=` |
+| `NO_BOT_FIRE` | 0 | Pass `--no-bot-fire` to server |
+
+Behavior:
+* Runs formatting targets before each build (`format_all` → fallback chain).
+* Reconfigures CMake when `qt_local.cmake` timestamp is newer or a newly found `qmlformat` becomes available.
+* Provides explicit build failure message instead of silent exit.
+
+### Qt Local Path Override (`qt_local.cmake`)
+Place a `qt_local.cmake` at repo root to append custom Qt install prefixes to `CMAKE_PREFIX_PATH` before `find_package(Qt6 ...)` runs. Example snippet:
+```cmake
+# qt_local.cmake (not committed normally)
+set(CMAKE_PREFIX_PATH "/opt/Qt/6.8.3/gcc_64" ${CMAKE_PREFIX_PATH})
+```
+The pre-commit hook and CMake tool discovery reuse these paths when searching for `qmlformat` and related Qt helpers.
+
+### Logging (C++ & QML)
+The C++ logger (see `src/common/logger.hpp`) supports:
+* Levels: debug / info / warn / error via `T2D_LOG_LEVEL` env
+* JSON mode when `T2D_LOG_JSON` is set
+* Optional per-process `T2D_LOG_APP_ID` tag (e.g. `srv`, `qt`)
+
+Qt/QML side provides parallel log helpers with level filtering. Level precedence:
+1. Command line `--qml-log-level=<level>` passed to `t2d_qt_client`
+2. Fallback: `--log-level=<level>` (if provided) or inherited environment via C++ injection
+
+Runtime examples:
+```bash
+./build/t2d_server config/server.yaml &
+T2D_LOG_LEVEL=debug ./build/t2d_qt_client --qml-log-level=warn
+```
+
+Network input debug spam can be silenced by elevating QML log level above DEBUG.
+
+### Command Line Logging Flags
+* `--log-level=<level>`: parsed by C++ client (unless `T2D_LOG_LEVEL` already set) to set backend logger level.
+* `--qml-log-level=<level>`: QML UI logging filter; if absent, reuse `--log-level`.
+
+### Environment Variables Summary (Runtime)
+| Env Var | Component | Purpose |
+|---------|-----------|---------|
+| `T2D_LOG_LEVEL` | server / client | Minimum C++ log level |
+| `T2D_LOG_JSON` | server / client | Enable JSON log output |
+| `T2D_LOG_APP_ID` | both | Short tag in log prefix |
+| `T2D_QML_FORMAT_REQUIRED` | git hook | Enforce presence of `qmlformat` when QML changes |
+| `T2D_PRECOMMIT_DEBUG` | git hook | Verbose trace of formatting hook |
+| `T2D_FORMAT_BLOCK` | git hook | Abort commit after formatting changes |
+| `QML_LOG_LEVEL` | dev loop | Explicit QML log level forwarded to client |
+| `LOG_LEVEL` | dev loop | Script verbosity and default QML level fallback |
+
+More details in `docs/tooling.md`.
+
 Coverage (locally):
 ```bash
 cmake -S . -B build-cov -DT2D_BUILD_TESTS=ON -DT2D_ENABLE_COVERAGE=ON -DCMAKE_BUILD_TYPE=Debug -G Ninja

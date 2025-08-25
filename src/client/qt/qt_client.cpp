@@ -158,7 +158,28 @@ int main(int argc, char **argv)
 {
     std::signal(SIGINT, handle_sig);
     std::signal(SIGTERM, handle_sig);
-    setenv("T2D_LOG_LEVEL", "debug", 1); // force debug to observe input sending
+    // Allow override via --log-level=LEVEL (debug|info|warn|error) if env not already set.
+    if (std::getenv("T2D_LOG_LEVEL") == nullptr) {
+        for (int i = 1; i < argc; ++i) {
+            const char prefix[] = "--log-level=";
+            if (std::strncmp(argv[i], prefix, sizeof(prefix) - 1) == 0) {
+                const char *val = argv[i] + (sizeof(prefix) - 1);
+                if (*val) {
+                    setenv("T2D_LOG_LEVEL", val, 1);
+                }
+                // Compact argv by removing this argument so Qt does not see it.
+                for (int j = i; j + 1 < argc; ++j) {
+                    argv[j] = argv[j + 1];
+                }
+                --argc;
+                break;
+            }
+        }
+        // If still unset, default to 'info'. (Previously forced to debug; now respectful.)
+        if (std::getenv("T2D_LOG_LEVEL") == nullptr) {
+            setenv("T2D_LOG_LEVEL", "info", 1);
+        }
+    }
     t2d::log::init();
     QGuiApplication app(argc, argv);
     EntityModel tankModel; // tanks

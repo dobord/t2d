@@ -39,8 +39,74 @@ Window {
         property real worldToScreenScale: Math.min(scene.width, scene.height) * targetTankScreenFraction / tankWorldRadius * userZoom
         // Internal cached last computed desired turret angle (degrees)
         property real desiredTurretAngleDeg: 0
+
+        // QML logging helpers & level filtering
+        property string qmlLogLevel: "INFO" // default (can be overridden by args)
+        function _levelValue(lv) {
+            switch (lv.toUpperCase()) {
+            case 'DEBUG':
+                return 10;
+            case 'INFO':
+                return 20;
+            case 'WARN':
+                return 30;
+            case 'ERROR':
+                return 40;
+            }
+            return 20;
+        }
+        function _shouldLog(lv) {
+            return _levelValue(lv) >= _levelValue(qmlLogLevel);
+        }
+        function _pad(n) {
+            return n < 10 ? '0' + n : '' + n;
+        }
+        function _ts() {
+            var d = new Date();
+            return d.getFullYear() + '-' + _pad(d.getMonth() + 1) + '-' + _pad(d.getDate()) + ' ' + _pad(d.getHours()) + ':' + _pad(d.getMinutes()) + ':' + _pad(d.getSeconds());
+        }
+        function logD(msg) {
+            if (_shouldLog('DEBUG'))
+                console.debug('[' + _ts() + '] [qml] [D] ' + msg);
+        }
+        function logI(msg) {
+            if (_shouldLog('INFO'))
+                console.log('[' + _ts() + '] [qml] [I] ' + msg);
+        }
+        function logW(msg) {
+            if (_shouldLog('WARN'))
+                console.warn('[' + _ts() + '] [qml] [W] ' + msg);
+        }
+        function logE(msg) {
+            if (_shouldLog('ERROR'))
+                console.error('[' + _ts() + '] [qml] [E] ' + msg);
+        }
+
+        // Initialization (focus + log level arg parsing)
         Component.onCompleted: {
             rootItem.forceActiveFocus();
+            var foundArg = false;
+            for (var i = 0; i < Qt.application.arguments.length; ++i) {
+                var a = Qt.application.arguments[i];
+                if (a.indexOf('--qml-log-level=') === 0) {
+                    var v = a.substring('--qml-log-level='.length);
+                    if (v.length > 0) {
+                        qmlLogLevel = v.toUpperCase();
+                        foundArg = true;
+                    }
+                }
+            }
+            if (!foundArg) {
+                for (var j = 0; j < Qt.application.arguments.length; ++j) {
+                    var b = Qt.application.arguments[j];
+                    if (b.indexOf('--log-level=') === 0) {
+                        var vv = b.substring('--log-level='.length);
+                        if (vv.length > 0)
+                            qmlLogLevel = vv.toUpperCase();
+                    }
+                }
+            }
+            logD('QML initialized with log level ' + qmlLogLevel);
         }
 
         // Keyboard state flags (simple set of currently pressed movement keys)
@@ -52,27 +118,6 @@ Window {
         property bool keyE: false   // turret right
         property bool keySpace: false
         property bool keyShift: false // brake
-
-        // Unified logging helpers to match C++ logger format: [date time] [qml] [L] message
-        function _pad(n) {
-            return n < 10 ? '0' + n : '' + n;
-        }
-        function _ts() {
-            var d = new Date();
-            return d.getFullYear() + '-' + _pad(d.getMonth() + 1) + '-' + _pad(d.getDate()) + ' ' + _pad(d.getHours()) + ':' + _pad(d.getMinutes()) + ':' + _pad(d.getSeconds());
-        }
-        function logD(msg) {
-            console.debug('[' + _ts() + '] [qml] [D] ' + msg);
-        }
-        function logI(msg) {
-            console.log('[' + _ts() + '] [qml] [I] ' + msg);
-        }
-        function logW(msg) {
-            console.warn('[' + _ts() + '] [qml] [W] ' + msg);
-        }
-        function logE(msg) {
-            console.error('[' + _ts() + '] [qml] [E] ' + msg);
-        }
 
         function recomputeInput() {
             // Movement forward/backward
@@ -117,7 +162,7 @@ Window {
             var br = keyShift;
             if (inputState.brake !== br)
                 inputState.brake = br;
-            // Debug log
+            // Debug log (will show only if qmlLogLevel <= DEBUG)
             logD(`INPUT mv=${inputState.move} turn=${inputState.turn} turret=${inputState.turretTurn} fire=${inputState.fire}`);
         }
 

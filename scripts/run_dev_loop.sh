@@ -16,7 +16,9 @@
 #  CMAKE_ARGS (extra args, e.g. "-DT2D_ENABLE_SANITIZERS=ON")
 #  LOOP=0 disables restart loop (single run)
 #  NO_BUILD=1 skip build step (just run existing binaries)
-#  VERBOSE=1 extra logging
+#  VERBOSE=1 extra logging (enables shell trace and, if LOG_LEVEL unset, forces LOG_LEVEL=DEBUG)
+#  LOG_LEVEL (DEBUG|INFO|WARN|ERROR) minimum severity to print (default INFO)
+#  QML_LOG_LEVEL (debug|info|warn|error) overrides QML logging level (defaults to LOG_LEVEL if set)
 #  NO_BOT_FIRE=1 disable bot firing (passes --no-bot-fire to server)  # convenience wrapper for config/env
 #
 # Examples:
@@ -31,16 +33,40 @@ CMAKE_ARGS=${CMAKE_ARGS:-}
 LOOP="${LOOP:-1}"
 NO_BUILD="${NO_BUILD:-0}"
 VERBOSE="${VERBOSE:-0}"
+LOG_LEVEL="${LOG_LEVEL:-}"
+QML_LOG_LEVEL="${QML_LOG_LEVEL:-}"
+if [[ -z "$LOG_LEVEL" ]]; then
+  if [[ "$VERBOSE" == 1 ]]; then
+    LOG_LEVEL=DEBUG
+  else
+    LOG_LEVEL=INFO
+  fi
+fi
 ROOT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 SERVER_BIN="${ROOT_DIR}/${BUILD_DIR}/t2d_server"
 CLIENT_BIN="${ROOT_DIR}/${BUILD_DIR}/t2d_qt_client"
 
 APP_ID="run_dev"
 _ts(){ date '+%Y-%m-%d %H:%M:%S'; }
-log(){ echo "[$(_ts)] [$APP_ID] [I] $*"; }
-log_warn(){ echo "[$(_ts)] [$APP_ID] [W] $*"; }
-log_err(){ echo "[$(_ts)] [$APP_ID] [E] $*" >&2; }
-[[ "$VERBOSE" == 1 ]] && set -x
+_level_value(){
+  case "$1" in
+    DEBUG) echo 10;;
+    INFO)  echo 20;;
+    WARN)  echo 30;;
+    ERROR) echo 40;;
+    *) echo 20;;
+  esac
+}
+_threshold=$(_level_value "$LOG_LEVEL")
+_should_log(){
+  local sev=$1; local sv=$(_level_value "$sev");
+  [[ $sv -ge $_threshold ]]
+}
+log(){ _should_log INFO  && echo  "[$(_ts)] [$APP_ID] [I] $*"; }
+log_warn(){ _should_log WARN  && echo "[$(_ts)] [$APP_ID] [W] $*"; }
+log_err(){ _should_log ERROR && echo "[$(_ts)] [$APP_ID] [E] $*" >&2; }
+log_debug(){ _should_log DEBUG && echo "[$(_ts)] [$APP_ID] [D] $*"; }
+[[ "$VERBOSE" == 1 ]] && set -x && log_debug "Shell trace enabled (VERBOSE=1)"
 
 # Run code formatting targets before building (mandatory auto-format step)
 run_format(){
@@ -104,7 +130,16 @@ ensure_build(){
   log "Building targets"
   # Mandatory auto-format before compiling
   run_format || log_warn "Auto-format step encountered issues"
-  cmake --build "$ROOT_DIR/$BUILD_DIR" --target t2d_server t2d_qt_client -j $(nproc || echo 4)
+  # Run build with explicit failure handling to emit clear error message instead of silent set -e exit
+  if ! cmake --build "$ROOT_DIR/$BUILD_DIR" --target t2d_server t2d_qt_client -j $(nproc || echo 4); then
+    log_err "Build failed for targets: t2d_server t2d_qt_client (see errors above). Aborting."
+    exit 1
+  fi
+  # Verify expected binaries exist/executable
+  if [[ ! -x "$SERVER_BIN" || ! -x "$CLIENT_BIN" ]]; then
+    log_err "Build finished but expected binaries missing: $([[ ! -x $SERVER_BIN ]] && echo t2d_server ) $([[ ! -x $CLIENT_BIN ]] && echo t2d_qt_client )"
+    exit 1
+  fi
 }
 
 kill_existing(){
@@ -143,7 +178,15 @@ run_once(){
   log "Server PID=${SERVER_PID}"
   wait_port || { log "Server failed to open port"; kill ${SERVER_PID} || true; return 1; }
   log "Starting Qt client"
-  T2D_LOG_APP_ID="qt" "${CLIENT_BIN}" &
+  local client_args=()
+  # Determine QML log level argument (case-insensitive). QML side parser handles lowercase.
+  if [[ -n "$QML_LOG_LEVEL" ]]; then
+    client_args+=("--qml-log-level=${QML_LOG_LEVEL,,}")
+  elif [[ -n "$LOG_LEVEL" ]]; then
+    client_args+=("--qml-log-level=${LOG_LEVEL,,}")
+  fi
+  log_debug "Qt client args: ${client_args[*]:-(none)}"
+  T2D_LOG_APP_ID="qt" "${CLIENT_BIN}" "${client_args[@]}" &
   CLIENT_PID=$!
   log "Client PID=${CLIENT_PID}"
   wait -n ${SERVER_PID} ${CLIENT_PID}
