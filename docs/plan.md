@@ -176,14 +176,14 @@ E. Release workflow publishes artifacts on tag push.
 
 ## 8. Tracking & Metrics (Planned)
 Metric prototypes (initial):
-- [ ] tick_duration_ms (histogram)
+- [x] tick_duration_ns (histogram)  <!-- implemented as t2d_tick_duration_ns_* -->
 - [x] snapshot_full_bytes
 - [x] snapshot_delta_bytes
-- [ ] queue_depth
-- [ ] active_matches
-- [ ] bots_in_match
-- [ ] projectiles_active
-- [ ] auth_failures_total
+- [x] queue_depth
+- [x] active_matches
+- [x] bots_in_match
+- [x] projectiles_active
+- [x] auth_failures_total
 - [ ] client_interpolation_alpha (gauge for drift diagnostics)
 
 ## 9. Out of Scope (Later Phases)

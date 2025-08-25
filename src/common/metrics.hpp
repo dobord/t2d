@@ -42,7 +42,7 @@ inline void add_tick_duration(uint64_t ns)
 {
     runtime().tick_duration_ns_accum.fetch_add(ns, std::memory_order_relaxed);
     runtime().tick_samples.fetch_add(1, std::memory_order_relaxed);
-    // Histogram bucket boundaries (approx) starting at 250k ns (=4ms @ 30Hz tick budget ~33ms): geometric progression
+    // Histogram bucket boundaries starting at 250k ns (0.25ms). Geometric progression (x2) up to ~128ms.
     constexpr uint64_t base = 250000; // 0.25ms
     auto &rt = runtime();
     for (int i = 0; i < RuntimeCounters::TICK_BUCKETS; ++i) {
