@@ -249,8 +249,8 @@ Window {
         Canvas {
             id: scene
             anchors {
-                left: tankList.right
-                right: projectileList.left
+                left: parent.left
+                right: parent.right
                 top: parent.top
                 bottom: joystick.top
                 leftMargin: 8
@@ -499,91 +499,131 @@ Window {
             }
         }
 
-        ListView {
-            id: tankList
-            anchors {
-                left: parent.left
-                top: parent.top
-                bottom: parent.bottom
-                leftMargin: 8
-                topMargin: 8
-                bottomMargin: 8
-            }
-            width: 260
-            model: entityModel
-            clip: true
-            delegate: Rectangle {
-                width: tankList.width
-                height: 32
-                color: index % 2 === 0 ? "#2b3642" : "#23303a"
+        // Overlay panels for statistics (tanks & projectiles) placed over the scene with collapse/expand buttons
+        Rectangle {
+            id: tankPanel
+            z: 10
+            color: tankPanel.collapsed ? "#223038" : "#263540cc" // semi-transparent when expanded
+            radius: 6
+            anchors.left: parent.left
+            anchors.top: parent.top
+            anchors.margins: 10
+            property bool collapsed: false
+            width: collapsed ? 34 : 270
+            height: collapsed ? 34 : Math.min(parent.height * 0.55, 380)
+            border.color: "#35505c"
+            border.width: 1
+            Column {
+                anchors.fill: parent
+                anchors.margins: 4
+                spacing: 4
                 Row {
-                    anchors.fill: parent
-                    anchors.margins: 4
-                    spacing: 8
-                    Text {
-                        text: entityId
-                        color: "#d0d3d6"
-                        width: 40
-                    }
-                    Text {
-                        text: `x:${x.toFixed(1)} y:${y.toFixed(1)}`
-                        color: "#9fb2c3"
-                        width: 140
-                    }
-                    Text {
-                        text: `hp:${hp} a:${ammo}`
-                        color: "#c5a96a"
+                    id: tankHeader
+                    height: 24
+                    spacing: 6
+                    anchors.left: parent.left
+                    anchors.right: parent.right
+                    Text { text: tankPanel.collapsed ? "" : "Tanks"; color: "#c7d4df"; font.pixelSize: 14; visible: !tankPanel.collapsed }
+                    Rectangle { anchors.horizontalStretch: true; color: "transparent" }
+                    Button {
+                        id: tankToggle
+                        text: tankPanel.collapsed ? "+" : "−"
+                        width: 24; height: 24
+                        onClicked: tankPanel.collapsed = !tankPanel.collapsed
                     }
                 }
+                ListView {
+                    id: tankList
+                    visible: !tankPanel.collapsed
+                    model: entityModel
+                    clip: true
+                    anchors.left: parent.left
+                    anchors.right: parent.right
+                    anchors.bottom: parent.bottom
+                    anchors.top: tankHeader.bottom
+                    delegate: Rectangle {
+                        width: tankList.width
+                        height: 30
+                        color: index % 2 === 0 ? "#2b3642" : "#23303a"
+                        Row {
+                            anchors.fill: parent
+                            anchors.margins: 4
+                            spacing: 6
+                            Text { text: entityId; color: "#d0d3d6"; width: 38 }
+                            Text { text: `x:${x.toFixed(1)} y:${y.toFixed(1)}`; color: "#9fb2c3"; width: 138 }
+                            Text { text: `hp:${hp} a:${ammo}`; color: "#c5a96a" }
+                        }
+                    }
+                    ScrollBar.vertical: ScrollBar {}
+                }
             }
-            ScrollBar.vertical: ScrollBar {}
         }
 
-        ListView {
-            id: projectileList
-            anchors {
-                right: parent.right
-                top: parent.top
-                bottom: parent.bottom
-                rightMargin: 8
-                topMargin: 8
-                bottomMargin: 120
-            }
-            width: 180
-            model: projectileModel
-            delegate: Rectangle {
-                width: projectileList.width
-                height: 24
-                color: index % 2 === 0 ? "#303b46" : "#28323d"
+        Rectangle {
+            id: projectilePanel
+            z: 10
+            color: projectilePanel.collapsed ? "#223038" : "#263540cc"
+            radius: 6
+            anchors.top: parent.top
+            anchors.right: parent.right
+            anchors.margins: 10
+            property bool collapsed: false
+            width: collapsed ? 34 : 200
+            height: collapsed ? 34 : Math.min(parent.height * 0.45, 300)
+            border.color: "#35505c"
+            border.width: 1
+            Column {
+                anchors.fill: parent
+                anchors.margins: 4
+                spacing: 4
                 Row {
-                    anchors.fill: parent
-                    anchors.margins: 4
+                    id: projHeader
+                    height: 24
                     spacing: 6
-                    Text {
-                        text: projId
-                        color: "#d0d3d6"
-                        width: 50
-                    }
-                    Text {
-                        text: `x:${x.toFixed(1)}`
-                        color: "#9fb2c3"
-                        width: 60
-                    }
-                    Text {
-                        text: `y:${y.toFixed(1)}`
-                        color: "#9fb2c3"
+                    anchors.left: parent.left
+                    anchors.right: parent.right
+                    Text { text: projectilePanel.collapsed ? "" : "Projectiles"; color: "#c7d4df"; font.pixelSize: 14; visible: !projectilePanel.collapsed }
+                    Rectangle { anchors.horizontalStretch: true; color: "transparent" }
+                    Button {
+                        id: projToggle
+                        text: projectilePanel.collapsed ? "+" : "−"
+                        width: 24; height: 24
+                        onClicked: projectilePanel.collapsed = !projectilePanel.collapsed
                     }
                 }
+                ListView {
+                    id: projectileList
+                    visible: !projectilePanel.collapsed
+                    model: projectileModel
+                    clip: true
+                    anchors.left: parent.left
+                    anchors.right: parent.right
+                    anchors.bottom: parent.bottom
+                    anchors.top: projHeader.bottom
+                    delegate: Rectangle {
+                        width: projectileList.width
+                        height: 24
+                        color: index % 2 === 0 ? "#303b46" : "#28323d"
+                        Row {
+                            anchors.fill: parent
+                            anchors.margins: 4
+                            spacing: 6
+                            Text { text: projId; color: "#d0d3d6"; width: 46 }
+                            Text { text: `x:${x.toFixed(1)}`; color: "#9fb2c3"; width: 56 }
+                            Text { text: `y:${y.toFixed(1)}`; color: "#9fb2c3" }
+                        }
+                    }
+                    ScrollBar.vertical: ScrollBar {}
+                }
             }
-            ScrollBar.vertical: ScrollBar {}
         }
 
         // Joystick composite control (two sticks + fire/brake buttons)
         Joystick {
             id: joystick
             anchors {
-                left: tankList.right
-                right: projectileList.left
+                left: parent.left
+                right: parent.right
                 bottom: parent.bottom
                 leftMargin: 8
                 rightMargin: 8
