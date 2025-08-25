@@ -468,14 +468,13 @@ Window {
                         worldY += rootItem.cameraOffsetY;
                     }
                     if (rootItem.isMiddleDragging && !rootItem.followCamera) {
-                        // Correct panning: compute delta in screen space and convert via current scale.
-                        // Previous implementation recomputed startWorld using the continually updated
-                        // cameraOffset, causing scale-dependent drift and inverted magnitude.
+                        // Pan speed adjustment: use baseScale (ignore zoom) so panning is not slowed down at high zoom levels.
+                        // This yields a consistent on-screen feeling: dragging N pixels always moves roughly the same scene amount.
                         let dxScreen = ev.x - rootItem.dragStartX;
                         let dyScreen = ev.y - rootItem.dragStartY;
-                        let dxWorld = dxScreen / scale;
-                        let dyWorld = dyScreen / scale;
-                        // Move camera opposite to cursor drag direction so scene follows cursor.
+                        let dxWorld = dxScreen / baseScale; // was scale
+                        let dyWorld = dyScreen / baseScale;
+                        // Opposite direction so content follows cursor.
                         rootItem.cameraOffsetX = rootItem.dragOrigOffsetX - dxWorld;
                         rootItem.cameraOffsetY = rootItem.dragOrigOffsetY - dyWorld;
                     }
