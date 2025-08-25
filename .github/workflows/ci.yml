@@ -176,3 +176,28 @@ jobs:
           else
             echo "Clang-Tidy warnings: 0" >> $GITHUB_STEP_SUMMARY
           fi
+
+  android-toolchain:
+    name: Android Toolchain Verify
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - name: Set up Android SDK
+        uses: android-actions/setup-android@v3
+      - name: Install required SDK components
+        run: |
+          sdkmanager --install \
+            "platform-tools" \
+            "platforms;android-34" \
+            "build-tools;34.0.0" \
+            "ndk;29.0.13846066"
+      - name: Export env versions
+        run: |
+          echo "ANDROID_NDK_VERSION=29.0.13846066" >> $GITHUB_ENV
+          echo "ANDROID_BUILD_TOOLS_VERSION=34.0.0" >> $GITHUB_ENV
+      - name: Verify toolchain
+        run: bash scripts/check_android_toolchain.sh
+      - name: Summary
+        run: echo "Android toolchain verified" >> $GITHUB_STEP_SUMMARY

@@ -173,6 +173,7 @@ E. Release workflow publishes artifacts on tag push.
 - [ ] Crash handling: backtrace on signals (disabled under sanitizers)
 - [ ] Client prediction & reconciliation (beyond linear interpolation)
 - [ ] OAuth real token validation adapter (pluggable external service)
+ - [x] Script: Android toolchain version verification vs manifest (added CI job android-toolchain)
 
 ## 8. Tracking & Metrics (Planned)
 Metric prototypes (initial):
