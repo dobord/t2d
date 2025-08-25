@@ -8,6 +8,36 @@ if (EXISTS ${CMAKE_CURRENT_SOURCE_DIR}/qt_local.cmake)
     include(${CMAKE_CURRENT_SOURCE_DIR}/qt_local.cmake)
 endif ()
 
+# Reusable helper: locate a Qt helper executable (e.g. qmlformat, qmlcachegen, qmltyperegistrar)
+function (t2d_find_qt_tool OUT_VAR TOOL_NAME)
+    if (${OUT_VAR})
+        return()
+    endif ()
+    find_program(
+        _tool_bin
+        NAMES ${TOOL_NAME}
+        HINTS ${CMAKE_PREFIX_PATH}/bin $ENV{CMAKE_PREFIX_PATH}/bin)
+    if (NOT _tool_bin)
+        foreach (_p IN LISTS CMAKE_PREFIX_PATH)
+            if (EXISTS "${_p}/bin/${TOOL_NAME}")
+                set(_tool_bin "${_p}/bin/${TOOL_NAME}")
+                break()
+            endif ()
+        endforeach ()
+    endif ()
+    if (_tool_bin)
+        set(${OUT_VAR}
+            ${_tool_bin}
+            PARENT_SCOPE)
+        message(STATUS "Found ${TOOL_NAME}: ${_tool_bin}")
+    else ()
+        message(
+            STATUS
+                "${TOOL_NAME} NOT found - optional. Set CMAKE_PREFIX_PATH or provide qt_local.cmake to help locate it."
+        )
+    endif ()
+endfunction ()
+
 option(T2D_ENABLE_SANITIZERS "Enable Address/Undefined sanitizers (Clang/GCC)" OFF)
 option(T2D_ENABLE_TSAN "Enable Thread Sanitizer (Clang/GCC)" OFF)
 option(T2D_ENABLE_COVERAGE "Enable code coverage instrumentation (GCC/Clang Debug builds)" OFF)
@@ -361,28 +391,7 @@ if (CMAKE_FORMAT_BIN)
 endif ()
 
 # QML files formatting (optional, requires qmlformat from Qt)
-find_program(
-    QMLFORMAT_BIN
-    NAMES qmlformat
-    HINTS # Common Linux distribution paths already searched implicitly, add Qt local override hints
-          ${CMAKE_PREFIX_PATH}/bin $ENV{CMAKE_PREFIX_PATH}/bin)
-if (NOT QMLFORMAT_BIN)
-    # Try individual prefix entries (CMAKE_PREFIX_PATH can be a list) appending /bin
-    foreach (_p IN LISTS CMAKE_PREFIX_PATH)
-        if (EXISTS "${_p}/bin/qmlformat")
-            set(QMLFORMAT_BIN "${_p}/bin/qmlformat")
-            break()
-        endif ()
-    endforeach ()
-endif ()
-if (QMLFORMAT_BIN)
-    message(STATUS "Found qmlformat: ${QMLFORMAT_BIN}")
-else ()
-    message(
-        STATUS
-            "qmlformat NOT found - QML auto-format disabled. Install Qt tools providing qmlformat or set CMAKE_PREFIX_PATH to your Qt installation root."
-    )
-endif ()
+t2d_find_qt_tool(QMLFORMAT_BIN qmlformat)
 if (QMLFORMAT_BIN)
     file(
         GLOB_RECURSE ALL_QML_FILES
