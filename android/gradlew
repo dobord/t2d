@@ -21,6 +21,8 @@ fi
 
 DIST_URL_LINE=$(grep '^distributionUrl=' "$PROPS" || true)
 DIST_URL=${DIST_URL_LINE#distributionUrl=}
+# Unescape \: in properties (Gradle uses escaping in .properties)
+DIST_URL=${DIST_URL//\\:/:}
 if [[ -z "$DIST_URL" ]]; then
 	echo "distributionUrl missing in $PROPS" >&2
 	exit 1
