@@ -12,83 +12,65 @@
 #include <chrono>
 #include <cmath>
 #include <csignal>
+#include <cstring>
 #include <iostream>
 #include <string>
-#include <unordered_map>
+#include <thread>
 #include <vector>
 
 using namespace std::chrono_literals;
 
 namespace {
 
-// In-memory simplified world model for demonstration & basic reconciliation.
-struct TankSimple
+// Option 2: No client-side world reconstruction / prediction. We just log raw snapshot & delta contents.
+static void log_full_snapshot(const t2d::StateSnapshot &snap)
 {
-    uint32_t id{};
-    float x{};
-    float y{};
-    float hull_angle{};
-    float turret_angle{};
-    uint32_t hp{};
-    uint32_t ammo{};
-};
-
-struct ProjectileSimple
-{
-    uint32_t id{};
-    float x{};
-    float y{};
-    float vx{};
-    float vy{};
-};
-
-struct ClientWorld
-{
-    std::unordered_map<uint32_t, TankSimple> tanks;
-    std::unordered_map<uint32_t, ProjectileSimple> projectiles;
-    uint32_t last_full_tick{0};
-    uint32_t last_tick{0};
-
-    void apply_full(const t2d::StateSnapshot &snap)
-    {
-        tanks.clear();
-        projectiles.clear();
-        last_full_tick = snap.server_tick();
-        last_tick = snap.server_tick();
-        for (const auto &t : snap.tanks()) {
-            tanks[t.entity_id()] =
-                TankSimple{t.entity_id(), t.x(), t.y(), t.hull_angle(), t.turret_angle(), t.hp(), t.ammo()};
-        }
-        for (const auto &p : snap.projectiles()) {
-            projectiles[p.projectile_id()] = ProjectileSimple{p.projectile_id(), p.x(), p.y(), p.vx(), p.vy()};
-        }
+    t2d::log::info(
+        "full snapshot tick={} tanks={} projectiles={}",
+        snap.server_tick(),
+        snap.tanks_size(),
+        snap.projectiles_size());
+    int shown = 0;
+    for (const auto &t : snap.tanks()) {
+        if (shown++ >= 3)
+            break;
+        t2d::log::info(
+            " tank id={} pos=({:.2f},{:.2f}) hp={} ammo={} hull={:.1f} turret={:.1f}",
+            t.entity_id(),
+            t.x(),
+            t.y(),
+            t.hp(),
+            t.ammo(),
+            t.hull_angle(),
+            t.turret_angle());
     }
+}
 
-    void apply_delta(const t2d::DeltaSnapshot &d)
-    {
-        // Only apply if base tick matches our last_full_tick (simple guard)
-        last_tick = d.server_tick();
-        for (auto id : d.removed_tanks()) {
-            tanks.erase(id);
-        }
-        for (auto id : d.removed_projectiles()) {
-            projectiles.erase(id);
-        }
-        for (const auto &t : d.tanks()) {
-            auto &ref = tanks[t.entity_id()];
-            ref.id = t.entity_id();
-            ref.x = t.x();
-            ref.y = t.y();
-            ref.hull_angle = t.hull_angle();
-            ref.turret_angle = t.turret_angle();
-            ref.hp = t.hp();
-            ref.ammo = t.ammo();
-        }
-        for (const auto &p : d.projectiles()) {
-            projectiles[p.projectile_id()] = ProjectileSimple{p.projectile_id(), p.x(), p.y(), p.vx(), p.vy()};
-        }
+static void log_delta_snapshot(const t2d::DeltaSnapshot &d)
+{
+    t2d::log::debug(
+        "delta tick={} base={} dtanks={} dprojs={} removed_tanks={} removed_projs={}",
+        d.server_tick(),
+        d.base_tick(),
+        d.tanks_size(),
+        d.projectiles_size(),
+        d.removed_tanks_size(),
+        d.removed_projectiles_size());
+    int shown = 0;
+    for (const auto &t : d.tanks()) {
+        if (shown++ >= 3)
+            break;
+        t2d::log::debug(
+            " dtank id={} pos=({:.2f},{:.2f}) hp={} ammo={} hull={:.1f} turret={:.1f}",
+            t.entity_id(),
+            t.x(),
+            t.y(),
+            t.hp(),
+            t.ammo(),
+            t.hull_angle(),
+            t.turret_angle());
     }
-};
+}
 
 std::atomic_bool g_shutdown{false};
 
@@ -140,6 +122,7 @@ coro::task<bool> read_one(coro::net::tcp::client &client, t2d::ServerMessage &ou
     co_return true;
 }
 
+// Coroutine entry; first await binds to scheduler thread per project coroutine policy.
 coro::task<void> run_client(std::shared_ptr<coro::io_scheduler> sched, std::string host, uint16_t port)
 {
     co_await sched->schedule();
@@ -163,7 +146,7 @@ coro::task<void> run_client(std::shared_ptr<coro::io_scheduler> sched, std::stri
     bool in_match = false;
     uint64_t loop_iter = 0;
     std::string session_id;
-    ClientWorld world;
+    uint32_t last_full_tick = 0;
     while (!g_shutdown.load()) {
         // Periodic heartbeat every ~1s (assuming ~20ms yield below => ~50 iterations)
         if ((loop_iter % 50) == 0) {
@@ -211,22 +194,10 @@ coro::task<void> run_client(std::shared_ptr<coro::io_scheduler> sched, std::stri
                     sm.match_start().tick_rate(),
                     sm.match_start().seed());
             } else if (sm.has_snapshot()) {
-                world.apply_full(sm.snapshot());
-                t2d::log::info(
-                    "full snapshot tick={} tanks={} projectiles={}",
-                    sm.snapshot().server_tick(),
-                    sm.snapshot().tanks_size(),
-                    sm.snapshot().projectiles_size());
+                last_full_tick = sm.snapshot().server_tick();
+                log_full_snapshot(sm.snapshot());
             } else if (sm.has_delta_snapshot()) {
-                world.apply_delta(sm.delta_snapshot());
-                t2d::log::debug(
-                    "delta tick={} base={} dtanks={} dprojs={} removed_tanks={} removed_projs={}",
-                    sm.delta_snapshot().server_tick(),
-                    sm.delta_snapshot().base_tick(),
-                    sm.delta_snapshot().tanks_size(),
-                    sm.delta_snapshot().projectiles_size(),
-                    sm.delta_snapshot().removed_tanks_size(),
-                    sm.delta_snapshot().removed_projectiles_size());
+                log_delta_snapshot(sm.delta_snapshot());
             } else if (sm.has_damage()) {
                 t2d::log::info(
                     "damage victim={} attacker={} hp_left={}",
@@ -245,23 +216,7 @@ coro::task<void> run_client(std::shared_ptr<coro::io_scheduler> sched, std::stri
                     "match end id={} winner_entity={}", sm.match_end().match_id(), sm.match_end().winner_entity_id());
             }
         }
-        // Periodic world summary every ~1s
-        if ((loop_iter % 50) == 0 && in_match) {
-            size_t shown = 0;
-            for (const auto &kv : world.tanks) {
-                if (shown++ >= 3)
-                    break;
-                t2d::log::info(
-                    "tank id={} pos=({:.2f},{:.2f}) hp={} ammo={} hull={:.2f} turret={:.2f}",
-                    kv.second.id,
-                    kv.second.x,
-                    kv.second.y,
-                    kv.second.hp,
-                    kv.second.ammo,
-                    kv.second.hull_angle,
-                    kv.second.turret_angle);
-            }
-        }
+        // No local world summary (raw snapshots already logged)
         ++loop_iter;
         co_await sched->yield_for(20ms);
     }
