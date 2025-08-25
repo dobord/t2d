@@ -674,13 +674,22 @@ Window {
         // (Removed older duplicate joystick_update placed here; consolidated earlier.)
 
         Text {
-            anchors.bottom: parent.bottom
-            anchors.right: parent.right
-            anchors.bottomMargin: 112
-            anchors.rightMargin: 12
+            id: hudStats
+            z: 11
+            anchors.top: parent.top
+            anchors.horizontalCenter: parent.horizontalCenter
+            anchors.topMargin: 10
             text: "Snapshot tanks=" + tankList.count + "  follow=" + (rootItem.followCamera ? "on" : "off") + "(G)" + "  grid=" + (rootItem.showGrid ? "on" : "off") + "(H)" + "  mouseAim=" + (rootItem.mouseAimEnabled ? "on" : "off") + "(M)" + "  zoom=" + rootItem.userZoom.toFixed(2) + "(+/- wheel)" + "  focus=" + rootItem.focus
-            color: "#8098a8"
+            color: "#d0dde5"
             font.pixelSize: 14
+            Rectangle { // backdrop for readability
+                anchors.fill: parent
+                anchors.margins: -6
+                radius: 6
+                color: "#101820cc"
+                border.color: "#2e4450"
+                z: -1
+            }
         }
     } // end rootItem
 }
