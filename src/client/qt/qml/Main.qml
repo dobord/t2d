@@ -20,7 +20,7 @@ Window {
         objectName: "rootItem"
         anchors.fill: parent
         focus: true
-        property bool followCamera: false // default off so movement is visible
+        property bool followCamera: true // default on: camera follows own tank
         property bool showGrid: true
         // Map dimensions (static per match, received from snapshot). When zero, unknown/not yet received.
         property real mapWidth: 0
