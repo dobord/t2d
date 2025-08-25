@@ -8,15 +8,17 @@ tick_rate: 30
 snapshot_interval_ticks: 5  # every 5 ticks send incremental snapshot (runtime configurable)
 full_snapshot_interval_ticks: 30  # send a full snapshot at least this often
 bot_difficulty: 1  # 0 = dummy, 1 = basic
-bot_fire_interval_ticks: 60  # bots fire every N ticks (default 60 -> ~2s at 30Hz)
+bot_fire_interval_ticks: 60   # bots fire every N ticks (default 60 -> ~2s at 30Hz)
 movement_speed: 2.0           # units per second for tanks
 projectile_damage: 25         # damage per projectile hit
 reload_interval_sec: 3.0      # seconds to grant +1 ammo (per tank) up to max
-projectile_speed: 5.0         # projectile linear speed units/s
-projectile_density: 0.01      # physics density for projectile (mass scaling)
-hull_density: 10.0            # physics density for tank hull (overall mass)
-turret_density: 5.0           # physics density for turret body (affects inertia & rotation feel)
+fire_cooldown_sec: 1.0        # seconds between player shots (reduced rate of fire)
+projectile_speed: 15.0        # projectile linear speed units/s (3x previous 5.0)
+projectile_density: 0.1       # physics density for projectile (10x previous 0.01)
+hull_density: 1.0             # physics density for tank hull (overall mass)
+turret_density: 0.5           # physics density for turret body (affects inertia & rotation feel)
 disable_bot_fire: false       # when true bots never fire (can also use --no-bot-fire or env T2D_NO_BOT_FIRE=1)
+test_mode: false              # when true enables internal fast clamps (leave false in production)
 listen_port: 40000
 heartbeat_timeout_seconds: 30
 matchmaker_poll_ms: 200
@@ -27,5 +29,5 @@ auth_mode: stub     # disabled|stub (future: oauth)
 auth_stub_prefix: user_
 
 # Map dimensions (world units) defining rectangular play area; walls spawned at perimeter
-map_width: 300
-map_height: 200
+map_width: 100
+map_height: 100

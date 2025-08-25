@@ -258,9 +258,10 @@ Gameplay and server behavior are data‑driven via `config/server.yaml`. Key par
 | full_snapshot_interval_ticks | 30 | Interval between mandatory full snapshots |
 | bot_fire_interval_ticks | 60 | Bot firing cadence (ticks; 60 @30Hz ≈ 2s) |
 | movement_speed | 2.0 | Tank linear speed (units/s) |
-| projectile_speed | 5.0 | Projectile speed (units/s) |
+| projectile_speed | 15.0 | Projectile speed (units/s) |
 | projectile_damage | 25 | Damage per projectile contact |
 | reload_interval_sec | 3.0 | Seconds to regenerate one ammo (up to max_ammo) |
+| fire_cooldown_sec | 1.0 | Seconds between player shots (tank cannon) |
 | max_players_per_match | 16 | Match size (bot fill after timeout) |
 | fill_timeout_seconds | 180 | Seconds before auto bot fill |
 | heartbeat_timeout_seconds | 30 | Disconnect if no heartbeat within window |
@@ -271,6 +272,12 @@ Gameplay and server behavior are data‑driven via `config/server.yaml`. Key par
 | auth_mode | stub | Authentication provider mode |
 
 Adjusting these allows rapid iteration on pacing (e.g., shorten `bot_fire_interval_ticks` to accelerate tests or increase `movement_speed` to test balance). Unknown keys are ignored; absent keys fall back to compiled defaults.
+
+### Test Configuration
+For automated or rapid local tests a separate `config/server_test.yaml` is provided with faster regen, lower cooldowns and `test_mode: true` (enables internal clamps like minimum bot fire interval and elevated projectile damage for concise matches). Launch with:
+```
+./build/t2d_server config/server_test.yaml
+```
 
 ## License
 Apache License 2.0. See `LICENSE` for full text.

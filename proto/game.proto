@@ -73,11 +73,23 @@ message AmmoBoxState {
   bool active = 4;
 }
 
+// Movable obstacle crate (authoritative physics body). Angle in degrees (0 = +X axis like tanks).
+message CrateState {
+  uint32 crate_id = 1;
+  float x = 2;
+  float y = 3;
+  float angle = 4; // degrees
+}
+
 message StateSnapshot {
   uint32 server_tick = 1;
   repeated TankState tanks = 2;
   repeated ProjectileState projectiles = 3;
   repeated AmmoBoxState ammo_boxes = 4;
+  // Map dimensions (authoritative world size). Center assumed at origin. Optional during transition.
+  float map_width = 5;
+  float map_height = 6;
+  repeated CrateState crates = 7; // movable obstacle crates
 }
 
 // Delta snapshot sends only changed/new entities since a base tick.
@@ -89,6 +101,9 @@ message DeltaSnapshot {
   repeated ProjectileState projectiles = 4; // new projectiles (no per-tick motion updates yet omitted for bandwidth)
   repeated uint32 removed_tanks = 5;        // entity_ids removed since base
   repeated uint32 removed_projectiles = 6;  // projectile ids removed since base
+  // Crate deltas: crates are heavier objects that move less; send only when changed significantly.
+  repeated CrateState crates = 7;           // changed/new crates (position/angle)
+  repeated uint32 removed_crates = 8;       // crates removed (future feature: destruction)
 }
 
 message DamageEvent {
