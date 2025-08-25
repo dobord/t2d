@@ -486,6 +486,7 @@ if (T2D_BUILD_TESTS)
         src/common/framing.cpp
         src/server/auth/auth_provider.cpp
         src/server/game/match.cpp
+        src/server/game/physics.cpp
         src/server/matchmaking/matchmaker.cpp
         src/server/matchmaking/session_manager.cpp
         src/server/net/listener.cpp
@@ -499,6 +500,7 @@ if (T2D_BUILD_TESTS)
         src/common/framing.cpp
         src/server/auth/auth_provider.cpp
         src/server/game/match.cpp
+        src/server/game/physics.cpp
         src/server/matchmaking/matchmaker.cpp
         src/server/matchmaking/session_manager.cpp
         src/server/net/listener.cpp
@@ -512,6 +514,7 @@ if (T2D_BUILD_TESTS)
         src/common/framing.cpp
         src/server/auth/auth_provider.cpp
         src/server/game/match.cpp
+        src/server/game/physics.cpp
         src/server/matchmaking/matchmaker.cpp
         src/server/matchmaking/session_manager.cpp
         src/server/net/listener.cpp
@@ -525,6 +528,7 @@ if (T2D_BUILD_TESTS)
         src/common/framing.cpp
         src/server/auth/auth_provider.cpp
         src/server/game/match.cpp
+        src/server/game/physics.cpp
         src/server/matchmaking/matchmaker.cpp
         src/server/matchmaking/session_manager.cpp
         src/server/net/listener.cpp
@@ -537,6 +541,7 @@ if (T2D_BUILD_TESTS)
         src/common/framing.cpp
         src/server/auth/auth_provider.cpp
         src/server/game/match.cpp
+        src/server/game/physics.cpp
         src/server/matchmaking/matchmaker.cpp
         src/server/matchmaking/session_manager.cpp
         src/server/net/listener.cpp
@@ -549,6 +554,7 @@ if (T2D_BUILD_TESTS)
         src/common/framing.cpp
         src/server/auth/auth_provider.cpp
         src/server/game/match.cpp
+        src/server/game/physics.cpp
         src/server/matchmaking/matchmaker.cpp
         src/server/matchmaking/session_manager.cpp
         src/server/net/listener.cpp
@@ -561,6 +567,7 @@ if (T2D_BUILD_TESTS)
         src/common/framing.cpp
         src/server/auth/auth_provider.cpp
         src/server/game/match.cpp
+        src/server/game/physics.cpp
         src/server/matchmaking/matchmaker.cpp
         src/server/matchmaking/session_manager.cpp
         src/server/net/listener.cpp
@@ -574,6 +581,7 @@ if (T2D_BUILD_TESTS)
         src/common/framing.cpp
         src/server/auth/auth_provider.cpp
         src/server/game/match.cpp
+        src/server/game/physics.cpp
         src/server/matchmaking/matchmaker.cpp
         src/server/matchmaking/session_manager.cpp
         src/server/net/listener.cpp
@@ -587,6 +595,7 @@ if (T2D_BUILD_TESTS)
         src/common/framing.cpp
         src/server/auth/auth_provider.cpp
         src/server/game/match.cpp
+        src/server/game/physics.cpp
         src/server/matchmaking/matchmaker.cpp
         src/server/matchmaking/session_manager.cpp
         src/server/net/listener.cpp

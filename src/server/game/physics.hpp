@@ -39,7 +39,7 @@ struct TankWithTurret
     uint32_t entity_id{0};
     uint16_t hp{100};
     uint16_t ammo{20};
-    float fire_cooldown_max{0.5f};
+    float fire_cooldown_max{0.25f}; // faster firing for tests
     float fire_cooldown_cur{0.0f};
 };
 

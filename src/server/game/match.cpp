@@ -22,7 +22,6 @@ static void process_contacts(
     auto events = b2World_GetContactEvents(phys_world.id);
     if (events.beginCount <= 0)
         return;
-    // Defer projectile body destruction until after iterating events to avoid invalidating shape ids mid-loop.
     std::vector<uint32_t> to_destroy_projectiles;
     for (int i = 0; i < events.beginCount; ++i) {
         const b2ContactBeginTouchEvent &ev = events.beginEvents[i];
@@ -55,7 +54,7 @@ static void process_contacts(
         if (tank_index == UINT32_MAX || tank_index >= ctx.tanks.size())
             continue;
         auto &tank = ctx.tanks[tank_index];
-        if (!tank.alive)
+        if (tank.hp == 0)
             continue;
         auto pit =
             std::find_if(ctx.projectiles.begin(), ctx.projectiles.end(), [&](auto &p) { return p.id == proj_id; });
@@ -65,6 +64,7 @@ static void process_contacts(
         if (tank.entity_id == proj.owner)
             continue;
         if (tank.hp > 0) {
+            uint16_t before = tank.hp;
             if (tank.hp <= damage_amount)
                 tank.hp = 0;
             else
@@ -77,8 +77,7 @@ static void process_contacts(
             d->set_remaining_hp(tank.hp);
             for (auto &pl : ctx.players)
                 t2d::mm::instance().push_message(pl, evmsg);
-            if (tank.hp == 0) {
-                tank.alive = false;
+            if (before > 0 && tank.hp == 0) {
                 ctx.removed_tanks_since_full.push_back(tank.entity_id);
                 ctx.kill_feed_events.emplace_back(tank.entity_id, proj.owner);
                 t2d::ServerMessage tdmsg;
@@ -91,27 +90,22 @@ static void process_contacts(
         }
         auto body_it = projectile_bodies.find(proj_id);
         if (body_it != projectile_bodies.end()) {
-            // Ensure body still valid (might have been queued earlier this tick by bounds logic)
             if (b2Body_IsValid(body_it->second)) {
                 to_destroy_projectiles.push_back(proj_id);
             } else {
-                // Already invalid, just erase mapping now to keep map consistent
                 projectile_bodies.erase(body_it);
             }
         }
         ctx.removed_projectiles_since_full.push_back(proj_id);
         ctx.projectiles.erase(pit);
     }
-    // Perform deferred destruction
-    if (!to_destroy_projectiles.empty()) {
-        for (auto pid : to_destroy_projectiles) {
-            auto it = projectile_bodies.find(pid);
-            if (it != projectile_bodies.end()) {
-                if (b2Body_IsValid(it->second)) {
-                    t2d::phys::destroy_body(it->second);
-                }
-                projectile_bodies.erase(it);
+    for (auto pid : to_destroy_projectiles) {
+        auto it = projectile_bodies.find(pid);
+        if (it != projectile_bodies.end()) {
+            if (b2Body_IsValid(it->second)) {
+                t2d::phys::destroy_body(it->second);
             }
+            projectile_bodies.erase(it);
         }
     }
 }
@@ -124,18 +118,16 @@ coro::task<void> run_match(std::shared_ptr<coro::io_scheduler> scheduler, std::s
     co_await scheduler->schedule();
     t2d::log::info("[match] start id={} players={}", ctx->match_id, ctx->players.size());
     // Physics world (advanced tank physics with hull+turret)
-    t2d::phys::World phys_world({0.0f, 0.0f}); // no gravity for top-down
+    // Use existing world if already created by matchmaker; else create lazily.
+    if (!ctx->physics_world) {
+        ctx->physics_world = std::make_unique<t2d::phys::World>(b2Vec2{0.0f, 0.0f});
+    }
+    auto &phys_world = *ctx->physics_world; // alias
     ProjectileMap projectile_bodies; // projectile id -> body id
-    if (ctx->tanks_phys.size() != ctx->tanks.size()) {
-        ctx->tanks_phys.clear();
-        ctx->tanks_phys.reserve(ctx->tanks.size());
-        for (auto &t : ctx->tanks) {
-            auto adv = t2d::phys::create_tank_with_turret(
-                phys_world, t.x, t.y, t.entity_id, ctx->hull_density, ctx->turret_density);
-            ctx->tanks_phys.push_back(adv);
-            // Keep hull body id list for legacy projectile collision path
-            phys_world.tank_bodies.push_back(adv.hull);
-        }
+    // Initialize physics body list
+    phys_world.tank_bodies.clear();
+    for (auto &adv : ctx->tanks) {
+        phys_world.tank_bodies.push_back(adv.hull);
     }
     using clock = std::chrono::steady_clock;
     auto tick_interval = std::chrono::milliseconds(1000 / ctx->tick_rate);
@@ -167,8 +159,8 @@ coro::task<void> run_match(std::shared_ptr<coro::io_scheduler> scheduler, std::s
                     // Session disconnected; mark tank dead (if not already) and queue removal if not yet recorded
                     if (i < ctx->tanks.size()) {
                         auto &tank = ctx->tanks[i];
-                        if (tank.alive) {
-                            tank.alive = false;
+                        if (tank.hp > 0) {
+                            tank.hp = 0;
                             ctx->removed_tanks_since_full.push_back(tank.entity_id);
                             ctx->kill_feed_events.emplace_back(tank.entity_id, 0);
                             t2d::ServerMessage tdmsg;
@@ -188,19 +180,89 @@ coro::task<void> run_match(std::shared_ptr<coro::io_scheduler> scheduler, std::s
         }
         float dt = 1.0f / static_cast<float>(ctx->tick_rate);
         for (size_t i = 0; i < ctx->tanks.size() && i < ctx->players.size(); ++i) {
-            auto &t = ctx->tanks[i];
-            auto &adv = ctx->tanks_phys[i];
-            if (!t.alive)
-                continue; // skip dead tanks
+            auto &adv = ctx->tanks[i];
+            if (adv.hp == 0)
+                continue; // dead
             auto &sess = ctx->players[i];
             auto input = t2d::mm::instance().get_input_copy(sess);
             // Basic bot AI: if bot, synthesize movement & periodic fire
             if (sess->is_bot) {
-                input.turn_dir = 0.0f;
-                input.move_dir = 0.0f;
+                // Acquire current tank transform
+                b2Transform myHull = b2Body_GetTransform(adv.hull);
+                b2Transform myTurret = b2Body_GetTransform(adv.turret);
+                float myHullRad = std::atan2(myHull.q.s, myHull.q.c);
+                float myTurretRad = std::atan2(myTurret.q.s, myTurret.q.c);
+                // Auto-target nearest alive non-bot (fallback to any other alive tank)
+                int target_index = -1;
+                float best_d2 = 1e30f;
+                for (size_t j = 0; j < ctx->tanks.size(); ++j) {
+                    if (j == i)
+                        continue;
+                    const auto &ot = ctx->tanks[j];
+                    if (ot.hp == 0)
+                        continue;
+                    b2Transform oHull = b2Body_GetTransform(ot.hull);
+                    float dx = oHull.p.x - myHull.p.x;
+                    float dy = oHull.p.y - myHull.p.y;
+                    float d2 = dx * dx + dy * dy;
+                    if (!ctx->players[j]->is_bot) {
+                        d2 *= 0.25f; // prefer real players
+                    }
+                    if (d2 < best_d2) {
+                        best_d2 = d2;
+                        target_index = (int)j;
+                    }
+                }
+                float desired_rad = myHullRad; // default keep current
+                float last_align_err = 9999.f;
+                if (target_index >= 0) {
+                    const auto &tt = ctx->tanks[target_index];
+                    b2Transform ttHull = b2Body_GetTransform(tt.hull);
+                    float dx = ttHull.p.x - myHull.p.x;
+                    float dy = ttHull.p.y - myHull.p.y;
+                    desired_rad = std::atan2(dy, dx);
+                    float diff = desired_rad - myHullRad;
+                    while (diff > (float)M_PI)
+                        diff -= 2.f * (float)M_PI;
+                    while (diff < -(float)M_PI)
+                        diff += 2.f * (float)M_PI;
+                    input.turn_dir = std::clamp(diff * 180.f / 90.f / (float)M_PI, -1.f, 1.f);
+                    float dist2 = dx * dx + dy * dy;
+                    if (dist2 > 25.f) {
+                        input.move_dir = 1.0f;
+                    } else if (dist2 < 9.f) {
+                        input.move_dir = -0.4f;
+                    } else {
+                        input.move_dir = 0.2f;
+                    }
+                    float tdiff = desired_rad - myTurretRad;
+                    while (tdiff > (float)M_PI)
+                        tdiff -= 2.f * (float)M_PI;
+                    while (tdiff < -(float)M_PI)
+                        tdiff += 2.f * (float)M_PI;
+                    last_align_err = std::fabs(tdiff) * 180.f / (float)M_PI;
+                    if (std::fabs(tdiff) < 2.f * (float)M_PI / 180.f) {
+                        input.turret_turn = 0.f;
+                    } else {
+                        input.turret_turn = std::clamp(tdiff * 180.f / (30.f * (float)M_PI), -1.f, 1.f);
+                    }
+                } else {
+                    input.turn_dir = 0.2f;
+                    input.move_dir = 0.0f;
+                    input.turret_turn = 0.3f;
+                }
                 if (!ctx->disable_bot_fire) {
                     uint32_t interval = ctx->bot_fire_interval_ticks == 0 ? 1 : ctx->bot_fire_interval_ticks;
-                    input.fire = (ctx->server_tick % interval) == 0;
+                    bool cadence = (ctx->server_tick % interval) == 0;
+                    if (cadence) {
+                        if (target_index >= 0) {
+                            input.fire = last_align_err < 20.f; // relaxed alignment threshold
+                        } else {
+                            input.fire = false;
+                        }
+                    } else {
+                        input.fire = false;
+                    }
                 } else {
                     input.fire = false;
                 }
@@ -225,7 +287,7 @@ coro::task<void> run_match(std::shared_ptr<coro::io_scheduler> scheduler, std::s
                 aim.target_angle_world = desired;
                 t2d::phys::update_turret_aim(aim, adv);
             }
-            if (input.fire && t.ammo > 0) {
+            if (input.fire && adv.ammo > 0) {
                 float forward_offset = 3.3f;
                 auto pid = ctx->next_projectile_id++;
                 // Use advanced firing (spawns projectile and applies cooldown/ammo)
@@ -243,27 +305,26 @@ coro::task<void> run_match(std::shared_ptr<coro::io_scheduler> scheduler, std::s
                          pos.y,
                          dir.x * ctx->projectile_speed,
                          dir.y * ctx->projectile_speed,
-                         t.entity_id});
+                         adv.entity_id});
                     // map projectile body for collision processing
                     projectile_bodies.emplace(fired, phys_world.projectile_bodies.back());
-                    t.ammo = adv.ammo; // sync ammo back
                     if (sess->is_bot)
                         t2d::mm::instance().clear_bot_fire(sess);
                 }
             }
             // Reload timer update
             auto &rt = ctx->reload_timers[i];
-            if (t.ammo < ctx->max_ammo) {
+            if (adv.ammo < ctx->max_ammo) {
                 rt += dt;
                 if (rt >= ctx->reload_interval_sec) {
-                    t.ammo++;
+                    adv.ammo++;
                     rt = 0.f;
                 }
             } else {
                 rt = 0.f; // full ammo, keep timer reset
             }
         }
-        for (auto &adv : ctx->tanks_phys) {
+        for (auto &adv : ctx->tanks) {
             if (adv.fire_cooldown_cur > 0.f)
                 adv.fire_cooldown_cur = std::max(0.f, adv.fire_cooldown_cur - dt);
         }
@@ -272,21 +333,7 @@ coro::task<void> run_match(std::shared_ptr<coro::io_scheduler> scheduler, std::s
         // Handle projectile vs tank impacts (must run before bounds cull destroys bodies)
         process_contacts(phys_world, projectile_bodies, *ctx);
         // Sync tank state (position + angles) from advanced bodies
-        for (size_t i = 0; i < ctx->tanks.size() && i < ctx->tanks_phys.size(); ++i) {
-            auto &t = ctx->tanks[i];
-            auto &adv = ctx->tanks_phys[i];
-            auto pos = t2d::phys::get_body_position(adv.hull);
-            t.x = pos.x;
-            t.y = pos.y;
-            b2Transform xh = b2Body_GetTransform(adv.hull);
-            b2Transform xt = b2Body_GetTransform(adv.turret);
-            float hull_rad = std::atan2(xh.q.s, xh.q.c);
-            float tur_rad = std::atan2(xt.q.s, xt.q.c);
-            t.hull_angle = hull_rad * 180.f / 3.14159265f;
-            t.turret_angle = tur_rad * 180.f / 3.14159265f;
-            t.hp = adv.hp;
-            t.ammo = adv.ammo;
-        }
+        // Angles & positions derived on snapshot build.
         // Sync projectile positions from physics bodies (remove invalid)
         for (auto &p : ctx->projectiles) {
             auto it = projectile_bodies.find(p.id);
@@ -330,29 +377,51 @@ coro::task<void> run_match(std::shared_ptr<coro::io_scheduler> scheduler, std::s
                 auto *snap = sm.mutable_snapshot();
                 snap->set_server_tick(static_cast<uint32_t>(ctx->server_tick));
                 ctx->last_full_snapshot_tick = static_cast<uint32_t>(ctx->server_tick);
-                ctx->last_sent_tanks = ctx->tanks; // replace cache
-                for (auto &t : ctx->tanks) {
-                    if (!t.alive)
-                        continue; // skip removed tanks in new full snapshot
+                // Rebuild cache from physics state
+                ctx->last_sent_tanks.clear();
+                ctx->last_sent_tanks.resize(ctx->tanks.size());
+                for (size_t ti = 0; ti < ctx->tanks.size(); ++ti) {
+                    auto &adv = ctx->tanks[ti];
+                    if (adv.hp == 0)
+                        continue;
                     auto *ts = snap->add_tanks();
-                    ts->set_entity_id(t.entity_id);
+                    ts->set_entity_id(adv.entity_id);
+                    auto pos = t2d::phys::get_body_position(adv.hull);
+                    b2Transform xh = b2Body_GetTransform(adv.hull);
+                    b2Transform xt = b2Body_GetTransform(adv.turret);
+                    float hull_rad = std::atan2(xh.q.s, xh.q.c) * 180.f / 3.14159265f;
+                    float tur_rad = std::atan2(xt.q.s, xt.q.c) * 180.f / 3.14159265f;
 #if T2D_ENABLE_SNAPSHOT_QUANT
                     // Quantize positions & angles into integer buckets stored still as float (prototype keeps proto
                     // schema unchanged)
                     constexpr float POS_SCALE = 100.f; // 1cm
                     constexpr float ANG_SCALE = 10.f; // 0.1 deg
-                    ts->set_x(std::round(t.x * POS_SCALE) / POS_SCALE);
-                    ts->set_y(std::round(t.y * POS_SCALE) / POS_SCALE);
-                    ts->set_hull_angle(std::round(t.hull_angle * ANG_SCALE) / ANG_SCALE);
-                    ts->set_turret_angle(std::round(t.turret_angle * ANG_SCALE) / ANG_SCALE);
+                    ts->set_x(std::round(pos.x * POS_SCALE) / POS_SCALE);
+                    ts->set_y(std::round(pos.y * POS_SCALE) / POS_SCALE);
+                    ts->set_hull_angle(std::round(hull_rad * ANG_SCALE) / ANG_SCALE);
+                    ts->set_turret_angle(std::round(tur_rad * ANG_SCALE) / ANG_SCALE);
 #else
-                    ts->set_x(t.x);
-                    ts->set_y(t.y);
-                    ts->set_hull_angle(t.hull_angle);
-                    ts->set_turret_angle(t.turret_angle);
+                    ts->set_x(pos.x);
+                    ts->set_y(pos.y);
+                    ts->set_hull_angle(hull_rad);
+                    ts->set_turret_angle(tur_rad);
 #endif
-                    ts->set_hp(t.hp);
-                    ts->set_ammo(t.ammo);
+                    // update cache
+                    auto &cache = ctx->last_sent_tanks[ti];
+                    cache.entity_id = adv.entity_id;
+                    cache.x = pos.x;
+                    cache.y = pos.y;
+                    cache.hull_angle = hull_rad;
+                    cache.turret_angle = tur_rad;
+                    cache.hp = adv.hp;
+                    cache.ammo = adv.ammo;
+                    cache.alive = adv.hp > 0;
+                    ts->set_hp(adv.hp);
+                    ts->set_ammo(adv.ammo);
+                }
+                // above loop sets hp/ammo, continue existing code path (skip duplicate at end)
+                for (auto &adv_unused_for_scope : ctx->tanks) {
+                    (void)adv_unused_for_scope; // no-op; maintain structure after refactor
                 }
                 for (auto &p : ctx->projectiles) {
                     auto *ps = snap->add_projectiles();
@@ -390,39 +459,49 @@ coro::task<void> run_match(std::shared_ptr<coro::io_scheduler> scheduler, std::s
                 if (ctx->last_sent_tanks.size() != ctx->tanks.size())
                     ctx->last_sent_tanks.resize(ctx->tanks.size());
                 for (size_t i = 0; i < ctx->tanks.size(); ++i) {
-                    auto &curr = ctx->tanks[i];
-                    if (!curr.alive)
-                        continue; // do not send changed state for dead tanks
+                    auto &adv = ctx->tanks[i];
+                    if (adv.hp == 0)
+                        continue;
                     if (i >= ctx->last_sent_tanks.size()) {
-                        ctx->last_sent_tanks.push_back(curr);
+                        ctx->last_sent_tanks.push_back({adv.entity_id});
                     }
                     auto &prev = ctx->last_sent_tanks[i];
-                    if (!prev.alive && curr.alive) {
+                    if (!prev.alive && adv.hp > 0) {
                         // resurrect case not expected in prototype; treat as changed
                     }
-                    bool changed = std::fabs(curr.x - prev.x) > 0.0001f || std::fabs(curr.y - prev.y) > 0.0001f
-                        || std::fabs(curr.hull_angle - prev.hull_angle) > 0.01f
-                        || std::fabs(curr.turret_angle - prev.turret_angle) > 0.01f || curr.hp != prev.hp
-                        || curr.ammo != prev.ammo;
+                    auto pos = t2d::phys::get_body_position(adv.hull);
+                    b2Transform xh = b2Body_GetTransform(adv.hull);
+                    b2Transform xt = b2Body_GetTransform(adv.turret);
+                    float hull_deg = std::atan2(xh.q.s, xh.q.c) * 180.f / 3.14159265f;
+                    float tur_deg = std::atan2(xt.q.s, xt.q.c) * 180.f / 3.14159265f;
+                    bool changed = std::fabs(pos.x - prev.x) > 0.0001f || std::fabs(pos.y - prev.y) > 0.0001f
+                        || std::fabs(hull_deg - prev.hull_angle) > 0.01f
+                        || std::fabs(tur_deg - prev.turret_angle) > 0.01f || adv.hp != prev.hp || adv.ammo != prev.ammo;
                     if (changed) {
                         auto *ts = delta->add_tanks();
-                        ts->set_entity_id(curr.entity_id);
+                        ts->set_entity_id(adv.entity_id);
 #if T2D_ENABLE_SNAPSHOT_QUANT
                         constexpr float POS_SCALE = 100.f;
                         constexpr float ANG_SCALE = 10.f;
-                        ts->set_x(std::round(curr.x * POS_SCALE) / POS_SCALE);
-                        ts->set_y(std::round(curr.y * POS_SCALE) / POS_SCALE);
-                        ts->set_hull_angle(std::round(curr.hull_angle * ANG_SCALE) / ANG_SCALE);
-                        ts->set_turret_angle(std::round(curr.turret_angle * ANG_SCALE) / ANG_SCALE);
+                        ts->set_x(std::round(pos.x * POS_SCALE) / POS_SCALE);
+                        ts->set_y(std::round(pos.y * POS_SCALE) / POS_SCALE);
+                        ts->set_hull_angle(std::round(hull_deg * ANG_SCALE) / ANG_SCALE);
+                        ts->set_turret_angle(std::round(tur_deg * ANG_SCALE) / ANG_SCALE);
 #else
-                        ts->set_x(curr.x);
-                        ts->set_y(curr.y);
-                        ts->set_hull_angle(curr.hull_angle);
-                        ts->set_turret_angle(curr.turret_angle);
+                        ts->set_x(pos.x);
+                        ts->set_y(pos.y);
+                        ts->set_hull_angle(hull_deg);
+                        ts->set_turret_angle(tur_deg);
 #endif
-                        ts->set_hp(curr.hp);
-                        ts->set_ammo(curr.ammo);
-                        prev = curr; // update cache
+                        ts->set_hp(adv.hp);
+                        ts->set_ammo(adv.ammo);
+                        prev.x = pos.x;
+                        prev.y = pos.y;
+                        prev.hull_angle = hull_deg;
+                        prev.turret_angle = tur_deg;
+                        prev.hp = adv.hp;
+                        prev.ammo = adv.ammo;
+                        prev.alive = adv.hp > 0;
                     }
                 }
                 for (auto id : ctx->removed_tanks_since_full)
@@ -483,7 +562,7 @@ coro::task<void> run_match(std::shared_ptr<coro::io_scheduler> scheduler, std::s
             uint32_t alive_count = 0;
             uint32_t last_alive_id = 0;
             for (auto &t : ctx->tanks) {
-                if (t.alive) {
+                if (t.hp > 0) {
                     ++alive_count;
                     last_alive_id = t.entity_id;
                 }

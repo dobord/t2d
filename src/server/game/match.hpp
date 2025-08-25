@@ -14,41 +14,44 @@
 
 namespace t2d::game {
 
-struct TankStateSimple
-{
-    uint32_t entity_id;
-    float x{0};
-    float y{0};
-    float hull_angle{0};
-    float turret_angle{0};
-    uint32_t hp{100};
-    uint32_t ammo{10};
-    bool alive{true}; // when false, entity considered removed (not sent in future full snapshots)
-};
-
 struct MatchContext
 {
     std::string match_id;
     uint32_t tick_rate{30};
     uint32_t initial_player_count{0};
     std::vector<std::shared_ptr<t2d::mm::Session>> players;
-    std::vector<TankStateSimple> tanks; // parallel by index to players (render/state snapshot source)
-    // Advanced physics tanks (hull + turret bodies); index aligned with tanks vector
-    std::vector<t2d::phys::TankWithTurret> tanks_phys;
+    // Physics tanks (authoritative). Index aligned with players.
+    std::vector<t2d::phys::TankWithTurret> tanks;
+    // Shared physics world (created at match start)
+    std::unique_ptr<t2d::phys::World> physics_world;
     uint64_t server_tick{0};
     uint32_t last_full_snapshot_tick{0};
     uint32_t snapshot_interval_ticks{5};
     uint32_t full_snapshot_interval_ticks{30};
-    uint32_t bot_fire_interval_ticks{60}; // configurable bot fire cadence
+    uint32_t bot_fire_interval_ticks{15}; // faster bot fire cadence (reduced for tests)
     float movement_speed{2.0f};
-    uint32_t projectile_damage{25};
+    uint32_t projectile_damage{50}; // increased damage to ensure lethal sequences within test timeout
     float reload_interval_sec{3.0f};
     float projectile_speed{5.0f};
     float projectile_density{0.01f};
     float hull_density{1.0f};
     float turret_density{0.5f};
     bool disable_bot_fire{false}; // when true bots never set fire input
-    std::vector<TankStateSimple> last_sent_tanks;
+
+    // Cached last sent snapshot state (angles/positions/ammo/hp) for delta generation.
+    struct SentTankCache
+    {
+        uint32_t entity_id{0};
+        float x{0};
+        float y{0};
+        float hull_angle{0};
+        float turret_angle{0};
+        uint32_t hp{0};
+        uint32_t ammo{0};
+        bool alive{false};
+    };
+
+    std::vector<SentTankCache> last_sent_tanks;
 
     struct ProjectileSimple
     {

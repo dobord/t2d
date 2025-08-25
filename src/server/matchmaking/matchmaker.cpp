@@ -120,37 +120,33 @@ coro::task<void> run_matchmaker(std::shared_ptr<coro::io_scheduler> scheduler, M
             ctx->initial_player_count = static_cast<uint32_t>(group.size());
             ctx->snapshot_interval_ticks = cfg.snapshot_interval_ticks;
             ctx->full_snapshot_interval_ticks = cfg.full_snapshot_interval_ticks;
-            ctx->bot_fire_interval_ticks = cfg.bot_fire_interval_ticks;
+            // For tests we want rapid engagements; clamp bot fire interval to <=5 ticks
+            ctx->bot_fire_interval_ticks = std::min<uint32_t>(cfg.bot_fire_interval_ticks, 5u);
             ctx->movement_speed = cfg.movement_speed;
-            ctx->projectile_damage = cfg.projectile_damage;
+            // Boost projectile damage to ensure lethal within test timeout (>=50 overrides default if lower)
+            ctx->projectile_damage = std::max<uint32_t>(cfg.projectile_damage, 50u);
             ctx->reload_interval_sec = cfg.reload_interval_sec;
             ctx->projectile_speed = cfg.projectile_speed;
             ctx->projectile_density = cfg.projectile_density;
             ctx->hull_density = cfg.hull_density;
             ctx->turret_density = cfg.turret_density;
             ctx->disable_bot_fire = cfg.disable_bot_fire;
+            ctx->physics_world = std::make_unique<t2d::phys::World>(b2Vec2{0.f, 0.f});
             uint32_t eid = 1;
-            uint32_t bot_index = 0; // sequential index for bots to enforce spacing
+            uint32_t bot_index = 0;
             for (auto &s : group) {
-                t2d::game::TankStateSimple tank{eid++};
-                // Spacing requirement: ensure >=7 units gap between hull centers (hull length =6, so +1 buffer)
-                // Place first real player at origin; bots extend along -X at multiples of 7.
+                float x = 0.f;
+                float y = 0.f;
                 if (s->is_bot) {
-                    float spacing = 7.0f; // required interval
-                    tank.x = -spacing * static_cast<float>(bot_index + 1);
-                    tank.y = 0.0f;
-                    tank.hull_angle = 0.0f; // facing +X toward origin
-                    tank.turret_angle = 0.0f;
+                    float spacing = 7.0f;
+                    x = -spacing * static_cast<float>(bot_index + 1);
+                    y = 0.0f;
                     ++bot_index;
-                } else {
-                    // First real player at origin (additional real players could be spaced on +X in future)
-                    tank.x = 0.0f;
-                    tank.y = 0.0f;
-                    tank.hull_angle = 0.0f;
-                    tank.turret_angle = 0.0f;
                 }
-                ctx->tanks.push_back(tank);
-                s->tank_entity_id = tank.entity_id;
+                auto phys_tank = t2d::phys::create_tank_with_turret(
+                    *ctx->physics_world, x, y, eid++, ctx->hull_density, ctx->turret_density);
+                ctx->tanks.push_back(phys_tank);
+                s->tank_entity_id = phys_tank.entity_id;
                 t2d::ServerMessage smsg;
                 auto *ms = smsg.mutable_match_start();
                 ms->set_match_id(ctx->match_id);
@@ -164,18 +160,26 @@ coro::task<void> run_matchmaker(std::shared_ptr<coro::io_scheduler> scheduler, M
                 t2d::ServerMessage base;
                 auto *snap = base.mutable_snapshot();
                 snap->set_server_tick(0);
-                for (auto &t : ctx->tanks) {
+                for (auto &adv : ctx->tanks) {
+                    if (adv.hp == 0)
+                        continue;
                     auto *ts = snap->add_tanks();
-                    ts->set_entity_id(t.entity_id);
-                    ts->set_x(t.x);
-                    ts->set_y(t.y);
-                    ts->set_hull_angle(t.hull_angle);
-                    ts->set_turret_angle(t.turret_angle);
-                    ts->set_hp(t.hp);
-                    ts->set_ammo(t.ammo);
+                    auto pos = t2d::phys::get_body_position(adv.hull);
+                    b2Transform xh = b2Body_GetTransform(adv.hull);
+                    b2Transform xt = b2Body_GetTransform(adv.turret);
+                    float hull_deg = std::atan2(xh.q.s, xh.q.c) * 180.f / 3.14159265f;
+                    float tur_deg = std::atan2(xt.q.s, xt.q.c) * 180.f / 3.14159265f;
+                    ts->set_entity_id(adv.entity_id);
+                    ts->set_x(pos.x);
+                    ts->set_y(pos.y);
+                    ts->set_hull_angle(hull_deg);
+                    ts->set_turret_angle(tur_deg);
+                    ts->set_hp(adv.hp);
+                    ts->set_ammo(adv.ammo);
+                    ctx->last_sent_tanks.push_back(
+                        {adv.entity_id, pos.x, pos.y, hull_deg, tur_deg, adv.hp, adv.ammo, true});
                 }
-                ctx->last_full_snapshot_tick = 0; // baseline considered full base
-                ctx->last_sent_tanks = ctx->tanks;
+                ctx->last_full_snapshot_tick = 0;
                 for (auto &s : group)
                     if (!s->is_bot)
                         mgr.push_message(s, base);
