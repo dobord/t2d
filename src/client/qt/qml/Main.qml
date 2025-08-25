@@ -30,13 +30,13 @@ Window {
         property real dragStartX: 0
         property real dragStartY: 0
         property real dragOrigOffsetX: 0
-        property real dragOrigOffsetY: 0
-    // Global scale parameters (world -> screen). We target a tank radius (1.0 world unit) occupying
-      // targetTankScreenFraction of the shorter screen dimension at zoom=1. userZoom multiplies this.
-    property real tankWorldRadius: 3.0
-    property real targetTankScreenFraction: 0.10
-    // Effective world->screen scale used everywhere (painting & camera drag math).
-    property real worldToScreenScale: Math.min(scene.width, scene.height) * targetTankScreenFraction / tankWorldRadius * userZoom
+                property real dragOrigOffsetY: 0
+            // Global scale parameters (world -> screen). We target a tank radius (1.0 world unit) occupying
+        // targetTankScreenFraction of the shorter screen dimension at zoom=1. userZoom multiplies this.
+ property real tankWorldRadius: 3.0
+     property real targetTankScreenFraction: 0.10
+        // Effective world->screen scale used everywhere (painting & camera drag math).
+ property real worldToScreenScale:   Math.min(scene.width,   scene.height)    * targetTankScreenFraction /   tankWorldRadius *    userZoom
         // Internal cached last computed desired turret angle (degrees)
         property real desiredTurretAngleDeg: 0
         Component.onCompleted: {
