@@ -74,6 +74,20 @@ for f in "${STAGED_QML[@]}"; do
   esac
 done
 
+# Also include modified (but not yet staged) tracked QML files so they are auto-formatted & staged.
+while read -r _q; do
+  [ -z "$_q" ] && continue
+  case "$_q" in
+    third_party/*) continue;;
+  esac
+  # ensure tracked (skip untracked brand-new files; user must git add them first)
+  if git ls-files --error-unmatch "$_q" >/dev/null 2>&1; then
+    if ! printf '%s\n' "${QML_FILTERED[@]}" | grep -Fxq "$_q"; then
+      QML_FILTERED+=("$_q")
+    fi
+  fi
+done < <(git diff --name-only --diff-filter=ACMRT | grep -E '\\.qml$' || true)
+
 # Auto-add SPDX header to new first-party C/C++ files missing it.
 for f in "${FILTERED[@]}" "${QML_FILTERED[@]}"; do
   # Only operate on files that exist in the working tree
