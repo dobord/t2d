@@ -312,7 +312,8 @@ Window {
                 left: parent.left
                 right: parent.right
                 top: parent.top
-                bottom: joystick.top
+                // Fill full area; joystick now overlays on top (z-order higher)
+                bottom: parent.bottom
                 leftMargin: 8
                 rightMargin: 8
                 topMargin: 8
@@ -869,6 +870,7 @@ Window {
         // Joystick composite control (two sticks + fire/brake buttons)
         Joystick {
             id: joystick
+            z: 20 // overlay above scene
             anchors {
                 left: parent.left
                 right: parent.right

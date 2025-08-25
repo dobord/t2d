@@ -3,8 +3,12 @@ import QtQuick 2.15
 
 Item {
     id: joy
-    width: 640
-    height: 480
+    // Width stretches with parent anchors; height externally constrained
+    anchors.left: parent.left
+    anchors.right: parent.right
+    // Height provided by parent (e.g., 180)
+    // Transparent overlay; inner elements partly translucent.
+    width: parent ? parent.width : 640
 
     // Normalized drive (-1..1) and target axes (aim) exported
     property real drive_x: ((joy_left.x + 0.5 * joy_left.width) / mpta_left.width) * 2.0 - 1.0
@@ -29,36 +33,31 @@ Item {
         }
     }
 
-    GridView {
-        id: button_view
-        y: 322
-        height: 150
-        anchors.left: mpta_left.right
-        anchors.leftMargin: 0
+    // Buttons stacked above right stick, not spanning center area
+    Column {
+        id: buttonColumn
+        spacing: 8
         anchors.right: mpta_right.left
-        anchors.rightMargin: 0
-        flow: GridView.FlowTopToBottom
-        layoutDirection: Qt.RightToLeft
-        interactive: false
+        anchors.rightMargin: 16
         anchors.bottom: parent.bottom
-        anchors.bottomMargin: 0
-        cellHeight: 64
-        cellWidth: 64
-        model: button_model
-        delegate: CustomButton {
-            id: bt
-            width: 64
-            height: 64
-            radius: 16
-            text: title
-            onButtonPressedChanged: joy.button_state(name, buttonPressed)
+        anchors.bottomMargin: 12
+        Repeater {
+            model: button_model
+            delegate: CustomButton {
+                id: bt
+                width: 56
+                height: 56
+                radius: 14
+                text: title
+                opacity: 0.85
+                onButtonPressedChanged: joy.button_state(name, buttonPressed)
+            }
         }
     }
 
     // Left stick (drive)
     MultiPointTouchArea {
         id: mpta_left
-        y: 346
         width: 150
         height: 150
         anchors.bottom: parent.bottom
