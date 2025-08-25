@@ -132,6 +132,30 @@ if [ -n "$QMLFORMAT_BIN" ] && [ -x "$QMLFORMAT_BIN" ]; then
   have_any=1
 fi
 
+# If QML files present but qmlformat still not found, attempt a quick CMake reconfigure (once)
+if [ ${#QML_FILTERED[@]} -gt 0 ] && [ -z "$QMLFORMAT_BIN" ]; then
+  if [ -d "$BUILD_DIR" ]; then
+    cmake -S "$ROOT" -B "$BUILD_DIR" >/dev/null 2>&1 || true
+    if [ -f "$BUILD_DIR/CMakeCache.txt" ]; then
+      QMLFORMAT_BIN="$(grep -E '^QMLFORMAT_BIN:FILEPATH=' "$BUILD_DIR/CMakeCache.txt" | cut -d= -f2 || true)"
+    fi
+    if [ -z "$QMLFORMAT_BIN" ] && [ -f "$ROOT/qt_local.cmake" ]; then
+      while read -r qt_prefix; do
+        cand="$qt_prefix/bin/qmlformat"
+        if [ -x "$cand" ]; then
+          QMLFORMAT_BIN="$cand"; break
+        fi
+      done < <(grep -Eo '/[^" ]+/gcc_64' "$ROOT/qt_local.cmake" | sort -u)
+    fi
+  fi
+fi
+
+# Optional strict blocking if qmlformat required
+if [ ${#QML_FILTERED[@]} -gt 0 ] && [ -z "$QMLFORMAT_BIN" ] && [ "${T2D_QML_FORMAT_REQUIRED:-0}" = 1 ]; then
+  echo "[pre-commit] ERROR: qmlformat not found but QML files changed. Install Qt tool or set qt_local.cmake." >&2
+  exit 1
+fi
+
 if [ -n "$QMLFORMAT_BIN" ] && [ -x "$QMLFORMAT_BIN" ] && [ ${#QML_FILTERED[@]} -gt 0 ]; then
   # Filter out empty files (qmlformat errors on empty)
   QML_TO_FORMAT=()
