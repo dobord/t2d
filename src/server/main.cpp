@@ -69,6 +69,9 @@ struct ServerConfig
     uint32_t projectile_damage{25};
     float reload_interval_sec{3.0f};
     float projectile_speed{5.0f};
+    float projectile_density{0.01f};
+    float hull_density{1.0f};
+    float turret_density{0.5f};
     bool disable_bot_fire{false};
 };
 
@@ -125,6 +128,18 @@ static ServerConfig load_config(const std::string &path)
     }
     if (root["projectile_speed"]) {
         cfg.projectile_speed = root["projectile_speed"].as<float>();
+    }
+    if (root["projectile_density"]) {
+        cfg.projectile_density = root["projectile_density"].as<float>();
+    }
+    if (root["hull_density"]) {
+        cfg.hull_density = root["hull_density"].as<float>();
+    }
+    if (root["turret_density"]) {
+        cfg.turret_density = root["turret_density"].as<float>();
+    }
+    if (root["disable_bot_fire"]) {
+        cfg.disable_bot_fire = root["disable_bot_fire"].as<bool>();
     }
     return cfg;
 }
@@ -208,6 +223,9 @@ int main(int argc, char **argv)
             cfg.projectile_damage,
             cfg.reload_interval_sec,
             cfg.projectile_speed,
+            cfg.projectile_density,
+            cfg.hull_density,
+            cfg.turret_density,
             cfg.disable_bot_fire}));
     // Launch heartbeat monitor
     scheduler->spawn(heartbeat_monitor(scheduler, cfg.heartbeat_timeout_seconds));

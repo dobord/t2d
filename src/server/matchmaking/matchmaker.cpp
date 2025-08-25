@@ -1,4 +1,6 @@
 // SPDX-License-Identifier: Apache-2.0
+#include "server/matchmaking/matchmaker.hpp"
+
 #include "common/logger.hpp"
 #include "common/metrics.hpp"
 #include "game.pb.h"
@@ -12,21 +14,7 @@
 
 namespace t2d::mm {
 
-struct MatchConfig
-{
-    uint32_t max_players;
-    uint32_t fill_timeout_seconds; // after this we fill with bots
-    uint32_t tick_rate;
-    uint32_t poll_interval_ms{200};
-    uint32_t snapshot_interval_ticks{5};
-    uint32_t full_snapshot_interval_ticks{30};
-    uint32_t bot_fire_interval_ticks{60};
-    float movement_speed{2.0f};
-    uint32_t projectile_damage{25};
-    float reload_interval_sec{3.0f};
-    float projectile_speed{5.0f};
-    bool disable_bot_fire{false};
-};
+// MatchConfig defined in header
 
 static uint32_t random_seed()
 {
@@ -137,6 +125,9 @@ coro::task<void> run_matchmaker(std::shared_ptr<coro::io_scheduler> scheduler, M
             ctx->projectile_damage = cfg.projectile_damage;
             ctx->reload_interval_sec = cfg.reload_interval_sec;
             ctx->projectile_speed = cfg.projectile_speed;
+            ctx->projectile_density = cfg.projectile_density;
+            ctx->hull_density = cfg.hull_density;
+            ctx->turret_density = cfg.turret_density;
             ctx->disable_bot_fire = cfg.disable_bot_fire;
             uint32_t eid = 1;
             uint32_t bot_index = 0; // sequential index for bots to enforce spacing

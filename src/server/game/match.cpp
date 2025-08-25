@@ -130,7 +130,8 @@ coro::task<void> run_match(std::shared_ptr<coro::io_scheduler> scheduler, std::s
         ctx->adv_tanks.clear();
         ctx->adv_tanks.reserve(ctx->tanks.size());
         for (auto &t : ctx->tanks) {
-            auto adv = t2d::phys::create_tank_with_turret(phys_world, t.x, t.y, t.entity_id);
+            auto adv = t2d::phys::create_tank_with_turret(
+                phys_world, t.x, t.y, t.entity_id, ctx->hull_density, ctx->turret_density);
             ctx->adv_tanks.push_back(adv);
             // Keep hull body id list for legacy projectile collision path
             phys_world.tank_bodies.push_back(adv.hull);
@@ -228,8 +229,8 @@ coro::task<void> run_match(std::shared_ptr<coro::io_scheduler> scheduler, std::s
                 float forward_offset = 3.3f;
                 auto pid = ctx->next_projectile_id++;
                 // Use advanced firing (spawns projectile and applies cooldown/ammo)
-                uint32_t fired =
-                    t2d::phys::fire_projectile_if_ready(adv, phys_world, ctx->projectile_speed, forward_offset, pid);
+                uint32_t fired = t2d::phys::fire_projectile_if_ready(
+                    adv, phys_world, ctx->projectile_speed, ctx->projectile_density, forward_offset, pid);
                 if (fired) {
                     // Record projectile meta for snapshots (position will sync from physics later)
                     // Get muzzle position from turret transform again

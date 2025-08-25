@@ -19,7 +19,8 @@ BodyFrame get_body_frame(b2BodyId body)
     return {fwd, right};
 }
 
-TankWithTurret create_tank_with_turret(World &world, float x, float y, uint32_t entity_id)
+TankWithTurret create_tank_with_turret(
+    World &world, float x, float y, uint32_t entity_id, float hull_density, float turret_density)
 {
     TankWithTurret t{};
     t.entity_id = entity_id;
@@ -30,7 +31,7 @@ TankWithTurret create_tank_with_turret(World &world, float x, float y, uint32_t 
     bd.angularDamping = 0.8f;
     t.hull = b2CreateBody(world.id, &bd);
     b2ShapeDef sd = b2DefaultShapeDef();
-    sd.density = 1.0f;
+    sd.density = hull_density;
     sd.filter.categoryBits = CAT_TANK;
     sd.filter.maskBits = CAT_TANK | CAT_PROJECTILE;
     sd.enableContactEvents = true;
@@ -51,7 +52,7 @@ TankWithTurret create_tank_with_turret(World &world, float x, float y, uint32_t 
     td.angularDamping = 0.8f;
     t.turret = b2CreateBody(world.id, &td);
     b2ShapeDef tsd = b2DefaultShapeDef();
-    tsd.density = 0.5f;
+    tsd.density = turret_density;
     tsd.filter.categoryBits = CAT_TANK;
     tsd.filter.maskBits = CAT_TANK | CAT_PROJECTILE;
     tsd.enableContactEvents = true;
@@ -173,7 +174,7 @@ void update_turret_aim(const TurretAimInput &aim, TankWithTurret &tank)
 }
 
 uint32_t fire_projectile_if_ready(
-    TankWithTurret &tank, World &world, float speed, float forward_offset, uint32_t next_projectile_id)
+    TankWithTurret &tank, World &world, float speed, float density, float forward_offset, uint32_t next_projectile_id)
 {
     if (tank.fire_cooldown_cur > 0.f || tank.ammo == 0)
         return 0;
@@ -181,7 +182,7 @@ uint32_t fire_projectile_if_ready(
     b2Transform xt = b2Body_GetTransform(tank.turret);
     b2Vec2 muzzle{xt.p.x + tf.forward.x * forward_offset, xt.p.y + tf.forward.y * forward_offset};
     uint32_t pid = next_projectile_id;
-    create_projectile(world, muzzle.x, muzzle.y, tf.forward.x * speed, tf.forward.y * speed);
+    create_projectile(world, muzzle.x, muzzle.y, tf.forward.x * speed, tf.forward.y * speed, density);
     tank.fire_cooldown_cur = tank.fire_cooldown_max;
     tank.ammo--;
     return pid;

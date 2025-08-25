@@ -131,184 +131,84 @@ Window {
             ctx.fillStyle = '#162028';
             ctx.fillRect(0,0,width,height);
             const a = timingState.alpha;
-            // Determine own tank (heuristic: first tank id if list non-empty). Real client should match session id.
-            let ownIndex = entityModel.count() > 0 ? 0 : -1;
-            // World units currently arbitrary; assume tank nominal radius = 1 world unit.
+            const ownIndex = entityModel.count()>0 ? 0 : -1;
             const tankWorldRadius = 1.0;
-            const targetScreenRadius = Math.min(width, height) * 0.10; // 10% of min dimension
+            const targetScreenRadius = Math.min(width, height) * 0.10;
             const baseScale = targetScreenRadius / tankWorldRadius;
             const scale = baseScale * rootItem.userZoom;
-            let centerX = 0;
-            let centerY = 0;
-            if (ownIndex >= 0) {
-                centerX = entityModel.interpX(ownIndex,a);
-                centerY = entityModel.interpY(ownIndex,a);
-            }
-            // Transform: translate so own tank is centered, then scale.
             ctx.save();
             ctx.translate(width/2, height/2);
-            ctx.scale(scale, scale);
-            if (rootItem.followCamera) {
-                ctx.translate(-centerX, -centerY);
+            if (rootItem.followCamera && ownIndex>=0) {
+                ctx.translate(-entityModel.interpX(ownIndex,a), -entityModel.interpY(ownIndex,a));
             } else {
                 ctx.translate(-rootItem.cameraOffsetX, -rootItem.cameraOffsetY);
             }
-            // Optional background grid for movement perception
+            ctx.scale(scale, scale);
+            // Grid
             if (rootItem.showGrid) {
-                const gridSpacing = 5; // world units
-                const halfW = width/scale/2;
-                const halfH = height/scale/2;
+                const gridSpacing = 5; const halfW = width/scale/2; const halfH = height/scale/2;
                 ctx.save();
-                ctx.strokeStyle = '#23333c';
-                ctx.lineWidth = 0.02;
-                ctx.beginPath();
-                for (let gx = -halfW; gx <= halfW; gx += gridSpacing) {
-                    ctx.moveTo(gx, -halfH);
-                    ctx.lineTo(gx, halfH);
-                }
-                for (let gy = -halfH; gy <= halfH; gy += gridSpacing) {
-                    ctx.moveTo(-halfW, gy);
-                    ctx.lineTo(halfW, gy);
-                }
-                ctx.stroke();
+                ctx.strokeStyle = '#23333c'; ctx.lineWidth = 0.02; ctx.beginPath();
+                for(let gx=-halfW;gx<=halfW;gx+=gridSpacing){ctx.moveTo(gx,-halfH);ctx.lineTo(gx,halfH);} 
+                for(let gy=-halfH;gy<=halfH;gy+=gridSpacing){ctx.moveTo(-halfW,gy);ctx.lineTo(halfW,gy);} 
+                ctx.stroke(); ctx.restore();
+            }
+            function drawRoundedRect(ctx,x,y,w,h,r,fill,stroke,lw){ctx.beginPath();const rr=Math.min(r,w/2,h/2);ctx.moveTo(x+rr,y);ctx.lineTo(x+w-rr,y);ctx.quadraticCurveTo(x+w,y,x+w,y+rr);ctx.lineTo(x+w,y+h-rr);ctx.quadraticCurveTo(x+w,y+h,x+w-rr,y+h);ctx.lineTo(x+rr,y+h);ctx.quadraticCurveTo(x,y+h,x,y+h-rr);ctx.lineTo(x,y+rr);ctx.quadraticCurveTo(x,y,x+rr,y);if(fill){ctx.fillStyle=fill;ctx.fill();}if(stroke){ctx.lineWidth=lw||1;ctx.strokeStyle=stroke;ctx.stroke();}}
+            const SPRITE_FRONT_OFFSET = -Math.PI/2; // Protocol: 0° = +X (right). Art points up, so subtract 90°.
+            function drawTank(ctx, wx, wy, hullRad, turretRad, isOwn){
+                // Convert protocol angle (0°=+X) to sprite angle (0 sprite up) via SPRITE_FRONT_OFFSET.
+                const W=480,H=640;const scalePix=6.4/H;
+                ctx.save();
+                ctx.translate(wx,wy);
+                ctx.rotate(hullRad + SPRITE_FRONT_OFFSET);
+                ctx.scale(scalePix,scalePix);
+                ctx.translate(-W/2,-H/2);
+                ctx.fillStyle='#424141';ctx.fillRect(0,0,140,H);ctx.fillRect(342,0,140,H);
+                ctx.fillStyle=isOwn?'#5c6e5c':'#6f6e6e';ctx.strokeStyle='#2e2e2e';ctx.lineWidth=2;ctx.beginPath();ctx.rect(28,41,424,558);ctx.fill();ctx.stroke();
+                ctx.fillStyle='#9b0101';ctx.fillRect(46,576,80,23);ctx.fillRect(358,576,80,23);
+                drawRoundedRect(ctx,65,49,43,30,15,'#f1f0f0');drawRoundedRect(ctx,377,49,43,30,15,'#f1f0f0');
+                ctx.save();
+                ctx.translate(W/2,H/2);
+                ctx.rotate(turretRad - hullRad); // both already protocol-space; relative rotation unaffected by offset
+                ctx.translate(-W/2,-H/2);
+                drawRoundedRect(ctx,140,195,200,250,32,'#bfbfbf','#363434',8);
+                ctx.lineWidth=8;ctx.fillStyle='#bfbfbf';ctx.strokeStyle='#363434';ctx.beginPath();ctx.rect((W-30)/2,-80,30,320);ctx.fill();ctx.stroke();
+                ctx.restore();
+                const hpY=31;ctx.fillStyle='#202828';ctx.fillRect(28,hpY,424,6);ctx.fillStyle=isOwn?'#6cff5d':'#3fa7ff';ctx.fillRect(28,hpY,424,6);
                 ctx.restore();
             }
-            // Draw tanks (composite hull + turret)
-            for(let i=0;i<entityModel.count();++i){
-                const wx = entityModel.interpX(i,a);
-                const wy = entityModel.interpY(i,a);
-                const hullDeg = entityModel.interpHullAngle(i,a);
-                const turretDeg = entityModel.interpTurretAngle(i,a);
-                const hullRad = hullDeg * Math.PI/180.0;
-                const turretRad = turretDeg * Math.PI/180.0;
+            function drawBullet(ctx, wx, wy, vx, vy){
+                // Legacy bullet 60x20 px mapped to world 0.45x0.15 -> scale factors below
+                const PX_W=60, PX_H=20; const WORLD_W=0.45, WORLD_H=0.15;
+                const sx = WORLD_W / PX_W; const sy = WORLD_H / PX_H;
+                const ang=Math.atan2(vy,vx);
                 ctx.save();
-                ctx.translate(wx, wy);
-                ctx.rotate(hullRad);
-                ctx.fillStyle = '#202a32';
-                const trackLen = 6.4; const trackWidth = 0.35; const trackOffset = 2.4 - trackWidth/2;
-                ctx.fillRect(-trackLen/2, trackOffset - trackWidth/2, trackLen, trackWidth);
-                ctx.fillRect(-trackLen/2, -trackOffset - trackWidth/2, trackLen, trackWidth);
-                ctx.fillStyle = (i===ownIndex)? '#6cff5d' : '#3fa7ff';
-                ctx.beginPath();
-                ctx.moveTo(-3.2, -2.4);
-                ctx.lineTo(-3.2, -1.0);
-                ctx.lineTo(-2.79, -1.0);
-                ctx.lineTo(-2.79, 1.0);
-                ctx.lineTo(-3.2, 1.0);
-                ctx.lineTo(-3.2, 2.4);
-                ctx.lineTo(3.2, 2.4);
-                ctx.lineTo(3.2, 1.0);
-                ctx.lineTo(2.79, 1.0);
-                ctx.lineTo(2.79, -1.0);
-                ctx.lineTo(3.2, -1.0);
-                ctx.lineTo(3.2, -2.4);
-                ctx.closePath();
-                ctx.fill();
-                ctx.save();
-                ctx.rotate(turretRad - hullRad);
-                ctx.fillStyle = '#44525d';
-                ctx.beginPath(); ctx.arc(0,0,1.2,0,Math.PI*2); ctx.fill();
-                ctx.fillStyle = '#cccccc';
-                ctx.fillRect(0, -0.05, 3.3, 0.1);
-                ctx.restore();
+                ctx.translate(wx,wy);
+                ctx.rotate(ang);
+                ctx.scale(sx, sy);
+                ctx.translate(-PX_W/2,-PX_H/2);
+                const grad=ctx.createLinearGradient(0,0,PX_W,0);
+                grad.addColorStop(0,'#2c2c2c');
+                grad.addColorStop(0.445,'#d0d0d1');
+                grad.addColorStop(0.61,'#d0d0d1');
+                grad.addColorStop(1,'#2c2c2c');
+                ctx.fillStyle=grad;
+                ctx.fillRect(0,0,PX_W,PX_H);
                 ctx.restore();
             }
-            // Draw projectiles (assume small square 0.3 world units)
-            ctx.fillStyle = '#ffcf40';
-            const pr = 0.3;
-            for(let j=0;j<projectileModel.count();++j){
-                const wx = projectileModel.interpX(j,a);
-                const wy = projectileModel.interpY(j,a);
-                ctx.fillRect(wx-pr, wy-pr, pr*2, pr*2);
-            }
+            for(let i=0;i<entityModel.count();++i){const wx=entityModel.interpX(i,a);const wy=entityModel.interpY(i,a);const hullRad=entityModel.interpHullAngle(i,a)*Math.PI/180.0;const turretRad=entityModel.interpTurretAngle(i,a)*Math.PI/180.0;drawTank(ctx,wx,wy,hullRad,turretRad,i===ownIndex);} 
+            for(let j=0;j<projectileModel.count();++j){const wx=projectileModel.interpX(j,a);const wy=projectileModel.interpY(j,a);const vx=projectileModel.interpVx(j,a);const vy=projectileModel.interpVy(j,a);drawBullet(ctx,wx,wy,vx,vy);} 
             ctx.restore();
         }
         Timer { interval: 16; running: true; repeat: true; onTriggered: { timingState.update(); scene.requestPaint(); } }
-
-        // Mouse interaction overlay for aiming, zoom, and panning
-        MouseArea {
+        MouseArea { // retain interaction overlay
             anchors.fill: parent
             hoverEnabled: true
             acceptedButtons: Qt.LeftButton | Qt.RightButton | Qt.MiddleButton
-            onWheel: function(ev) {
-                if (ev.angleDelta.y > 0) rootItem.userZoom /= 0.9; else rootItem.userZoom *= 0.9;
-                rootItem.userZoom = Math.max(0.1, Math.min(5.0, rootItem.userZoom));
-                ev.accepted = true;
-            }
-            onPressed: function(ev) {
-                if (ev.button === Qt.RightButton) {
-                    // toggle follow camera
-                    rootItem.followCamera = !rootItem.followCamera;
-                    if (rootItem.followCamera) { rootItem.cameraOffsetX = 0; rootItem.cameraOffsetY = 0; }
-                } else if (ev.button === Qt.MiddleButton) {
-                    rootItem.isMiddleDragging = true;
-                    rootItem.dragStartX = ev.x; rootItem.dragStartY = ev.y;
-                    rootItem.dragOrigOffsetX = rootItem.cameraOffsetX;
-                    rootItem.dragOrigOffsetY = rootItem.cameraOffsetY;
-                } else if (ev.button === Qt.LeftButton) {
-                    // left button can act as fire (hold)
-                    inputState.fire = true;
-                }
-            }
-            onReleased: function(ev) {
-                if (ev.button === Qt.MiddleButton) {
-                    rootItem.isMiddleDragging = false;
-                } else if (ev.button === Qt.LeftButton) {
-                    inputState.fire = false;
-                }
-            }
-            onPositionChanged: function(ev) {
-                const a = timingState.alpha;
-                let ownIndex = entityModel.count() > 0 ? 0 : -1;
-                if (ownIndex < 0) return;
-                // World transform parameters must match paint() logic
-                const tankWorldRadius = 1.0;
-                const targetScreenRadius = Math.min(width, height) * 0.10;
-                const baseScale = targetScreenRadius / tankWorldRadius;
-                const scale = baseScale * rootItem.userZoom;
-                const cx = entityModel.interpX(ownIndex,a);
-                const cy = entityModel.interpY(ownIndex,a);
-                // Inverse transform from screen to world
-                let worldX = (ev.x - width/2) / scale;
-                let worldY = (ev.y - height/2) / scale;
-                if (rootItem.followCamera) {
-                    worldX += cx;
-                    worldY += cy;
-                } else {
-                    worldX += rootItem.cameraOffsetX;
-                    worldY += rootItem.cameraOffsetY;
-                }
-                if (rootItem.isMiddleDragging && !rootItem.followCamera) {
-                    // Update pan offsets; compute delta in world units relative to drag start
-                    let startWorldX = (rootItem.dragStartX - width/2) / scale + rootItem.cameraOffsetX;
-                    let startWorldY = (rootItem.dragStartY - height/2) / scale + rootItem.cameraOffsetY;
-                    let dxWorld = worldX - startWorldX;
-                    let dyWorld = worldY - startWorldY;
-                    rootItem.cameraOffsetX = rootItem.dragOrigOffsetX - dxWorld;
-                    rootItem.cameraOffsetY = rootItem.dragOrigOffsetY - dyWorld;
-                }
-                if (rootItem.mouseAimEnabled) {
-                    // Compute desired turret angle
-                    const dx = worldX - cx;
-                    const dy = worldY - cy;
-                    if (Math.abs(dx) > 1e-4 || Math.abs(dy) > 1e-4) {
-                        let desiredRad = Math.atan2(dy, dx);
-                        let desiredDeg = desiredRad * 180.0 / Math.PI;
-                        rootItem.desiredTurretAngleDeg = desiredDeg;
-                        // Current turret angle
-                        let curDeg = entityModel.interpTurretAngle(ownIndex,a);
-                        // Shortest diff
-                        let diff = (desiredDeg - curDeg + 540.0) % 360.0 - 180.0;
-                        let turnCmd = 0.0;
-                        const deadZone = 1.0; // degrees
-                        if (Math.abs(diff) > deadZone) {
-                            // Scale to [-1,1] relative to 45 deg error
-                            turnCmd = Math.max(-1.0, Math.min(1.0, diff / 45.0));
-                        }
-                        if (inputState.turretTurn !== turnCmd) inputState.turretTurn = turnCmd;
-                    }
-                }
-            }
+            onWheel: function(ev) { if (ev.angleDelta.y > 0) rootItem.userZoom /= 0.9; else rootItem.userZoom *= 0.9; rootItem.userZoom = Math.max(0.1, Math.min(5.0, rootItem.userZoom)); ev.accepted = true; }
+            onPressed: function(ev) { if (ev.button === Qt.RightButton) { rootItem.followCamera = !rootItem.followCamera; if (rootItem.followCamera) { rootItem.cameraOffsetX = 0; rootItem.cameraOffsetY = 0; } } else if (ev.button === Qt.MiddleButton) { rootItem.isMiddleDragging = true; rootItem.dragStartX = ev.x; rootItem.dragStartY = ev.y; rootItem.dragOrigOffsetX = rootItem.cameraOffsetX; rootItem.dragOrigOffsetY = rootItem.cameraOffsetY; } else if (ev.button === Qt.LeftButton) { inputState.fire = true; } }
+            onReleased: function(ev) { if (ev.button === Qt.MiddleButton) { rootItem.isMiddleDragging = false; } else if (ev.button === Qt.LeftButton) { inputState.fire = false; } }
+            onPositionChanged: function(ev) { const a = timingState.alpha; let ownIndex = entityModel.count()>0?0:-1; if (ownIndex<0)return; const baseScale = Math.min(width,height)*0.10/1.0; const scale = baseScale * rootItem.userZoom; const cx = entityModel.interpX(ownIndex,a); const cy = entityModel.interpY(ownIndex,a); let worldX = (ev.x - width/2)/scale; let worldY = (ev.y - height/2)/scale; if (rootItem.followCamera){ worldX += cx; worldY += cy; } else { worldX += rootItem.cameraOffsetX; worldY += rootItem.cameraOffsetY; } if (rootItem.isMiddleDragging && !rootItem.followCamera){ let startWorldX = (rootItem.dragStartX - width/2)/scale + rootItem.cameraOffsetX; let startWorldY = (rootItem.dragStartY - height/2)/scale + rootItem.cameraOffsetY; let dxWorld = worldX - startWorldX; let dyWorld = worldY - startWorldY; rootItem.cameraOffsetX = rootItem.dragOrigOffsetX - dxWorld; rootItem.cameraOffsetY = rootItem.dragOrigOffsetY - dyWorld; } if (rootItem.mouseAimEnabled){ const dx = worldX - cx; const dy = worldY - cy; if (Math.abs(dx)>1e-4 || Math.abs(dy)>1e-4){ let desiredRad = Math.atan2(dy,dx); let desiredDeg = desiredRad*180.0/Math.PI; rootItem.desiredTurretAngleDeg = desiredDeg; let curDeg = entityModel.interpTurretAngle(ownIndex,a); let diff = (desiredDeg - curDeg + 540.0)%360.0 - 180.0; let turnCmd = 0.0; const deadZone = 1.0; if (Math.abs(diff)>deadZone){ turnCmd = Math.max(-1.0, Math.min(1.0, diff/45.0)); } if (inputState.turretTurn !== turnCmd) inputState.turretTurn = turnCmd; } } }
             onCanceled: { rootItem.isMiddleDragging = false; }
         }
     }

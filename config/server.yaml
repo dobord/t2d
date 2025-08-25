@@ -13,6 +13,10 @@ movement_speed: 2.0           # units per second for tanks
 projectile_damage: 25         # damage per projectile hit
 reload_interval_sec: 3.0      # seconds to grant +1 ammo (per tank) up to max
 projectile_speed: 5.0         # projectile linear speed units/s
+projectile_density: 0.01      # physics density for projectile (mass scaling)
+hull_density: 1.0             # physics density for tank hull (overall mass)
+turret_density: 0.5           # physics density for turret body (affects inertia & rotation feel)
+disable_bot_fire: false       # when true bots never fire (can also use --no-bot-fire or env T2D_NO_BOT_FIRE=1)
 listen_port: 40000
 heartbeat_timeout_seconds: 30
 matchmaker_poll_ms: 200

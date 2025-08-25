@@ -44,6 +44,9 @@ struct MatchContext
     uint32_t projectile_damage{25};
     float reload_interval_sec{3.0f};
     float projectile_speed{5.0f};
+    float projectile_density{0.01f};
+    float hull_density{1.0f};
+    float turret_density{0.5f};
     bool disable_bot_fire{false}; // when true bots never set fire input
     std::vector<TankStateSimple> last_sent_tanks;
 

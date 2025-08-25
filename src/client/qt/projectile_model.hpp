@@ -52,6 +52,26 @@ public:
         return r.prev_y + (r.y - r.prev_y) * alpha;
     }
 
+    // Interpolated velocity components (simple difference). Alpha currently unused but kept for API symmetry.
+    // Returned values are frame-to-frame deltas; magnitude scaling is not needed for orientation when drawing.
+    Q_INVOKABLE float interpVx(int row, float /*alpha*/) const
+    {
+        std::scoped_lock lk(m_);
+        if (row < 0 || (size_t)row >= rows_.size())
+            return 1.f; // default direction to avoid zero vector ambiguity
+        const auto &r = rows_[row];
+        return (r.x - r.prev_x);
+    }
+
+    Q_INVOKABLE float interpVy(int row, float /*alpha*/) const
+    {
+        std::scoped_lock lk(m_);
+        if (row < 0 || (size_t)row >= rows_.size())
+            return 0.f;
+        const auto &r = rows_[row];
+        return (r.y - r.prev_y);
+    }
+
     int rowCount(const QModelIndex &parent = QModelIndex()) const override
     {
         if (parent.isValid())

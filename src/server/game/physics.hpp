@@ -64,26 +64,30 @@ struct BodyFrame
 // Retrieve local forward/right vectors for body frame
 BodyFrame get_body_frame(b2BodyId body);
 // Create tank hull + turret bodies and revolute joint
-TankWithTurret create_tank_with_turret(World &world, float x, float y, uint32_t entity_id);
+TankWithTurret create_tank_with_turret(
+    World &world, float x, float y, uint32_t entity_id, float hull_density = 1.0f, float turret_density = 0.5f);
 void apply_tracked_drive(const TankDriveInput &in, TankWithTurret &tank, float step_dt);
 void update_turret_aim(const TurretAimInput &aim, TankWithTurret &tank);
 uint32_t fire_projectile_if_ready(
-    TankWithTurret &tank, World &world, float speed, float forward_offset, uint32_t next_projectile_id);
+    TankWithTurret &tank, World &world, float speed, float density, float forward_offset, uint32_t next_projectile_id);
 
-inline b2BodyId create_projectile(World &w, float x, float y, float vx, float vy)
+inline b2BodyId create_projectile(World &w, float x, float y, float vx, float vy, float density)
 {
+    // Legacy visual bullet: 60x20 px while legacy tank ~640 px height.
+    // Physics tank hull height ~= 4.8 world units (from -2.4 .. +2.4). Pixel->world scale ≈ 4.8 / 640 = 0.0075.
+    // Bullet world size (60 * 0.0075, 20 * 0.0075) ≈ (0.45, 0.15). Half extents: (0.225, 0.075).
+    // Use that to align physical hit box with legacy proportions.
     b2BodyDef bd = b2DefaultBodyDef();
     bd.type = b2_dynamicBody;
     bd.position = {x, y};
     bd.isBullet = true;
     b2BodyId body = b2CreateBody(w.id, &bd);
     b2ShapeDef sd = b2DefaultShapeDef();
-    sd.density = 0.1f;
+    sd.density = density; // configurable projectile density
     sd.enableContactEvents = true;
     sd.filter.categoryBits = CAT_PROJECTILE;
     sd.filter.maskBits = CAT_TANK; // only collide with tanks
-    // Projectile rectangle 0.3 x 0.1 -> half extents 0.15 x 0.05
-    b2Polygon box = b2MakeBox(0.15f, 0.05f);
+    b2Polygon box = b2MakeBox(0.225f, 0.075f); // width 0.45, height 0.15
     b2CreatePolygonShape(body, &sd, &box);
     b2Vec2 vel{vx, vy};
     b2Body_SetLinearVelocity(body, vel);
