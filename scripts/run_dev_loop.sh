@@ -13,6 +13,7 @@
 # Environment / flags:
 #  PORT (default 40000)
 #  BUILD_DIR (default ./build)
+#  BUILD_TYPE (default Debug) — can be overridden via -r/--release flag (Release) or explicitly export BUILD_TYPE=RelWithDebInfo, etc.
 #  CMAKE_ARGS (extra args, e.g. "-DT2D_ENABLE_SANITIZERS=ON")
 #  LOOP=0 disables restart loop (single run)
 #  NO_BUILD=1 skip build step (just run existing binaries)
@@ -20,6 +21,7 @@
 #  LOG_LEVEL (DEBUG|INFO|WARN|ERROR) minimum severity to print (default INFO)
 #  QML_LOG_LEVEL (debug|info|warn|error) overrides QML logging level (defaults to LOG_LEVEL if set)
 #  NO_BOT_FIRE=1 disable bot firing (passes --no-bot-fire to server)  # convenience wrapper for config/env
+#  -r | --release flag: shorthand to set BUILD_TYPE=Release (overrides BUILD_TYPE env)
 #
 # Examples:
 #   ./scripts/run_dev_loop.sh
@@ -30,6 +32,7 @@ set -euo pipefail
 PORT="${PORT:-40000}"
 BUILD_DIR="${BUILD_DIR:-build}"
 CMAKE_ARGS=${CMAKE_ARGS:-}
+BUILD_TYPE="${BUILD_TYPE:-Debug}"
 LOOP="${LOOP:-1}"
 NO_BUILD="${NO_BUILD:-0}"
 VERBOSE="${VERBOSE:-0}"
@@ -68,6 +71,16 @@ log_err(){ _should_log ERROR && echo "[$(_ts)] [$APP_ID] [E] $*" >&2; }
 log_debug(){ _should_log DEBUG && echo "[$(_ts)] [$APP_ID] [D] $*"; }
 [[ "$VERBOSE" == 1 ]] && set -x && log_debug "Shell trace enabled (VERBOSE=1)"
 
+# Parse simple flags from command line (only release shortcut for now)
+for arg in "$@"; do
+  case "$arg" in
+    -r|--release)
+      BUILD_TYPE=Release;
+      ;;
+  esac
+done
+log_debug "Using BUILD_TYPE=${BUILD_TYPE}"
+
 # Run code formatting targets before building (mandatory auto-format step)
 run_format(){
   # Requires a configured build directory. Attempt aggregate target first.
@@ -103,25 +116,33 @@ ensure_build(){
   if [[ ! -d "$ROOT_DIR/$BUILD_DIR" || ! -f "$ROOT_DIR/$BUILD_DIR/CMakeCache.txt" ]]; then
     log "Configuring CMake build (dir=$BUILD_DIR)"
     mkdir -p "$ROOT_DIR/$BUILD_DIR"
-    cmake -S "$ROOT_DIR" -B "$ROOT_DIR/$BUILD_DIR" -DT2D_BUILD_SERVER=ON -DT2D_BUILD_QT_CLIENT=ON ${CMAKE_ARGS}
+    cmake -S "$ROOT_DIR" -B "$ROOT_DIR/$BUILD_DIR" -DT2D_BUILD_SERVER=ON -DT2D_BUILD_QT_CLIENT=ON -DCMAKE_BUILD_TYPE="${BUILD_TYPE}" ${CMAKE_ARGS}
   else
     # Ensure Qt client/server enabled; reconfigure if missing
     if [[ ! -f "$SERVER_BIN" || ! -f "$CLIENT_BIN" ]]; then
       log "Re-configuring to ensure required targets are enabled"
-      cmake -S "$ROOT_DIR" -B "$ROOT_DIR/$BUILD_DIR" -DT2D_BUILD_SERVER=ON -DT2D_BUILD_QT_CLIENT=ON ${CMAKE_ARGS}
+      cmake -S "$ROOT_DIR" -B "$ROOT_DIR/$BUILD_DIR" -DT2D_BUILD_SERVER=ON -DT2D_BUILD_QT_CLIENT=ON -DCMAKE_BUILD_TYPE="${BUILD_TYPE}" ${CMAKE_ARGS}
+    fi
+    # Reconfigure if build type mismatch
+    if grep -q '^CMAKE_BUILD_TYPE:' "$ROOT_DIR/$BUILD_DIR/CMakeCache.txt" 2>/dev/null; then
+      CUR_BT=$(grep '^CMAKE_BUILD_TYPE:' "$ROOT_DIR/$BUILD_DIR/CMakeCache.txt" | cut -d= -f2)
+      if [[ "$CUR_BT" != "$BUILD_TYPE" ]]; then
+        log "Switching build type: $CUR_BT -> $BUILD_TYPE (re-configuring)"
+        cmake -S "$ROOT_DIR" -B "$ROOT_DIR/$BUILD_DIR" -DT2D_BUILD_SERVER=ON -DT2D_BUILD_QT_CLIENT=ON -DCMAKE_BUILD_TYPE="${BUILD_TYPE}" ${CMAKE_ARGS}
+      fi
     fi
     # Reconfigure if qt_local.cmake is newer than cache (new Qt path or changed) to pick up qmlformat
     if [[ -f "$ROOT_DIR/qt_local.cmake" && -f "$ROOT_DIR/$BUILD_DIR/CMakeCache.txt" ]]; then
       if [[ "$ROOT_DIR/qt_local.cmake" -nt "$ROOT_DIR/$BUILD_DIR/CMakeCache.txt" ]]; then
         log "qt_local.cmake updated; reconfiguring to refresh Qt tool discovery"
-        cmake -S "$ROOT_DIR" -B "$ROOT_DIR/$BUILD_DIR" -DT2D_BUILD_SERVER=ON -DT2D_BUILD_QT_CLIENT=ON ${CMAKE_ARGS}
+        cmake -S "$ROOT_DIR" -B "$ROOT_DIR/$BUILD_DIR" -DT2D_BUILD_SERVER=ON -DT2D_BUILD_QT_CLIENT=ON -DCMAKE_BUILD_TYPE="${BUILD_TYPE}" ${CMAKE_ARGS}
       else
         # If qmlformat was previously NOTFOUND but now exists in one of prefix bin dirs, reconfigure.
         if grep -q 'QMLFORMAT_BIN:FILEPATH=.*-NOTFOUND' "$ROOT_DIR/$BUILD_DIR/CMakeCache.txt"; then
           # Quick heuristic: look for any qmlformat under prefixes in qt_local.cmake or CMAKE_PREFIX_PATH
           if grep -Eo '/[^" ]+/gcc_64' "$ROOT_DIR/qt_local.cmake" 2>/dev/null | while read -r p; do [[ -x "$p/bin/qmlformat" ]] && echo hit && break; done | grep -q hit; then
             log "qmlformat now present under qt_local prefix; reconfiguring to enable format_qml"
-            cmake -S "$ROOT_DIR" -B "$ROOT_DIR/$BUILD_DIR" -DT2D_BUILD_SERVER=ON -DT2D_BUILD_QT_CLIENT=ON ${CMAKE_ARGS}
+            cmake -S "$ROOT_DIR" -B "$ROOT_DIR/$BUILD_DIR" -DT2D_BUILD_SERVER=ON -DT2D_BUILD_QT_CLIENT=ON -DCMAKE_BUILD_TYPE="${BUILD_TYPE}" ${CMAKE_ARGS}
           fi
         fi
       fi
