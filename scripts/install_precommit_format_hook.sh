@@ -163,7 +163,8 @@ if [ -n "$QMLFORMAT_BIN" ] && [ -x "$QMLFORMAT_BIN" ] && [ ${#QML_FILTERED[@]} -
     [ -s "$qf" ] && QML_TO_FORMAT+=("$qf") || echo "[pre-commit] Skipping empty QML: $qf" >&2
   done
   if [ ${#QML_TO_FORMAT[@]} -gt 0 ]; then
-    "$QMLFORMAT_BIN" --inplace "${QML_TO_FORMAT[@]}" || true
+  echo "[pre-commit] qmlformat formatting ${#QML_TO_FORMAT[@]} file(s)" >&2
+  "$QMLFORMAT_BIN" --inplace "${QML_TO_FORMAT[@]}" || echo "[pre-commit] WARNING: qmlformat failed" >&2
   fi
 fi
 
