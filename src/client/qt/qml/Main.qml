@@ -2,6 +2,7 @@
 import QtQuick 2.15
 import QtQuick.Window 2.15
 import QtQuick.Controls 2.15
+import "." // ensure local QML (Joystick, CustomButton)
 
 Window {
     id: root
@@ -56,22 +57,29 @@ Window {
 
     function recomputeInput() {
         // Movement forward/backward
-        var mv = 0
-        if (keyW && !keyS) mv = 1
-        else if (keyS && !keyW) mv = -1
-        if (inputState.move !== mv) inputState.move = mv
-        // Hull turn
-        var tr = 0
-        if (keyD && !keyA) tr = 1
-        else if (keyA && !keyD) tr = -1
-        if (inputState.turn !== tr) inputState.turn = tr
+        // If joystick actively providing movement, do not override with keyboard
+        var joystickActive = joystick && (!joystick.drive_empty);
+        if (!joystickActive) {
+            var mv = 0;
+            if (keyW && !keyS) mv = 1;
+            else if (keyS && !keyW) mv = -1;
+            if (inputState.move !== mv) inputState.move = mv;
+            var tr = 0;
+            if (keyD && !keyA) tr = 1;
+            else if (keyA && !keyD) tr = -1;
+            if (inputState.turn !== tr) inputState.turn = tr;
+        }
         // Turret turn
         var tt = 0
         if (!mouseAimEnabled) { // keyboard turret control only when mouse aim disabled
             if (keyE && !keyQ) tt = 1
             else if (keyQ && !keyE) tt = -1
         }
-        if (inputState.turretTurn !== tt) inputState.turretTurn = tt
+        // If joystick provides turret aim (second stick) and mouse aim disabled, skip keyboard turret keys
+        var joystickTurretActive = joystick && (!mouseAimEnabled) && (!joystick.target_empty);
+        if (!joystickTurretActive) {
+            if (inputState.turretTurn !== tt) inputState.turretTurn = tt;
+        }
     // Fire (held space)
         var fr = keySpace
         if (inputState.fire !== fr) inputState.fire = fr
@@ -80,6 +88,37 @@ Window {
     if (inputState.brake !== br) inputState.brake = br
     // Debug log
     logD(`INPUT mv=${inputState.move} turn=${inputState.turn} turret=${inputState.turretTurn} fire=${inputState.fire}`)
+    }
+
+    // Joystick-driven input mapping (called from frame timer)
+    function joystick_update(){
+        if (!joystick) return;
+        // Movement axes override keyboard while active
+        if (!joystick.drive_empty) {
+            if (Math.abs(joystick.drive_y - inputState.move) > 0.001) inputState.move = joystick.drive_y;
+            if (Math.abs(joystick.drive_x - inputState.turn) > 0.001) inputState.turn = joystick.drive_x;
+        } else {
+            // When joystick released, allow keyboard recompute to reassert state
+            // (Do nothing here; recomputeInput() will run on key events.)
+        }
+        // Turret aim: use joystick right stick only when mouse aim disabled
+        if (!mouseAimEnabled) {
+            if (!joystick.target_empty) {
+                var desiredRad = Math.atan2(joystick.target_y, joystick.target_x);
+                var ownIndex = entityModel.count()>0?0:-1;
+                if (ownIndex >= 0) {
+                    var curDeg = entityModel.interpTurretAngle(ownIndex, timingState.alpha);
+                    var desiredDeg = desiredRad * 180.0 / Math.PI;
+                    var diff = (desiredDeg - curDeg + 540.0)%360.0 - 180.0;
+                    var turnCmd = 0.0;
+                    var deadZone = 1.0;
+                    if (Math.abs(diff)>deadZone) turnCmd = Math.max(-1.0, Math.min(1.0, diff/45.0));
+                    if (inputState.turretTurn !== turnCmd) inputState.turretTurn = turnCmd;
+                }
+            } else {
+                if (inputState.turretTurn !== 0) inputState.turretTurn = 0;
+            }
+        }
     }
 
     Keys.onPressed: function(ev) {
@@ -124,7 +163,7 @@ Window {
 
     Canvas {
         id: scene
-        anchors { left: tankList.right; right: projectileList.left; top: parent.top; bottom: controls.top; leftMargin: 8; rightMargin: 8; topMargin: 8; bottomMargin: 8 }
+        anchors { left: tankList.right; right: projectileList.left; top: parent.top; bottom: joystick.top; leftMargin: 8; rightMargin: 8; topMargin: 8; bottomMargin: 8 }
         onPaint: {
             const ctx = getContext('2d');
             ctx.reset();
@@ -200,7 +239,7 @@ Window {
             for(let j=0;j<projectileModel.count();++j){const wx=projectileModel.interpX(j,a);const wy=projectileModel.interpY(j,a);const vx=projectileModel.interpVx(j,a);const vy=projectileModel.interpVy(j,a);drawBullet(ctx,wx,wy,vx,vy);} 
             ctx.restore();
         }
-        Timer { interval: 16; running: true; repeat: true; onTriggered: { timingState.update(); scene.requestPaint(); } }
+    Timer { interval: 16; running: true; repeat: true; onTriggered: { timingState.update(); scene.requestPaint(); rootItem.joystick_update(); } }
         MouseArea { // retain interaction overlay
             anchors.fill: parent
             hoverEnabled: true
@@ -249,41 +288,18 @@ Window {
         ScrollBar.vertical: ScrollBar {}
     }
 
-    Rectangle {
-        id: controls
-        anchors { left: parent.left; right: parent.right; bottom: parent.bottom; leftMargin: 8; rightMargin: 8; bottomMargin: 8 }
-        height: 100
-        radius: 6
-        color: "#25303a"
-        Row {
-            anchors.fill: parent; anchors.margins: 8; spacing: 12
-            Column {
-                spacing: 4
-                Text { text: "Move"; color: "#c0c8cf" }
-                Slider { from: -1; to: 1; value: inputState.move; onValueChanged: inputState.move = value; width: 140 }
-            }
-            Column {
-                spacing: 4
-                Text { text: "Turn"; color: "#c0c8cf" }
-                Slider { from: -1; to: 1; value: inputState.turn; onValueChanged: inputState.turn = value; width: 140 }
-            }
-            Column {
-                spacing: 4
-                Text { text: "Turret"; color: "#c0c8cf" }
-                Slider { from: -1; to: 1; value: inputState.turretTurn; onValueChanged: inputState.turretTurn = value; width: 140 }
-            }
-            Column {
-                spacing: 4
-                Text { text: "Fire"; color: "#c0c8cf" }
-                CheckBox { checked: inputState.fire; onToggled: inputState.fire = checked }
-            }
-            Column {
-                spacing: 4
-                Text { text: `Tanks: ${tankList.count}`; color: "#9fb2c3" }
-                Text { text: `Projectiles: ${projectileList.count}`; color: "#9fb2c3" }
-            }
+    // Joystick composite control (two sticks + fire/brake buttons)
+    Joystick {
+        id: joystick
+        anchors { left: tankList.right; right: projectileList.left; bottom: parent.bottom; leftMargin: 8; rightMargin: 8; bottomMargin: 8 }
+        height: 180
+        onButton_state: function(name, pressed) {
+            if (name === 'fire') inputState.fire = pressed;
+            else if (name === 'brake') inputState.brake = pressed;
         }
     }
+
+    // (Removed older duplicate joystick_update placed here; consolidated earlier.)
 
     Text {
         anchors.bottom: parent.bottom

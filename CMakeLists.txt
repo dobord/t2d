@@ -282,7 +282,9 @@ if (T2D_BUILD_QT_CLIENT)
                         VERSION
                         1.0
                         QML_FILES
-                        src/client/qt/qml/Main.qml)
+                        src/client/qt/qml/Main.qml
+                        src/client/qt/qml/Joystick.qml
+                        src/client/qt/qml/CustomButton.qml)
                 else ()
                     message(WARNING "qt_add_qml_module not available; QML files not embedded")
                 endif ()
