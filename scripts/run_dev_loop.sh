@@ -74,6 +74,22 @@ ensure_build(){
       log "Re-configuring to ensure required targets are enabled"
       cmake -S "$ROOT_DIR" -B "$ROOT_DIR/$BUILD_DIR" -DT2D_BUILD_SERVER=ON -DT2D_BUILD_QT_CLIENT=ON ${CMAKE_ARGS}
     fi
+    # Reconfigure if qt_local.cmake is newer than cache (new Qt path or changed) to pick up qmlformat
+    if [[ -f "$ROOT_DIR/qt_local.cmake" && -f "$ROOT_DIR/$BUILD_DIR/CMakeCache.txt" ]]; then
+      if [[ "$ROOT_DIR/qt_local.cmake" -nt "$ROOT_DIR/$BUILD_DIR/CMakeCache.txt" ]]; then
+        log "qt_local.cmake updated; reconfiguring to refresh Qt tool discovery"
+        cmake -S "$ROOT_DIR" -B "$ROOT_DIR/$BUILD_DIR" -DT2D_BUILD_SERVER=ON -DT2D_BUILD_QT_CLIENT=ON ${CMAKE_ARGS}
+      else
+        # If qmlformat was previously NOTFOUND but now exists in one of prefix bin dirs, reconfigure.
+        if grep -q 'QMLFORMAT_BIN:FILEPATH=.*-NOTFOUND' "$ROOT_DIR/$BUILD_DIR/CMakeCache.txt"; then
+          # Quick heuristic: look for any qmlformat under prefixes in qt_local.cmake or CMAKE_PREFIX_PATH
+          if grep -Eo '/[^" ]+/gcc_64' "$ROOT_DIR/qt_local.cmake" 2>/dev/null | while read -r p; do [[ -x "$p/bin/qmlformat" ]] && echo hit && break; done | grep -q hit; then
+            log "qmlformat now present under qt_local prefix; reconfiguring to enable format_qml"
+            cmake -S "$ROOT_DIR" -B "$ROOT_DIR/$BUILD_DIR" -DT2D_BUILD_SERVER=ON -DT2D_BUILD_QT_CLIENT=ON ${CMAKE_ARGS}
+          fi
+        fi
+      fi
+    fi
   fi
   log "Building targets"
   # Mandatory auto-format before compiling
