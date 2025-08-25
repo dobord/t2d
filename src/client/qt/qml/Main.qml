@@ -675,8 +675,6 @@ Window {
             }
         }
 
-        // (Removed older duplicate joystick_update placed here; consolidated earlier.)
-
         Text {
             id: hudStats
             z: 11

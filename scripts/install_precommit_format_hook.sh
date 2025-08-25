@@ -1,4 +1,5 @@
 #!/usr/bin/env bash
+# SPDX-License-Identifier: Apache-2.0
 # Install a git pre-commit hook that auto-formats ONLY first-party sources.
 # It does NOT invoke generic 'format' CMake targets (which may touch third_party in dependencies).
 # Strategy:
