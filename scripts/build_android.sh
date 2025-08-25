@@ -36,6 +36,10 @@ OPENSSL_VERSION=${OPENSSL_VERSION:-"3.5.0"}
 MIN_API_LEVEL=${MIN_API_LEVEL:-24}
 ABIS=(arm64-v8a) # default matches gradle abiFilters; override via --abis
 
+# Simple log helpers
+info(){ echo "[android] $*" >&2; }
+err(){ echo "[android][err] $*" >&2; }
+
 while [[ $# -gt 0 ]]; do
   case "$1" in
     --release) VARIANT="release"; shift;;
@@ -156,9 +160,30 @@ fi
 
 SDK_ROOT=${ANDROID_SDK_ROOT:-${ANDROID_HOME:-}}
 if [[ -z $SDK_ROOT ]]; then
-  echo "ANDROID_SDK_ROOT / ANDROID_HOME not set" >&2
-  exit 1
+  # Try common locations
+  if [[ -d /opt/android-sdk ]]; then
+    SDK_ROOT="/opt/android-sdk"; export ANDROID_SDK_ROOT="$SDK_ROOT"; info "Guessed ANDROID_SDK_ROOT=$SDK_ROOT";
+  elif [[ -d "$HOME/Android/Sdk" ]]; then
+    SDK_ROOT="$HOME/Android/Sdk"; export ANDROID_SDK_ROOT="$SDK_ROOT"; info "Guessed ANDROID_SDK_ROOT=$SDK_ROOT";
+  fi
 fi
+if [[ -z $SDK_ROOT ]]; then
+  err "ANDROID_SDK_ROOT / ANDROID_HOME not set (install SDK or export path)"; exit 1; fi
+
+# NDK discovery (adds if missing)
+if [[ -z "${ANDROID_NDK_HOME:-}" && -z "${ANDROID_NDK_ROOT:-}" ]]; then
+    if [[ -d "$SDK_ROOT/ndk" ]]; then
+        export ANDROID_NDK_HOME="$SDK_ROOT/ndk/$(ls "$SDK_ROOT/ndk" | sort -V | tail -1)"
+        info "Detected ANDROID_NDK_HOME=$ANDROID_NDK_HOME"
+    elif [[ -d /opt/android-sdk/ndk ]]; then
+        export ANDROID_NDK_HOME="/opt/android-sdk/ndk/$(ls /opt/android-sdk/ndk | sort -V | tail -1)"
+        info "Detected ANDROID_NDK_HOME=$ANDROID_NDK_HOME"
+    else
+        err "Android NDK not found; set ANDROID_NDK_HOME"; # continue, may still build Java-only
+    fi
+fi
+NDK_PATH="${ANDROID_NDK_HOME:-${ANDROID_NDK_ROOT:-}}"
+[[ -n $NDK_PATH ]] && info "Using NDK: $NDK_PATH"
 
 # Ensure local.properties contains sdk.dir (do not overwrite if user customized)
 LP="$ANDROID_DIR/local.properties"
