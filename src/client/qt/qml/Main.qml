@@ -347,25 +347,65 @@ Window {
                     ctx.stroke();
                     ctx.restore();
                 }
-                // Grid
+                // Grid (anchored in world space; accounts for camera / follow transform & zoom)
                 if (rootItem.showGrid) {
-                    const gridSpacing = 5;
-                    const halfW = width / scale / 2;
-                    const halfH = height / scale / 2;
-                    ctx.save();
-                    ctx.strokeStyle = '#23333c';
-                    ctx.lineWidth = 0.02;
-                    ctx.beginPath();
-                    for (let gx = -halfW; gx <= halfW; gx += gridSpacing) {
-                        ctx.moveTo(gx, -halfH);
-                        ctx.lineTo(gx, halfH);
+                    const gridSpacing = 5;            // world units between minor lines
+                    const majorEvery = 5;             // every N minor lines draw a thicker (major) line
+                    // Determine world-space center the camera is focused on
+                    let camX, camY;
+                    if (rootItem.followCamera && ownIndex >= 0) {
+                        camX = entityModel.interpX(ownIndex, a);
+                        camY = entityModel.interpY(ownIndex, a);
+                    } else {
+                        camX = rootItem.cameraOffsetX;
+                        camY = rootItem.cameraOffsetY;
                     }
-                    for (let gy = -halfH; gy <= halfH; gy += gridSpacing) {
-                        ctx.moveTo(-halfW, gy);
-                        ctx.lineTo(halfW, gy);
+                    // World-space viewport bounds
+                    const halfW = (width * 0.5) / scale;
+                    const halfH = (height * 0.5) / scale;
+                    const worldMinX = camX - halfW;
+                    const worldMaxX = camX + halfW;
+                    const worldMinY = camY - halfH;
+                    const worldMaxY = camY + halfH;
+                    // Find first grid lines at or before min bounds
+                    const startGX = Math.floor(worldMinX / gridSpacing) * gridSpacing;
+                    const startGY = Math.floor(worldMinY / gridSpacing) * gridSpacing;
+                    // Avoid excessive lines when zoomed far out: skip if projected spacing < 3px
+                    const pixelSpacing = gridSpacing * scale;
+                    if (pixelSpacing >= 3) {
+                        ctx.save();
+                        ctx.beginPath();
+                        // Horizontal (vertical lines): iterate world X positions starting at startGX.
+                        // Use pre-declared counters to avoid qmlformat merging tokens (workaround for formatting issue).
+                        let gx = startGX;
+                        let idx = 0;
+                        while (gx <= worldMaxX) {
+                            const isMajor = (idx % majorEvery) === 0;
+                            ctx.strokeStyle = isMajor ? '#2d4752' : '#23333c';
+                            ctx.lineWidth = isMajor ? 0.04 : 0.02;
+                            ctx.beginPath();
+                            ctx.moveTo(gx, worldMinY);
+                            ctx.lineTo(gx, worldMaxY);
+                            ctx.stroke();
+                            gx += gridSpacing;
+                            ++idx;
+                        }
+                        // Vertical (horizontal lines): iterate world Y positions starting at startGY.
+                        let gy = startGY;
+                        let idy = 0;
+                        while (gy <= worldMaxY) {
+                            const isMajor = (idy % majorEvery) === 0;
+                            ctx.strokeStyle = isMajor ? '#2d4752' : '#23333c';
+                            ctx.lineWidth = isMajor ? 0.04 : 0.02;
+                            ctx.beginPath();
+                            ctx.moveTo(worldMinX, gy);
+                            ctx.lineTo(worldMaxX, gy);
+                            ctx.stroke();
+                            gy += gridSpacing;
+                            ++idy;
+                        }
+                        ctx.restore();
                     }
-                    ctx.stroke();
-                    ctx.restore();
                 }
                 function drawRoundedRect(ctx, x, y, w, h, r, fill, stroke, lw) {
                     ctx.beginPath();
