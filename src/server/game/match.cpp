@@ -129,6 +129,33 @@ coro::task<void> run_match(std::shared_ptr<coro::io_scheduler> scheduler, std::s
     for (auto &adv : ctx->tanks) {
         phys_world.tank_bodies.push_back(adv.hull);
     }
+    // Create static boundary walls (thin rectangles) around map if not already present.
+    // Map centered at origin: width extends +/- map_width/2 along X, height +/- map_height/2 along Y.
+    const float half_w = ctx->map_width * 0.5f;
+    const float half_h = ctx->map_height * 0.5f;
+    // Thickness of boundary walls
+    const float wall_thickness = 1.0f;
+    // Helper to create a static box
+    auto create_wall = [&](float cx, float cy, float hx, float hy)
+    {
+        b2BodyDef bd = b2DefaultBodyDef();
+        bd.type = b2_staticBody;
+        bd.position = {cx, cy};
+        b2BodyId body = b2CreateBody(phys_world.id, &bd);
+        b2ShapeDef sd = b2DefaultShapeDef();
+        sd.density = 0.0f;
+        sd.filter.categoryBits = t2d::phys::CAT_TANK; // treat as tank category for collisions with projectiles
+        sd.filter.maskBits = t2d::phys::CAT_PROJECTILE | t2d::phys::CAT_TANK;
+        sd.enableContactEvents = false; // walls don't need events
+        b2Polygon poly = b2MakeBox(hx, hy);
+        b2CreatePolygonShape(body, &sd, &poly);
+    };
+    // Top & bottom
+    create_wall(0.f, half_h + wall_thickness * 0.5f, half_w + wall_thickness, wall_thickness * 0.5f);
+    create_wall(0.f, -half_h - wall_thickness * 0.5f, half_w + wall_thickness, wall_thickness * 0.5f);
+    // Left & right
+    create_wall(-half_w - wall_thickness * 0.5f, 0.f, wall_thickness * 0.5f, half_h + wall_thickness);
+    create_wall(half_w + wall_thickness * 0.5f, 0.f, wall_thickness * 0.5f, half_h + wall_thickness);
     using clock = std::chrono::steady_clock;
     auto tick_interval = std::chrono::milliseconds(1000 / ctx->tick_rate);
     auto next = clock::now();

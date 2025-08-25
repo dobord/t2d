@@ -73,6 +73,9 @@ struct ServerConfig
     float hull_density{1.0f};
     float turret_density{0.5f};
     bool disable_bot_fire{false};
+    // Map dimensions (world playable area). Walls will be created at perimeter.
+    float map_width{300.f};
+    float map_height{200.f};
 };
 
 static ServerConfig load_config(const std::string &path)
@@ -140,6 +143,12 @@ static ServerConfig load_config(const std::string &path)
     }
     if (root["disable_bot_fire"]) {
         cfg.disable_bot_fire = root["disable_bot_fire"].as<bool>();
+    }
+    if (root["map_width"]) {
+        cfg.map_width = root["map_width"].as<float>();
+    }
+    if (root["map_height"]) {
+        cfg.map_height = root["map_height"].as<float>();
     }
     return cfg;
 }
@@ -226,7 +235,9 @@ int main(int argc, char **argv)
             cfg.projectile_density,
             cfg.hull_density,
             cfg.turret_density,
-            cfg.disable_bot_fire}));
+            cfg.disable_bot_fire,
+            cfg.map_width,
+            cfg.map_height}));
     // Launch heartbeat monitor
     scheduler->spawn(heartbeat_monitor(scheduler, cfg.heartbeat_timeout_seconds));
     if (cfg.metrics_port != 0) {

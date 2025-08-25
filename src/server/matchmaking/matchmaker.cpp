@@ -131,6 +131,8 @@ coro::task<void> run_matchmaker(std::shared_ptr<coro::io_scheduler> scheduler, M
             ctx->hull_density = cfg.hull_density;
             ctx->turret_density = cfg.turret_density;
             ctx->disable_bot_fire = cfg.disable_bot_fire;
+            ctx->map_width = cfg.map_width;
+            ctx->map_height = cfg.map_height;
             ctx->physics_world = std::make_unique<t2d::phys::World>(b2Vec2{0.f, 0.f});
             uint32_t eid = 1;
             uint32_t bot_index = 0;

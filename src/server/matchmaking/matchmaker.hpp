@@ -26,6 +26,8 @@ struct MatchConfig
     float hull_density{1.0f};
     float turret_density{0.5f};
     bool disable_bot_fire{false};
+    float map_width{300.f};
+    float map_height{200.f};
 };
 
 coro::task<void> run_matchmaker(std::shared_ptr<coro::io_scheduler> scheduler, MatchConfig cfg);

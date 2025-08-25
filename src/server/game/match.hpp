@@ -37,6 +37,9 @@ struct MatchContext
     float hull_density{1.0f};
     float turret_density{0.5f};
     bool disable_bot_fire{false}; // when true bots never set fire input
+    // Map dimensions (authoritative bounds) and static wall bodies created at match start.
+    float map_width{300.f};
+    float map_height{200.f};
 
     // Cached last sent snapshot state (angles/positions/ammo/hp) for delta generation.
     struct SentTankCache
