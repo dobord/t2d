@@ -32,9 +32,9 @@ struct MatchContext
     uint32_t tick_rate{30};
     uint32_t initial_player_count{0};
     std::vector<std::shared_ptr<t2d::mm::Session>> players;
-    std::vector<TankStateSimple> tanks; // parallel by index to players for prototype
+    std::vector<TankStateSimple> tanks; // parallel by index to players (render/state snapshot source)
     // Advanced physics tanks (hull + turret bodies); index aligned with tanks vector
-    std::vector<t2d::phys::TankWithTurret> adv_tanks;
+    std::vector<t2d::phys::TankWithTurret> tanks_phys;
     uint64_t server_tick{0};
     uint32_t last_full_snapshot_tick{0};
     uint32_t snapshot_interval_ticks{5};

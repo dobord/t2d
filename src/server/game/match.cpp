@@ -126,13 +126,13 @@ coro::task<void> run_match(std::shared_ptr<coro::io_scheduler> scheduler, std::s
     // Physics world (advanced tank physics with hull+turret)
     t2d::phys::World phys_world({0.0f, 0.0f}); // no gravity for top-down
     ProjectileMap projectile_bodies; // projectile id -> body id
-    if (ctx->adv_tanks.size() != ctx->tanks.size()) {
-        ctx->adv_tanks.clear();
-        ctx->adv_tanks.reserve(ctx->tanks.size());
+    if (ctx->tanks_phys.size() != ctx->tanks.size()) {
+        ctx->tanks_phys.clear();
+        ctx->tanks_phys.reserve(ctx->tanks.size());
         for (auto &t : ctx->tanks) {
             auto adv = t2d::phys::create_tank_with_turret(
                 phys_world, t.x, t.y, t.entity_id, ctx->hull_density, ctx->turret_density);
-            ctx->adv_tanks.push_back(adv);
+            ctx->tanks_phys.push_back(adv);
             // Keep hull body id list for legacy projectile collision path
             phys_world.tank_bodies.push_back(adv.hull);
         }
@@ -189,7 +189,7 @@ coro::task<void> run_match(std::shared_ptr<coro::io_scheduler> scheduler, std::s
         float dt = 1.0f / static_cast<float>(ctx->tick_rate);
         for (size_t i = 0; i < ctx->tanks.size() && i < ctx->players.size(); ++i) {
             auto &t = ctx->tanks[i];
-            auto &adv = ctx->adv_tanks[i];
+            auto &adv = ctx->tanks_phys[i];
             if (!t.alive)
                 continue; // skip dead tanks
             auto &sess = ctx->players[i];
@@ -263,7 +263,7 @@ coro::task<void> run_match(std::shared_ptr<coro::io_scheduler> scheduler, std::s
                 rt = 0.f; // full ammo, keep timer reset
             }
         }
-        for (auto &adv : ctx->adv_tanks) {
+        for (auto &adv : ctx->tanks_phys) {
             if (adv.fire_cooldown_cur > 0.f)
                 adv.fire_cooldown_cur = std::max(0.f, adv.fire_cooldown_cur - dt);
         }
@@ -272,9 +272,9 @@ coro::task<void> run_match(std::shared_ptr<coro::io_scheduler> scheduler, std::s
         // Handle projectile vs tank impacts (must run before bounds cull destroys bodies)
         process_contacts(phys_world, projectile_bodies, *ctx);
         // Sync tank state (position + angles) from advanced bodies
-        for (size_t i = 0; i < ctx->tanks.size() && i < ctx->adv_tanks.size(); ++i) {
+        for (size_t i = 0; i < ctx->tanks.size() && i < ctx->tanks_phys.size(); ++i) {
             auto &t = ctx->tanks[i];
-            auto &adv = ctx->adv_tanks[i];
+            auto &adv = ctx->tanks_phys[i];
             auto pos = t2d::phys::get_body_position(adv.hull);
             t.x = pos.x;
             t.y = pos.y;
