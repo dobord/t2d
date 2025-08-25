@@ -62,6 +62,16 @@ This repository uses C++20 coroutines with libcoro and yaml-cpp. Please follow t
 
 Following these rules keeps coroutine lifetimes explicit, avoids scheduler mismatches, and prevents subtle endianness and I/O pitfalls.
 
+## Qt local path override (qt_local.cmake)
+If a file named `qt_local.cmake` exists at the project root, treat it as an authoritative override providing a non-standard Qt installation prefix (e.g. `/opt/Qt/6.x.y/gcc_64`). Code generation & build adjustments should:
+1. Include it early in top-level `CMakeLists.txt` (already supported) to extend `CMAKE_PREFIX_PATH` before locating Qt packages or tools.
+2. When searching for Qt helper executables (e.g. `qmlformat`, `qmlcachegen`, `qmltyperegistrar`), always append `${CMAKE_PREFIX_PATH}/bin` and also iterate each list element adding its `bin` subdirectory.
+3. Do NOT hardcode system paths; rely on `qt_local.cmake` plus environment. If a tool is not found, emit a clear STATUS message describing how to set `CMAKE_PREFIX_PATH` or create `qt_local.cmake`.
+4. Avoid duplicating logic: implement search once (e.g., a small CMake function) and reuse it for any future Qt tool discovery.
+5. Never commit `qt_local.cmake` with developer-specific absolute paths unless intentionally shared; treat it like a local customization (sample file `qt_local.example.cmake` documents the pattern).
+
+Rationale: Ensures consistent discovery of Qt binaries in bespoke installs (like `/opt/Qt/6.8.3/gcc_64/bin/qmlformat`) and keeps CI reproducible.
+
 ## Code formatting
 - All modifications to C/C++ files (*.c, *.cc, *.cpp, *.cxx, *.h, *.hpp) must be auto-formatted with `clang-format` using the root `.clang-format` file.
 - Before finalizing a git commit: run `cmake --build <build_dir> --target format` (or manually `clang-format -i` for the changed files) and ensure `scripts/check_format.sh` passes without errors.
