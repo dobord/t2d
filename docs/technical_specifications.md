@@ -66,8 +66,9 @@ License Compatibility:
 ### Current / Planned Entities
 - Tank (player / bot)
 - Projectile
-- Ammo crate (respawn logic)
-- (Future) Environmental obstacles / destructibles
+- Ammo box (static pickup; grants ammo; sent in full snapshots only; disappears when picked up)
+- Crate (movable obstacle; full + delta snapshot coverage)
+- (Future) Destructible objects / respawning pickups / terrain hazards
 
 ### Future Extensions
 - Armor angle based damage modifiers

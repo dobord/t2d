@@ -33,7 +33,8 @@ TankWithTurret create_tank_with_turret(
     b2ShapeDef sd = b2DefaultShapeDef();
     sd.density = hull_density;
     sd.filter.categoryBits = CAT_TANK;
-    sd.filter.maskBits = CAT_TANK | CAT_PROJECTILE;
+    // Tanks should collide with other tanks, projectiles, and crates
+    sd.filter.maskBits = CAT_TANK | CAT_PROJECTILE | CAT_CRATE;
     sd.enableContactEvents = true;
     b2Polygon hull_box = b2MakeBox(2.79f, 2.12f);
     b2CreatePolygonShape(t.hull, &sd, &hull_box);
@@ -54,7 +55,8 @@ TankWithTurret create_tank_with_turret(
     b2ShapeDef tsd = b2DefaultShapeDef();
     tsd.density = turret_density;
     tsd.filter.categoryBits = CAT_TANK;
-    tsd.filter.maskBits = CAT_TANK | CAT_PROJECTILE;
+    // Turret same collision set
+    tsd.filter.maskBits = CAT_TANK | CAT_PROJECTILE | CAT_CRATE;
     tsd.enableContactEvents = true;
     b2Polygon turret_box = b2MakeBox(1.25f, 1.0f);
     b2CreatePolygonShape(t.turret, &tsd, &turret_box);
@@ -72,6 +74,12 @@ TankWithTurret create_tank_with_turret(
     rjd.maxMotorTorque = 50.f;
     rjd.motorSpeed = 0.f;
     t.turret_joint = b2CreateRevoluteJoint(world.id, &rjd);
+    // Runtime debug (logger lives outside phys; minimal dependency): mass summary
+    float hull_mass = b2Body_GetMass(t.hull);
+    float turret_mass = b2Body_GetMass(t.turret);
+    (void)hull_mass;
+    (void)turret_mass;
+    // (Logging skipped here to avoid logger include; matchmaker can log after creation if needed.)
     return t;
 }
 
@@ -89,7 +97,12 @@ void apply_tracked_drive(const TankDriveInput &in, TankWithTurret &tank, float s
     float v = std::sqrt(v_lin.x * v_lin.x + v_lin.y * v_lin.y);
     BodyFrame frame = get_body_frame(tank.hull);
     float mass = b2Body_GetMass(tank.hull);
-    float mg = mass * g;
+    // Option 1 (configurable density effect): decouple drive force from mass so heavier tanks accelerate slower.
+    // We apply a fixed baseline drive force (derived from a reference mass) while resistive forces still scale with
+    // mass.
+    constexpr float reference_mass = 10.0f; // tuned baseline mass giving previous feel
+    float base_drive_force = reference_mass * g; // used for propulsion & braking
+    float mg = mass * g; // used for drag, lateral resistance & rotational damping
     bool is_brake = in.brake;
     bool is_drive = std::fabs(in.drive_forward) > 0.0001f && !is_brake;
     bool is_turn = std::fabs(in.turn) > 0.0001f && !is_brake;
@@ -117,14 +130,18 @@ void apply_tracked_drive(const TankDriveInput &in, TankWithTurret &tank, float s
     {
         b2Body_ApplyForce(tank.hull, force, point, true);
     };
-    b2Vec2 fwd_force1{frame.forward.x * e1 * mg * k_drive, frame.forward.y * e1 * mg * k_drive};
-    b2Vec2 fwd_force2{frame.forward.x * e2 * mg * k_drive, frame.forward.y * e2 * mg * k_drive};
+    b2Vec2 fwd_force1{
+        frame.forward.x * e1 * base_drive_force * k_drive, frame.forward.y * e1 * base_drive_force * k_drive};
+    b2Vec2 fwd_force2{
+        frame.forward.x * e2 * base_drive_force * k_drive, frame.forward.y * e2 * base_drive_force * k_drive};
     apply_force_at(fwd_force1, p1);
     apply_force_at(fwd_force2, p2);
     if (b1 > 0.f || b2 > 0.f) {
         b2Vec2 brake_dir{-frame.forward.x, -frame.forward.y};
-        apply_force_at({brake_dir.x * b1 * mg * k_drive, brake_dir.y * b1 * mg * k_drive}, p1);
-        apply_force_at({brake_dir.x * b2 * mg * k_drive, brake_dir.y * b2 * mg * k_drive}, p2);
+        apply_force_at(
+            {brake_dir.x * b1 * base_drive_force * k_drive, brake_dir.y * b1 * base_drive_force * k_drive}, p1);
+        apply_force_at(
+            {brake_dir.x * b2 * base_drive_force * k_drive, brake_dir.y * b2 * base_drive_force * k_drive}, p2);
     }
     if (!is_drive && v > 0.01f) {
         float proj = (v_lin.x * frame.forward.x + v_lin.y * frame.forward.y) / v;

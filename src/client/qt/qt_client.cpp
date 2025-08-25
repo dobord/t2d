@@ -1,6 +1,8 @@
 // SPDX-License-Identifier: Apache-2.0
+#include "ammo_box_model.hpp"
 #include "common/framing.hpp"
 #include "common/logger.hpp"
+#include "crate_model.hpp"
 #include "entity_model.hpp"
 #include "game.pb.h"
 #include "input_state.hpp"
@@ -77,6 +79,8 @@ coro::task<void> run_network(
     std::shared_ptr<coro::io_scheduler> sched,
     EntityModel *tankModel,
     ProjectileModel *projModel,
+    AmmoBoxModel *ammoModel,
+    CrateModel *crateModel,
     InputState *input,
     TimingState *timing,
     std::string host,
@@ -140,10 +144,13 @@ coro::task<void> run_network(
             } else if (sm.has_snapshot()) {
                 tankModel->applyFull(sm.snapshot());
                 projModel->applyFull(sm.snapshot());
+                ammoModel->applyFull(sm.snapshot());
+                crateModel->applyFull(sm.snapshot());
                 timing->markServerTick();
             } else if (sm.has_delta_snapshot()) {
                 tankModel->applyDelta(sm.delta_snapshot());
                 projModel->applyDelta(sm.delta_snapshot());
+                crateModel->applyDelta(sm.delta_snapshot());
                 timing->markServerTick();
             }
         }
@@ -184,12 +191,16 @@ int main(int argc, char **argv)
     QGuiApplication app(argc, argv);
     EntityModel tankModel; // tanks
     ProjectileModel projectileModel; // projectiles
+    AmmoBoxModel ammoBoxModel; // ammo pickups
+    CrateModel crateModel; // movable crates
     InputState input;
     TimingState timing;
     QQmlApplicationEngine engine;
     engine.rootContext()->setContextProperty("entityModel", &tankModel);
     engine.rootContext()->setContextProperty("projectileModel", &projectileModel);
     engine.rootContext()->setContextProperty("inputState", &input);
+    engine.rootContext()->setContextProperty("ammoBoxModel", &ammoBoxModel);
+    engine.rootContext()->setContextProperty("crateModel", &crateModel);
     engine.rootContext()->setContextProperty("timingState", &timing);
     // The generated resource uses path prefix including source-relative directories; load via full embedded path.
     engine.load(QUrl("qrc:/T2DClient/src/client/qt/qml/Main.qml"));
@@ -197,8 +208,29 @@ int main(int argc, char **argv)
         t2d::log::error("Failed to load QML scene");
         return 1;
     }
+    // Connect map dimension changes to QML root (rootItem inside Window) so boundary draws automatically.
+    QObject *rootObj = engine.rootObjects().first();
+    if (rootObj) {
+        // rootItem is the first child Item inside the Window (id=rootItem). Find by objectName if set or fallback to
+        // findChild.
+        QObject *rootItem = rootObj->findChild<QObject *>("rootItem", Qt::FindChildrenRecursively);
+        if (rootItem) {
+            QObject::connect(
+                &tankModel,
+                &EntityModel::mapDimensionsChanged,
+                rootItem,
+                [&tankModel, rootItem]()
+                {
+                    rootItem->setProperty("mapWidth", tankModel.mapWidth());
+                    rootItem->setProperty("mapHeight", tankModel.mapHeight());
+                    t2d::log::info(
+                        "[qt] map dimensions received w={} h={}", tankModel.mapWidth(), tankModel.mapHeight());
+                });
+        }
+    }
     auto sched = coro::default_executor::io_executor();
-    sched->spawn(run_network(sched, &tankModel, &projectileModel, &input, &timing, "127.0.0.1", 40000));
+    sched->spawn(run_network(
+        sched, &tankModel, &projectileModel, &ammoBoxModel, &crateModel, &input, &timing, "127.0.0.1", 40000));
     int rc = app.exec();
     g_shutdown.store(true);
     return rc;

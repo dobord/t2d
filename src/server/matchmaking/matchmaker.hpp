@@ -23,9 +23,11 @@ struct MatchConfig
     float reload_interval_sec{3.0f};
     float projectile_speed{5.0f};
     float projectile_density{0.01f};
+    float fire_cooldown_sec{0.25f};
     float hull_density{1.0f};
     float turret_density{0.5f};
     bool disable_bot_fire{false};
+    bool test_mode{false};
     float map_width{300.f};
     float map_height{200.f};
 };

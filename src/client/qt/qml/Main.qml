@@ -17,10 +17,14 @@ Window {
 
     Item { // focusable container for key handling
         id: rootItem
+        objectName: "rootItem"
         anchors.fill: parent
         focus: true
         property bool followCamera: false // default off so movement is visible
         property bool showGrid: true
+        // Map dimensions (static per match, received from snapshot). When zero, unknown/not yet received.
+        property real mapWidth: 0
+        property real mapHeight: 0
         // Mouse / camera control state
         property bool mouseAimEnabled: true
         property real userZoom: 1.0
@@ -330,6 +334,19 @@ Window {
                 } else {
                     ctx.translate(-rootItem.cameraOffsetX, -rootItem.cameraOffsetY);
                 }
+                // Map boundary rectangle (draw before grid and entities). Map centered at origin.
+                if (rootItem.mapWidth > 0 && rootItem.mapHeight > 0) {
+                    const hw = rootItem.mapWidth * 0.5;
+                    const hh = rootItem.mapHeight * 0.5;
+                    ctx.save();
+                    ctx.strokeStyle = '#4a7688';
+                    ctx.lineWidth = 0.15; // in world units
+                    ctx.setLineDash([hw * 0.02, hw * 0.02]); // subtle dash relative to size
+                    ctx.beginPath();
+                    ctx.rect(-hw, -hh, rootItem.mapWidth, rootItem.mapHeight);
+                    ctx.stroke();
+                    ctx.restore();
+                }
                 // Grid
                 if (rootItem.showGrid) {
                     const gridSpacing = 5;
@@ -417,6 +434,38 @@ Window {
                     ctx.fillRect(28, hpY, 424, 6);
                     ctx.restore();
                 }
+                // Crates (simple brown squares with rotation)
+                if (typeof crateModel !== 'undefined') {
+                    for (let c = 0; c < crateModel.count(); ++c) {
+                        const cr = crateModel.get(c);
+                        const wx = cr.x;
+                        const wy = cr.y;
+                        const ang = cr.angle * Math.PI / 180.0;
+                        ctx.save();
+                        ctx.translate(wx, wy);
+                        ctx.rotate(ang);
+                        const h = 1.2; // half extent used on server
+                        ctx.fillStyle = '#5a4a32';
+                        ctx.strokeStyle = '#c8a060';
+                        ctx.lineWidth = 0.12;
+                        ctx.beginPath();
+                        ctx.rect(-h, -h, h * 2, h * 2);
+                        ctx.fill();
+                        ctx.stroke();
+                        // subtle plank lines
+                        ctx.strokeStyle = '#7d6a4d';
+                        ctx.lineWidth = 0.06;
+                        ctx.beginPath();
+                        ctx.moveTo(-h * 0.6, -h);
+                        ctx.lineTo(-h * 0.6, h);
+                        ctx.moveTo(0, -h);
+                        ctx.lineTo(0, h);
+                        ctx.moveTo(h * 0.6, -h);
+                        ctx.lineTo(h * 0.6, h);
+                        ctx.stroke();
+                        ctx.restore();
+                    }
+                }
                 function drawBullet(ctx, wx, wy, vx, vy) {
                     // Legacy bullet 60x20 px mapped to world 0.45x0.15 -> scale factors below
                     const PX_W = 60, PX_H = 20;
@@ -445,6 +494,36 @@ Window {
                     const turretRad = entityModel.interpTurretAngle(i, a) * Math.PI / 180.0;
                     drawTank(ctx, wx, wy, hullRad, turretRad, i === ownIndex);
                 }
+                // Ammo boxes (simple square with plus sign)
+                if (typeof ammoBoxModel !== 'undefined') {
+                    for (let b = 0; b < ammoBoxModel.count(); ++b) {
+                        const wx = ammoBoxModel.get(b).x;
+                        const wy = ammoBoxModel.get(b).y;
+                        const active = ammoBoxModel.get(b).active;
+                        if (!active)
+                            continue;
+                        ctx.save();
+                        ctx.translate(wx, wy);
+                        const r = 0.9; // match server radius
+                        ctx.fillStyle = '#3b5d1d';
+                        ctx.strokeStyle = '#92ff5d';
+                        ctx.lineWidth = 0.12;
+                        ctx.beginPath();
+                        ctx.rect(-r, -r, r * 2, r * 2);
+                        ctx.fill();
+                        ctx.stroke();
+                        // plus sign
+                        ctx.strokeStyle = '#ffffff';
+                        ctx.lineWidth = 0.18;
+                        ctx.beginPath();
+                        ctx.moveTo(-r * 0.6, 0);
+                        ctx.lineTo(r * 0.6, 0);
+                        ctx.moveTo(0, -r * 0.6);
+                        ctx.lineTo(0, r * 0.6);
+                        ctx.stroke();
+                        ctx.restore();
+                    }
+                }
                 for (let j = 0; j < projectileModel.count(); ++j) {
                     const wx = projectileModel.interpX(j, a);
                     const wy = projectileModel.interpY(j, a);
@@ -452,7 +531,7 @@ Window {
                     const vy = projectileModel.interpVy(j, a);
                     drawBullet(ctx, wx, wy, vx, vy);
                 }
-                ctx.restore();
+                ctx.restore(); // pop world transform (no outside mask)
             }
             Timer {
                 interval: 16
@@ -567,7 +646,7 @@ Window {
             height: collapsed ? 34 : Math.min(parent.height * 0.55, 380)
             border.color: "#35505c"
             border.width: 1
-            Column {
+            ColumnLayout {
                 anchors.fill: parent
                 anchors.margins: 4
                 spacing: 4
@@ -575,8 +654,7 @@ Window {
                     id: tankHeader
                     height: 24
                     spacing: 6
-                    anchors.left: parent.left
-                    anchors.right: parent.right
+                    Layout.fillWidth: true
                     Text {
                         text: tankPanel.collapsed ? "" : "Tanks"
                         color: "#c7d4df"
@@ -615,10 +693,8 @@ Window {
                     visible: !tankPanel.collapsed
                     model: entityModel
                     clip: true
-                    anchors.left: parent.left
-                    anchors.right: parent.right
-                    anchors.bottom: parent.bottom
-                    anchors.top: tankHeader.bottom
+                    Layout.fillWidth: true
+                    Layout.fillHeight: true
                     delegate: Rectangle {
                         width: tankList.width
                         height: 30
@@ -633,12 +709,13 @@ Window {
                                 width: 38
                             }
                             Text {
-                                text: `x:${x.toFixed(1)} y:${y.toFixed(1)}`
+                                // Use model.x/model.y to access model roles; plain x/y would refer to delegate Item position.
+                                text: `x:${model.x.toFixed(1)} y:${model.y.toFixed(1)}`
                                 color: "#9fb2c3"
                                 width: 138
                             }
                             Text {
-                                text: `hp:${hp} a:${ammo}`
+                                text: `hp:${hp} a:${model.ammo}`
                                 color: "#c5a96a"
                             }
                         }
@@ -661,7 +738,7 @@ Window {
             height: collapsed ? 34 : Math.min(parent.height * 0.45, 300)
             border.color: "#35505c"
             border.width: 1
-            Column {
+            ColumnLayout {
                 anchors.fill: parent
                 anchors.margins: 4
                 spacing: 4
@@ -669,8 +746,7 @@ Window {
                     id: projHeader
                     height: 24
                     spacing: 6
-                    anchors.left: parent.left
-                    anchors.right: parent.right
+                    Layout.fillWidth: true
                     Text {
                         text: projectilePanel.collapsed ? "" : "Projectiles"
                         color: "#c7d4df"
@@ -709,10 +785,8 @@ Window {
                     visible: !projectilePanel.collapsed
                     model: projectileModel
                     clip: true
-                    anchors.left: parent.left
-                    anchors.right: parent.right
-                    anchors.bottom: parent.bottom
-                    anchors.top: projHeader.bottom
+                    Layout.fillWidth: true
+                    Layout.fillHeight: true
                     delegate: Rectangle {
                         width: projectileList.width
                         height: 24

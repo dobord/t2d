@@ -34,9 +34,11 @@ struct MatchContext
     float reload_interval_sec{3.0f};
     float projectile_speed{5.0f};
     float projectile_density{0.01f};
+    float fire_cooldown_sec{0.25f};
     float hull_density{1.0f};
     float turret_density{0.5f};
     bool disable_bot_fire{false}; // when true bots never set fire input
+    bool test_mode{false}; // toggles test-oriented balancing clamps
     // Map dimensions (authoritative bounds) and static wall bodies created at match start.
     float map_width{300.f};
     float map_height{200.f};
@@ -68,6 +70,41 @@ struct MatchContext
 
     std::vector<ProjectileSimple> projectiles;
     uint32_t next_projectile_id{1};
+
+    // Crates (movable obstacles) represented only by physics bodies; snapshot not yet serialized (visual client side
+    // placeholder optional)
+    struct CrateInfo
+    {
+        uint32_t id;
+        b2BodyId body;
+    };
+
+    std::vector<CrateInfo> crates;
+    uint32_t next_crate_id{1};
+
+    struct SentCrateCache
+    {
+        uint32_t id{0};
+        float x{0};
+        float y{0};
+        float angle{0};
+        bool alive{false};
+    };
+
+    std::vector<SentCrateCache> last_sent_crates; // cached for delta comparison
+    std::vector<uint32_t> removed_crates_since_full;
+
+    struct AmmoBoxInfo
+    {
+        uint32_t id;
+        b2BodyId body;
+        bool active;
+        float x;
+        float y;
+    };
+
+    std::vector<AmmoBoxInfo> ammo_boxes; // mirrored to snapshot
+    uint32_t next_ammo_box_id{1};
     // Removed entities since last full snapshot (for delta)
     std::vector<uint32_t> removed_projectiles_since_full;
     std::vector<uint32_t> removed_tanks_since_full; // future (on disconnect / destroy)

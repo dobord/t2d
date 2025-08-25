@@ -285,6 +285,8 @@ if (T2D_BUILD_QT_CLIENT)
             set(CMAKE_AUTOUIC ON)
             add_executable(
                 t2d_qt_client
+                src/client/qt/ammo_box_model.cpp
+                src/client/qt/crate_model.cpp
                 src/client/qt/entity_model.cpp
                 src/client/qt/input_state.cpp
                 src/client/qt/projectile_model.cpp

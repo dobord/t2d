@@ -8,7 +8,7 @@ This document outlines the initial high-level architecture of the t2d game serve
 | core | Configuration loading, lifecycle management |
 | net | Networking (transport, encoding, sessions) |
 | matchmaking | Queue management and match creation |
-| game | Physics, tank logic, damage, projectiles, pickups |
+| game | Physics, tank logic, damage, projectiles, crates, ammo pickups |
 | ai | Bot decision making and navigation |
 | proto | Protobuf message schemas |
 | client | Qt/QML UI, rendering, input, interpolation |
@@ -18,11 +18,11 @@ Clients send only input commands; the server simulates the world and distributes
 
 ## Tick Loop (Current Prototype)
 1. Collect latest input commands (bots synthesize input internally).
-2. Step Box2D physics world (fixed dt = 1 / tick_rate).
-3. Synchronize tank & projectile transforms back to authoritative state.
-4. Process begin-contact events (projectile → tank) to apply damage & generate Damage/Destroyed events.
-5. Spawn / cull projectiles; update ammo reload timers and issue KillFeed batch if any events.
-6. Emit delta or full snapshot based on configured intervals.
+2. Step Box2D physics world (fixed dt = 1 / tick_rate) including tanks, projectiles, crates, ammo box sensors.
+3. Process contact events (projectile → tank) to apply damage & queue kill feed events.
+4. Handle ammo box pickups (tank proximity) granting ammo & deactivating pickup.
+5. Update reload timers, firing cooldowns, spawn/cull projectiles.
+6. Emit delta or full snapshot (tanks, projectiles, crates delta; ammo boxes in full only) per configured intervals.
 
 ## Concurrency Model
 Coroutines (libcoro) scheduled on a single io_scheduler for I/O bound tasks (network polling, matchmaking). Physics tick runs on a controlled loop to avoid race conditions (single-threaded simulation per match instance) initially.
@@ -31,13 +31,13 @@ Coroutines (libcoro) scheduled on a single io_scheduler for I/O bound tasks (net
 Multiple matches coexist; each match has its own world state and tick coroutine. A central match manager tracks active matches and available player slots.
 
 ## Configuration
-YAML configuration (see `config/server.yaml`). Core gameplay (movement speed, projectile speed & damage, bot fire interval, reload time) is now data-driven for rapid balancing.
+YAML configuration (see `config/server.yaml` & `config/server_test.yaml`). Core gameplay (movement speed, projectile speed/damage, projectile density, hull/turret densities, bot fire interval, fire cooldown, reload time, map size) is data-driven for rapid balancing. Test profile enables `test_mode` for faster bot cadence & increased projectile damage.
 
 ## Heartbeat & Liveness
 Clients periodically send a Heartbeat message. The server records `last_heartbeat` per session. A background coroutine (`heartbeat_monitor`) will later enforce timeouts and prune stale sessions (prototype currently only records timestamps).
 
 ## Input Handling
-Latest `InputCommand` per authenticated session is stored in `Session::input`. Each match tick samples this struct to apply movement (forward/back), hull rotation, and turret rotation. Older input (by `client_tick`) is ignored to maintain monotonic progression.
+Latest `InputCommand` per authenticated session is stored in `Session::input`. Each tick applies movement (forward/back), hull rotation, and turret rotation plus firing and braking flags. Older input (by `client_tick`) is ignored to maintain monotonic progression.
 
 ## Graceful Shutdown
-Signals (SIGINT/SIGTERM) set a global atomic shutdown flag. Long-running loops periodically check this flag and exit cooperatively. Future improvements: broadcast shutdown notice to clients; close sockets explicitly; flush telemetry.
+Signals (SIGINT/SIGTERM) set a global atomic shutdown flag. Long-running loops periodically check this flag and exit cooperatively. Future improvements: broadcast shutdown notice, explicit disconnect frames, final metrics flush.

@@ -8,6 +8,7 @@
 
 #include <algorithm>
 #include <cmath>
+#include <random>
 #include <unordered_map>
 #include <unordered_set>
 
@@ -128,6 +129,8 @@ coro::task<void> run_match(std::shared_ptr<coro::io_scheduler> scheduler, std::s
     phys_world.tank_bodies.clear();
     for (auto &adv : ctx->tanks) {
         phys_world.tank_bodies.push_back(adv.hull);
+        // Apply per-match fire cooldown configuration
+        adv.fire_cooldown_max = ctx->fire_cooldown_sec;
     }
     // Create static boundary walls (thin rectangles) around map if not already present.
     // Map centered at origin: width extends +/- map_width/2 along X, height +/- map_height/2 along Y.
@@ -144,8 +147,9 @@ coro::task<void> run_match(std::shared_ptr<coro::io_scheduler> scheduler, std::s
         b2BodyId body = b2CreateBody(phys_world.id, &bd);
         b2ShapeDef sd = b2DefaultShapeDef();
         sd.density = 0.0f;
-        sd.filter.categoryBits = t2d::phys::CAT_TANK; // treat as tank category for collisions with projectiles
-        sd.filter.maskBits = t2d::phys::CAT_PROJECTILE | t2d::phys::CAT_TANK;
+        // Treat walls as generic static colliders belonging to tank category but also colliding with crates
+        sd.filter.categoryBits = t2d::phys::CAT_TANK;
+        sd.filter.maskBits = t2d::phys::CAT_PROJECTILE | t2d::phys::CAT_TANK | t2d::phys::CAT_CRATE;
         sd.enableContactEvents = false; // walls don't need events
         b2Polygon poly = b2MakeBox(hx, hy);
         b2CreatePolygonShape(body, &sd, &poly);
@@ -156,6 +160,38 @@ coro::task<void> run_match(std::shared_ptr<coro::io_scheduler> scheduler, std::s
     // Left & right
     create_wall(-half_w - wall_thickness * 0.5f, 0.f, wall_thickness * 0.5f, half_h + wall_thickness);
     create_wall(half_w + wall_thickness * 0.5f, 0.f, wall_thickness * 0.5f, half_h + wall_thickness);
+    // Spawn grouped crates (clusters)
+    {
+        std::mt19937 rng(static_cast<uint32_t>(ctx->match_id.size() * 131u));
+        std::uniform_real_distribution<float> ux(-half_w * 0.6f, half_w * 0.6f);
+        std::uniform_real_distribution<float> uy(-half_h * 0.6f, half_h * 0.6f);
+        const int clusters = 3;
+        for (int c = 0; c < clusters; ++c) {
+            float cx = ux(rng);
+            float cy = uy(rng);
+            int count = 4 + (c % 3); // 4..6 crates per cluster
+            for (int k = 0; k < count; ++k) {
+                float ox = ((k % 3) - 1) * 2.5f + (k * 0.13f);
+                float oy = ((k / 3) - 0.5f) * 2.5f;
+                auto body = t2d::phys::create_crate(phys_world, cx + ox, cy + oy, 1.2f);
+                ctx->crates.push_back({ctx->next_crate_id++, body});
+            }
+        }
+    }
+    // Spawn ammo boxes randomly among crate clusters (avoid overlap by sampling near crates)
+    {
+        std::mt19937 rng(static_cast<uint32_t>(ctx->match_id.size() * 977u));
+        std::uniform_real_distribution<float> jitter(-1.5f, 1.5f);
+        int targetBoxes = 5;
+        for (int i = 0; i < targetBoxes && !ctx->crates.empty(); ++i) {
+            auto &cr = ctx->crates[i % ctx->crates.size()];
+            b2Vec2 pos = t2d::phys::get_body_position(cr.body);
+            float ax = pos.x + jitter(rng);
+            float ay = pos.y + jitter(rng);
+            auto body = t2d::phys::create_ammo_box(phys_world, ax, ay, 0.9f);
+            ctx->ammo_boxes.push_back({ctx->next_ammo_box_id++, body, true, ax, ay});
+        }
+    }
     using clock = std::chrono::steady_clock;
     auto tick_interval = std::chrono::milliseconds(1000 / ctx->tick_rate);
     auto next = clock::now();
@@ -219,9 +255,10 @@ coro::task<void> run_match(std::shared_ptr<coro::io_scheduler> scheduler, std::s
                 b2Transform myTurret = b2Body_GetTransform(adv.turret);
                 float myHullRad = std::atan2(myHull.q.s, myHull.q.c);
                 float myTurretRad = std::atan2(myTurret.q.s, myTurret.q.c);
-                // Auto-target nearest alive non-bot (fallback to any other alive tank)
+                // Bot AI: wandering + target acquisition + LOS-aware firing.
+                // 1. Target selection (cache per tick minimal for prototype)
                 int target_index = -1;
-                float best_d2 = 1e30f;
+                float best_score = 1e30f;
                 for (size_t j = 0; j < ctx->tanks.size(); ++j) {
                     if (j == i)
                         continue;
@@ -232,61 +269,58 @@ coro::task<void> run_match(std::shared_ptr<coro::io_scheduler> scheduler, std::s
                     float dx = oHull.p.x - myHull.p.x;
                     float dy = oHull.p.y - myHull.p.y;
                     float d2 = dx * dx + dy * dy;
-                    if (!ctx->players[j]->is_bot) {
-                        d2 *= 0.25f; // prefer real players
-                    }
-                    if (d2 < best_d2) {
-                        best_d2 = d2;
+                    // Prefer real players by reducing effective distance
+                    if (!ctx->players[j]->is_bot)
+                        d2 *= 0.5f;
+                    if (d2 < best_score) {
+                        best_score = d2;
                         target_index = (int)j;
                     }
                 }
-                float desired_rad = myHullRad; // default keep current
+                float desired_rad = myHullRad;
                 float last_align_err = 9999.f;
+                // 2. Movement: wander if no target; pursue/strafe if target
                 if (target_index >= 0) {
                     const auto &tt = ctx->tanks[target_index];
                     b2Transform ttHull = b2Body_GetTransform(tt.hull);
                     float dx = ttHull.p.x - myHull.p.x;
                     float dy = ttHull.p.y - myHull.p.y;
                     desired_rad = std::atan2(dy, dx);
-                    float diff = desired_rad - myHullRad;
-                    while (diff > (float)M_PI)
-                        diff -= 2.f * (float)M_PI;
-                    while (diff < -(float)M_PI)
-                        diff += 2.f * (float)M_PI;
-                    input.turn_dir = std::clamp(diff * 180.f / 90.f / (float)M_PI, -1.f, 1.f);
+                    float base_turn = desired_rad - myHullRad;
+                    while (base_turn > (float)M_PI)
+                        base_turn -= 2.f * (float)M_PI;
+                    while (base_turn < -(float)M_PI)
+                        base_turn += 2.f * (float)M_PI;
+                    input.turn_dir = std::clamp(base_turn * 180.f / 120.f / (float)M_PI, -1.f, 1.f);
                     float dist2 = dx * dx + dy * dy;
-                    if (dist2 > 25.f) {
+                    if (dist2 > 900.f) { // far
                         input.move_dir = 1.0f;
-                    } else if (dist2 < 9.f) {
-                        input.move_dir = -0.4f;
+                    } else if (dist2 < 100.f) { // too close -> back off slowly
+                        input.move_dir = -0.3f;
                     } else {
-                        input.move_dir = 0.2f;
+                        // strafe: alternate slight forward/back using server_tick parity
+                        input.move_dir = ((ctx->server_tick / 30) % 2) == 0 ? 0.4f : -0.2f;
                     }
+                    // Turret aim independent for faster tracking
                     float tdiff = desired_rad - myTurretRad;
                     while (tdiff > (float)M_PI)
                         tdiff -= 2.f * (float)M_PI;
                     while (tdiff < -(float)M_PI)
                         tdiff += 2.f * (float)M_PI;
                     last_align_err = std::fabs(tdiff) * 180.f / (float)M_PI;
-                    if (std::fabs(tdiff) < 2.f * (float)M_PI / 180.f) {
-                        input.turret_turn = 0.f;
-                    } else {
-                        input.turret_turn = std::clamp(tdiff * 180.f / (30.f * (float)M_PI), -1.f, 1.f);
-                    }
+                    input.turret_turn = std::clamp(tdiff * 180.f / (60.f * (float)M_PI), -1.f, 1.f);
                 } else {
-                    input.turn_dir = 0.2f;
-                    input.move_dir = 0.0f;
-                    input.turret_turn = 0.3f;
+                    // Wander: slow rotation + occasional forward bursts
+                    input.turn_dir = 0.3f;
+                    input.move_dir = (ctx->server_tick % 120) < 40 ? 0.5f : 0.0f;
+                    input.turret_turn = 0.2f;
                 }
+                // 3. Firing logic: only when turret roughly aligned AND predicted lead not required (simple LOS).
                 if (!ctx->disable_bot_fire) {
                     uint32_t interval = ctx->bot_fire_interval_ticks == 0 ? 1 : ctx->bot_fire_interval_ticks;
                     bool cadence = (ctx->server_tick % interval) == 0;
-                    if (cadence) {
-                        if (target_index >= 0) {
-                            input.fire = last_align_err < 20.f; // relaxed alignment threshold
-                        } else {
-                            input.fire = false;
-                        }
+                    if (cadence && target_index >= 0) {
+                        input.fire = (last_align_err < 10.f); // stricter alignment for smarter shots
                     } else {
                         input.fire = false;
                     }
@@ -355,10 +389,37 @@ coro::task<void> run_match(std::shared_ptr<coro::io_scheduler> scheduler, std::s
             if (adv.fire_cooldown_cur > 0.f)
                 adv.fire_cooldown_cur = std::max(0.f, adv.fire_cooldown_cur - dt);
         }
-        // Physics step (tanks + projectiles) then process contacts before any projectile body destruction
+        // Physics step (tanks + projectiles + crates) then process contacts before any projectile body destruction
         t2d::phys::step(phys_world, dt);
         // Handle projectile vs tank impacts (must run before bounds cull destroys bodies)
         process_contacts(phys_world, projectile_bodies, *ctx);
+        // Ammo box pickup detection (scan tank vs sensor overlaps) simple O(N*M)
+        for (auto &ab : ctx->ammo_boxes) {
+            if (!ab.active)
+                continue;
+            b2Transform tb = b2Body_GetTransform(ab.body);
+            for (size_t ti = 0; ti < ctx->tanks.size(); ++ti) {
+                auto &adv = ctx->tanks[ti];
+                if (adv.hp == 0)
+                    continue;
+                b2Transform th = b2Body_GetTransform(adv.hull);
+                float dx = th.p.x - tb.p.x;
+                float dy = th.p.y - tb.p.y;
+                if (dx * dx + dy * dy < 4.0f) { // radius pickup (2 units)
+                    // Grant ammo
+                    if (adv.ammo < ctx->max_ammo) {
+                        adv.ammo = std::min<uint16_t>(adv.ammo + 5, (uint16_t)ctx->max_ammo);
+                    }
+                    ab.active = false;
+                    // Convert body to non-interactive
+                    if (b2Body_IsValid(ab.body)) {
+                        t2d::phys::destroy_body(ab.body);
+                        ab.body = b2_nullBodyId;
+                    }
+                    break;
+                }
+            }
+        }
         // Sync tank state (position + angles) from advanced bodies
         // Angles & positions derived on snapshot build.
         // Sync projectile positions from physics bodies (remove invalid)
@@ -403,6 +464,9 @@ coro::task<void> run_match(std::shared_ptr<coro::io_scheduler> scheduler, std::s
                 t2d::ServerMessage sm;
                 auto *snap = sm.mutable_snapshot();
                 snap->set_server_tick(static_cast<uint32_t>(ctx->server_tick));
+                // Static map dimensions (unchanged during match) sent with each full snapshot
+                snap->set_map_width(ctx->map_width);
+                snap->set_map_height(ctx->map_height);
                 ctx->last_full_snapshot_tick = static_cast<uint32_t>(ctx->server_tick);
                 // Rebuild cache from physics state
                 ctx->last_sent_tanks.clear();
@@ -449,6 +513,43 @@ coro::task<void> run_match(std::shared_ptr<coro::io_scheduler> scheduler, std::s
                 // above loop sets hp/ammo, continue existing code path (skip duplicate at end)
                 for (auto &adv_unused_for_scope : ctx->tanks) {
                     (void)adv_unused_for_scope; // no-op; maintain structure after refactor
+                }
+                // Ammo boxes (active only, once per snapshot)
+                for (auto &ab : ctx->ammo_boxes) {
+                    if (!ab.active)
+                        continue;
+                    auto *bx = snap->add_ammo_boxes();
+                    bx->set_box_id(ab.id);
+                    bx->set_x(ab.x);
+                    bx->set_y(ab.y);
+                    bx->set_active(true);
+                }
+                // Crates (position + angle)
+                for (auto &cr : ctx->crates) {
+                    if (!b2Body_IsValid(cr.body))
+                        continue;
+                    b2Transform xf = b2Body_GetTransform(cr.body);
+                    auto *cs = snap->add_crates();
+                    cs->set_crate_id(cr.id);
+                    cs->set_x(xf.p.x);
+                    cs->set_y(xf.p.y);
+                    float ang_deg = std::atan2(xf.q.s, xf.q.c) * 180.f / 3.14159265f;
+                    cs->set_angle(ang_deg);
+                    // update crate cache
+                    bool found = false;
+                    for (auto &cc : ctx->last_sent_crates) {
+                        if (cc.id == cr.id) {
+                            cc.x = xf.p.x;
+                            cc.y = xf.p.y;
+                            cc.angle = ang_deg;
+                            cc.alive = true;
+                            found = true;
+                            break;
+                        }
+                    }
+                    if (!found) {
+                        ctx->last_sent_crates.push_back({cr.id, xf.p.x, xf.p.y, ang_deg, true});
+                    }
                 }
                 for (auto &p : ctx->projectiles) {
                     auto *ps = snap->add_projectiles();
@@ -554,6 +655,46 @@ coro::task<void> run_match(std::shared_ptr<coro::io_scheduler> scheduler, std::s
                 }
                 for (auto id : ctx->removed_projectiles_since_full)
                     delta->add_removed_projectiles(id);
+                // Crate deltas
+                if (ctx->last_sent_crates.size() < ctx->crates.size())
+                    ctx->last_sent_crates.resize(ctx->crates.size());
+                for (auto &cr : ctx->crates) {
+                    if (!b2Body_IsValid(cr.body))
+                        continue; // destroyed crates will handled by removed list
+                    b2Transform xf = b2Body_GetTransform(cr.body);
+                    float ang_deg = std::atan2(xf.q.s, xf.q.c) * 180.f / 3.14159265f;
+                    // find cache entry
+                    auto it = std::find_if(
+                        ctx->last_sent_crates.begin(),
+                        ctx->last_sent_crates.end(),
+                        [&](auto &cc) { return cc.id == cr.id; });
+                    if (it == ctx->last_sent_crates.end()) {
+                        // new crate (unexpected after match start, but allow)
+                        auto *cs = delta->add_crates();
+                        cs->set_crate_id(cr.id);
+                        cs->set_x(xf.p.x);
+                        cs->set_y(xf.p.y);
+                        cs->set_angle(ang_deg);
+                        ctx->last_sent_crates.push_back({cr.id, xf.p.x, xf.p.y, ang_deg, true});
+                    } else {
+                        bool changed = std::fabs(it->x - xf.p.x) > 0.01f || std::fabs(it->y - xf.p.y) > 0.01f
+                            || std::fabs(it->angle - ang_deg) > 0.5f; // angle threshold 0.5 deg
+                        if (changed) {
+                            auto *cs = delta->add_crates();
+                            cs->set_crate_id(cr.id);
+                            cs->set_x(xf.p.x);
+                            cs->set_y(xf.p.y);
+                            cs->set_angle(ang_deg);
+                            it->x = xf.p.x;
+                            it->y = xf.p.y;
+                            it->angle = ang_deg;
+                            it->alive = true;
+                        }
+                    }
+                }
+                for (auto cid : ctx->removed_crates_since_full)
+                    delta->add_removed_crates(cid);
+                // Deltas for ammo boxes omitted (they are static until picked up; appear only in full snapshots)
                 std::string tmp;
                 sm.SerializeToString(&tmp);
                 t2d::metrics::add_delta(tmp.size());
@@ -567,6 +708,7 @@ coro::task<void> run_match(std::shared_ptr<coro::io_scheduler> scheduler, std::s
                 // Clear removed lists after full snapshot baseline
                 ctx->removed_projectiles_since_full.clear();
                 ctx->removed_tanks_since_full.clear();
+                ctx->removed_crates_since_full.clear();
             }
         }
         // Emit aggregated KillFeedUpdate if any events occurred this tick

@@ -42,7 +42,10 @@ The following epics are required to reach fully automated builds (server + Andro
 - [ ] Snapshot compression / size optimization (quantization, thresholding, optional zstd)
 - [ ] Configurable snapshot & delta intervals (expose existing constants to config fully)
 - [x] Box2D physics integration (server authoritative movement + projectile collision via contact events)
-- [ ] Map items: ammo crates spawning logic & pickup events
+- [x] Map items: ammo boxes spawning logic & pickup (basic grant + disappearance)
+- [x] Movable crates (physics bodies, full snapshot serialization)
+- [x] Crate delta snapshots (position/angle thresholding)
+- [x] Map dimensions in snapshots (client boundary rendering)
 
 ### 3.2 Client Build Enablement (Multi‑Platform)
 - [x] Desktop client scaffold (Linux prototype networking loop)
@@ -110,7 +113,9 @@ The following epics are required to reach fully automated builds (server + Andro
 - [x] Replace naive movement with physics body simulation
 - [x] Tank hull vs projectile collision shapes + contact events
 - [ ] Ray / hull collision for firing line (optional early approximation)
-- [ ] Ammo crate pickups via AABB contact listener
+- [x] Ammo box pickups (proximity radius)
+- [x] Crate movable obstacles (cluster spawn)
+- [ ] Crate destruction logic (health / removal events)
 
 ## 4. Incremental Roadmap (Proposed Order)
 1. [x] Damage & collision events (with tests) // projectile->tank damage via Box2D contacts
@@ -120,13 +125,15 @@ The following epics are required to reach fully automated builds (server + Andro
 5. [x] OAuth auth strategy abstraction (stub provider; real external validation later)
 6. [x] Desktop client scaffold + CI build (Linux-only; prototype non-UI target `t2d_desktop_client`)
 7. [x] Desktop client (Linux Qt 6.8.3 UI QML) – basic UI layer (lists, canvas rendering, interpolation, input)
-8. [ ] Android & WASM build jobs
-9. [x] Dependency pin/verification (NDK, Build Tools, periodic submodule SHA audit job) (verification job present; NDK/Build Tools check still pending)
-10. [ ] Artifact uploads (all targets) (PARTIAL: server + desktop artifacts done)
-11. [ ] Release workflow + version stamping (version stamping core in place, release workflow pending)
-12. [x] Box2D physics integration phase 1 (movement + collision + filtering)
-13. [x] Sanitizer matrix (coverage DONE; ASan+UBSan + TSAN in CI) (static analysis separate)
-14. [ ] Fuzzing & replay validation
+8. [x] Crate & ammo box visualization (canvas render + list models)
+9. [x] Crate delta snapshot integration (client applyDelta)
+10. [ ] Android & WASM build jobs
+11. [x] Dependency pin/verification (NDK, Build Tools, periodic submodule SHA audit job) (verification job present; NDK/Build Tools check still pending)
+12. [ ] Artifact uploads (all targets) (PARTIAL: server + desktop & Qt client artifacts done)
+13. [ ] Release workflow + version stamping (version stamping core in place, release workflow pending)
+14. [x] Box2D physics integration phase 1 (movement + collision + filtering)
+15. [x] Sanitizer matrix (coverage DONE; ASan+UBSan + TSAN in CI) (static analysis separate)
+16. [ ] Fuzzing & replay validation
 
 ## 5. Risk & Mitigation
 | Risk | Impact | Mitigation |
@@ -149,7 +156,9 @@ E. Release workflow publishes artifacts on tag push.
 ## 7. Immediate Next Actions (Actionable Backlog)
 - [ ] Snapshot compression (quantization flag exists; implement zlib/zstd and thresholding)
 - [ ] Configurable snapshot & delta intervals fully exposed to config file
-- [ ] Map items: ammo crates spawning + pickup events
+- [x] Map items: ammo boxes (spawn + pickup)
+- [x] Crate physics obstacles + delta updates
+- [ ] Crate destruction (removal events to populate removed_crates)
 - [ ] Android build job (NDK + minimal JNI stub) producing APK artifact
 - [ ] WASM client build job (Emscripten) producing bundle artifact
 - [ ] Artifact uploads completion (APK, WASM bundle, symbol files)

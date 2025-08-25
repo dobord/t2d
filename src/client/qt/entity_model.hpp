@@ -2,6 +2,7 @@
 #pragma once
 #include "game.pb.h"
 
+#include <cmath>
 #include <mutex>
 #include <unordered_map>
 #include <vector>
@@ -26,6 +27,8 @@ struct QtTankRow
 class EntityModel : public QAbstractListModel
 {
     Q_OBJECT
+    Q_PROPERTY(float mapWidth READ mapWidth NOTIFY mapDimensionsChanged)
+    Q_PROPERTY(float mapHeight READ mapHeight NOTIFY mapDimensionsChanged)
 
 public:
     enum Roles
@@ -41,7 +44,11 @@ public:
         AmmoRole
     };
 
-    EntityModel(QObject *parent = nullptr) : QAbstractListModel(parent) {}
+    explicit EntityModel(QObject *parent = nullptr) : QAbstractListModel(parent) {}
+
+    float mapWidth() const { return map_width_; }
+
+    float mapHeight() const { return map_height_; }
 
     Q_INVOKABLE int count() const { return static_cast<int>(rows_.size()); }
 
@@ -71,7 +78,6 @@ public:
         const auto &r = rows_[row];
         float a0 = r.prev_hull_angle;
         float a1 = r.hull_angle;
-        // Shortest angular interpolation (degrees)
         float diff = std::fmod(a1 - a0 + 540.f, 360.f) - 180.f;
         return a0 + diff * alpha;
     }
@@ -158,12 +164,23 @@ public:
                 (float)t.hp(),
                 (float)t.ammo()});
         }
+        bool dimsChanged = false;
+        // Proto3 scalars default to 0; treat >0 as provided.
+        float w = snap.map_width();
+        float h = snap.map_height();
+        if (w > 0.f && h > 0.f && (w != map_width_ || h != map_height_)) {
+            map_width_ = w;
+            map_height_ = h;
+            dimsChanged = true;
+        }
         {
             std::scoped_lock lk(m_);
             beginResetModel();
             rows_.swap(newRows);
             endResetModel();
         }
+        if (dimsChanged)
+            emit mapDimensionsChanged();
     }
 
     void applyDelta(const t2d::DeltaSnapshot &d)
@@ -219,7 +236,12 @@ public:
         (void)anyChange;
     }
 
+signals:
+    void mapDimensionsChanged();
+
 private:
     mutable std::mutex m_;
     std::vector<QtTankRow> rows_;
+    float map_width_{0.f};
+    float map_height_{0.f};
 };

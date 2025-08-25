@@ -121,30 +121,59 @@ coro::task<void> run_matchmaker(std::shared_ptr<coro::io_scheduler> scheduler, M
             ctx->snapshot_interval_ticks = cfg.snapshot_interval_ticks;
             ctx->full_snapshot_interval_ticks = cfg.full_snapshot_interval_ticks;
             // For tests we want rapid engagements; clamp bot fire interval to <=5 ticks
-            ctx->bot_fire_interval_ticks = std::min<uint32_t>(cfg.bot_fire_interval_ticks, 5u);
+            if (cfg.test_mode) {
+                ctx->bot_fire_interval_ticks = std::min<uint32_t>(cfg.bot_fire_interval_ticks, 5u);
+            } else {
+                ctx->bot_fire_interval_ticks = cfg.bot_fire_interval_ticks;
+            }
             ctx->movement_speed = cfg.movement_speed;
             // Boost projectile damage to ensure lethal within test timeout (>=50 overrides default if lower)
-            ctx->projectile_damage = std::max<uint32_t>(cfg.projectile_damage, 50u);
+            ctx->projectile_damage = cfg.test_mode ? std::max<uint32_t>(cfg.projectile_damage, 50u)
+                                                   : cfg.projectile_damage;
             ctx->reload_interval_sec = cfg.reload_interval_sec;
             ctx->projectile_speed = cfg.projectile_speed;
             ctx->projectile_density = cfg.projectile_density;
+            ctx->fire_cooldown_sec = cfg.fire_cooldown_sec;
             ctx->hull_density = cfg.hull_density;
             ctx->turret_density = cfg.turret_density;
             ctx->disable_bot_fire = cfg.disable_bot_fire;
+            ctx->test_mode = cfg.test_mode;
             ctx->map_width = cfg.map_width;
             ctx->map_height = cfg.map_height;
             ctx->physics_world = std::make_unique<t2d::phys::World>(b2Vec2{0.f, 0.f});
+            // Random non-overlapping spawn distribution inside map bounds.
+            // Simple Poisson-like rejection sampling with limited attempts.
             uint32_t eid = 1;
-            uint32_t bot_index = 0;
+            std::mt19937 rng(seed);
+            float safe_half_w = std::max(1.f, ctx->map_width * 0.5f - 5.f);
+            float safe_half_h = std::max(1.f, ctx->map_height * 0.5f - 5.f);
+            std::uniform_real_distribution<float> dx(-safe_half_w, safe_half_w);
+            std::uniform_real_distribution<float> dy(-safe_half_h, safe_half_h);
+            const float min_dist = 12.f; // separation to avoid overlap (tank ~6 world units long incl. turret)
+            std::vector<std::pair<float, float>> placed;
+            placed.reserve(group.size());
             for (auto &s : group) {
-                float x = 0.f;
-                float y = 0.f;
-                if (s->is_bot) {
-                    float spacing = 7.0f;
-                    x = -spacing * static_cast<float>(bot_index + 1);
-                    y = 0.0f;
-                    ++bot_index;
+                float x = 0.f, y = 0.f;
+                bool ok = false;
+                for (int attempt = 0; attempt < 200 && !ok; ++attempt) {
+                    x = dx(rng);
+                    y = dy(rng);
+                    ok = true;
+                    for (auto &pp : placed) {
+                        float ddx = x - pp.first;
+                        float ddy = y - pp.second;
+                        if ((ddx * ddx + ddy * ddy) < (min_dist * min_dist)) {
+                            ok = false;
+                            break;
+                        }
+                    }
                 }
+                if (!ok) {
+                    // fallback spiral placement
+                    x = static_cast<float>(placed.size()) * 6.f;
+                    y = 0.f;
+                }
+                placed.emplace_back(x, y);
                 auto phys_tank = t2d::phys::create_tank_with_turret(
                     *ctx->physics_world, x, y, eid++, ctx->hull_density, ctx->turret_density);
                 ctx->tanks.push_back(phys_tank);
@@ -162,6 +191,9 @@ coro::task<void> run_matchmaker(std::shared_ptr<coro::io_scheduler> scheduler, M
                 t2d::ServerMessage base;
                 auto *snap = base.mutable_snapshot();
                 snap->set_server_tick(0);
+                // Include static map dimensions so clients can render boundaries
+                snap->set_map_width(ctx->map_width);
+                snap->set_map_height(ctx->map_height);
                 for (auto &adv : ctx->tanks) {
                     if (adv.hp == 0)
                         continue;

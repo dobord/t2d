@@ -70,9 +70,11 @@ struct ServerConfig
     float reload_interval_sec{3.0f};
     float projectile_speed{5.0f};
     float projectile_density{0.01f};
+    float fire_cooldown_sec{1.0f}; // seconds between player shots (tank cannon); higher = slower ROF
     float hull_density{1.0f};
     float turret_density{0.5f};
     bool disable_bot_fire{false};
+    bool test_mode{false}; // enables aggressive clamps & boosts for rapid automated tests
     // Map dimensions (world playable area). Walls will be created at perimeter.
     float map_width{300.f};
     float map_height{200.f};
@@ -135,6 +137,9 @@ static ServerConfig load_config(const std::string &path)
     if (root["projectile_density"]) {
         cfg.projectile_density = root["projectile_density"].as<float>();
     }
+    if (root["fire_cooldown_sec"]) {
+        cfg.fire_cooldown_sec = root["fire_cooldown_sec"].as<float>();
+    }
     if (root["hull_density"]) {
         cfg.hull_density = root["hull_density"].as<float>();
     }
@@ -143,6 +148,9 @@ static ServerConfig load_config(const std::string &path)
     }
     if (root["disable_bot_fire"]) {
         cfg.disable_bot_fire = root["disable_bot_fire"].as<bool>();
+    }
+    if (root["test_mode"]) {
+        cfg.test_mode = root["test_mode"].as<bool>();
     }
     if (root["map_width"]) {
         cfg.map_width = root["map_width"].as<float>();
@@ -233,9 +241,11 @@ int main(int argc, char **argv)
             cfg.reload_interval_sec,
             cfg.projectile_speed,
             cfg.projectile_density,
+            cfg.fire_cooldown_sec,
             cfg.hull_density,
             cfg.turret_density,
             cfg.disable_bot_fire,
+            cfg.test_mode,
             cfg.map_width,
             cfg.map_height}));
     // Launch heartbeat monitor
