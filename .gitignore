@@ -50,6 +50,7 @@ Thumbs.db
 /build-noqt/
 /build-qt/
 /build-server/
+/build-qml-check/
 
 # CTest artifacts created if tests accidentally run from source root
 /Testing/

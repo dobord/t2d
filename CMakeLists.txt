@@ -357,13 +357,75 @@ if (CMAKE_FORMAT_BIN)
     endif ()
 endif ()
 
-# Aggregate formatting target (format_all) to run both C++ and CMake formatting
-if (TARGET format_cmake)
-    if (TARGET format AND NOT TARGET format_all)
-        add_custom_target(format_all DEPENDS format format_cmake)
-    elseif (TARGET t2d_format AND NOT TARGET format_all)
-        add_custom_target(format_all DEPENDS t2d_format format_cmake)
+# QML files formatting (optional, requires qmlformat from Qt)
+find_program(
+    QMLFORMAT_BIN
+    NAMES qmlformat
+    HINTS # Common Linux distribution paths already searched implicitly, add Qt local override hints
+          ${CMAKE_PREFIX_PATH}/bin $ENV{CMAKE_PREFIX_PATH}/bin)
+if (NOT QMLFORMAT_BIN)
+    # Try individual prefix entries (CMAKE_PREFIX_PATH can be a list) appending /bin
+    foreach (_p IN LISTS CMAKE_PREFIX_PATH)
+        if (EXISTS "${_p}/bin/qmlformat")
+            set(QMLFORMAT_BIN "${_p}/bin/qmlformat")
+            break()
+        endif ()
+    endforeach ()
+endif ()
+if (QMLFORMAT_BIN)
+    message(STATUS "Found qmlformat: ${QMLFORMAT_BIN}")
+endif ()
+if (QMLFORMAT_BIN)
+    file(
+        GLOB_RECURSE ALL_QML_FILES
+        RELATIVE ${CMAKE_CURRENT_SOURCE_DIR}
+        ${CMAKE_CURRENT_SOURCE_DIR}/src/client/qt/qml/*.qml)
+    # Exclude any third_party paths just in case
+    list(
+        FILTER
+        ALL_QML_FILES
+        EXCLUDE
+        REGEX
+        ".*/third_party/.*")
+    # Filter out empty QML files (qmlformat fails to parse empty input)
+    set(_non_empty_qml)
+    foreach (_qml IN LISTS ALL_QML_FILES)
+        file(SIZE "${CMAKE_CURRENT_SOURCE_DIR}/${_qml}" _qml_size)
+        if (_qml_size GREATER 0)
+            list(APPEND _non_empty_qml ${_qml})
+        else ()
+            message(STATUS "Skipping empty QML file (no formatting): ${_qml}")
+        endif ()
+    endforeach ()
+    set(ALL_QML_FILES ${_non_empty_qml})
+    if (ALL_QML_FILES)
+        if (NOT TARGET format_qml)
+            add_custom_target(
+                format_qml
+                COMMAND ${QMLFORMAT_BIN} --inplace ${ALL_QML_FILES}
+                WORKING_DIRECTORY ${CMAKE_CURRENT_SOURCE_DIR}
+                COMMENT "Formatting QML files with qmlformat")
+        endif ()
     endif ()
+endif ()
+
+# Aggregate formatting target (format_all) to run all available formatting steps (C++, CMake, QML)
+set(_fmt_targets)
+if (TARGET format)
+    list(APPEND _fmt_targets format)
+elseif (TARGET t2d_format)
+    list(APPEND _fmt_targets t2d_format)
+endif ()
+if (TARGET format_cmake)
+    list(APPEND _fmt_targets format_cmake)
+endif ()
+if (TARGET format_qml)
+    list(APPEND _fmt_targets format_qml)
+endif ()
+list(LENGTH _fmt_targets _fmt_len)
+if (_fmt_len GREATER 0 AND NOT TARGET format_all)
+    # Provide a unified target even if only one underlying formatter exists
+    add_custom_target(format_all DEPENDS ${_fmt_targets})
 endif ()
 
 add_executable(t2d_test_client src/client/test_client.cpp src/common/framing.cpp)

@@ -17,9 +17,16 @@ Item {
 
     signal button_state(string name, bool pressed)
 
-    ListModel { id: button_model
-        ListElement { name: "fire";  title: "=" }
-        ListElement { name: "brake"; title: "O" }
+    ListModel {
+        id: button_model
+        ListElement {
+            name: "fire"
+            title: "="
+        }
+        ListElement {
+            name: "brake"
+            title: "O"
+        }
     }
 
     GridView {
@@ -59,22 +66,70 @@ Item {
         anchors.left: parent.left
         anchors.leftMargin: 0
         maximumTouchPoints: 1
-        touchPoints: [ TouchPoint { id: point_joy_left } ]
+        touchPoints: [
+            TouchPoint {
+                id: point_joy_left
+            }
+        ]
 
-    // Replace image assets with simple text arrows to avoid external resource dependency
-    Text { anchors.left: parent.left; anchors.leftMargin: 4; anchors.verticalCenter: parent.verticalCenter; text: "⟲"; color: "#8098a8"; font.pixelSize: 18 }
-    Text { anchors.right: parent.right; anchors.rightMargin: 4; anchors.verticalCenter: parent.verticalCenter; text: "⟳"; color: "#8098a8"; font.pixelSize: 18 }
-    Text { anchors.bottom: parent.bottom; anchors.bottomMargin: 2; anchors.horizontalCenter: parent.horizontalCenter; text: "↓"; color: "#8098a8"; font.pixelSize: 18 }
-    Text { anchors.top: parent.top; anchors.topMargin: 2; anchors.horizontalCenter: parent.horizontalCenter; text: "↑"; color: "#8098a8"; font.pixelSize: 18 }
+        // Replace image assets with simple text arrows to avoid external resource dependency
+        Text {
+            anchors.left: parent.left
+            anchors.leftMargin: 4
+            anchors.verticalCenter: parent.verticalCenter
+            text: "⟲"
+            color: "#8098a8"
+            font.pixelSize: 18
+        }
+        Text {
+            anchors.right: parent.right
+            anchors.rightMargin: 4
+            anchors.verticalCenter: parent.verticalCenter
+            text: "⟳"
+            color: "#8098a8"
+            font.pixelSize: 18
+        }
+        Text {
+            anchors.bottom: parent.bottom
+            anchors.bottomMargin: 2
+            anchors.horizontalCenter: parent.horizontalCenter
+            text: "↓"
+            color: "#8098a8"
+            font.pixelSize: 18
+        }
+        Text {
+            anchors.top: parent.top
+            anchors.topMargin: 2
+            anchors.horizontalCenter: parent.horizontalCenter
+            text: "↑"
+            color: "#8098a8"
+            font.pixelSize: 18
+        }
 
         Rectangle {
             id: joy_left
-            x: (point_joy_left.pressed? Math.max(0, Math.min(point_joy_left.x, parent.width)): parent.width/2) - width/2
-            y: (point_joy_left.pressed? Math.max(0, Math.min(point_joy_left.y, parent.height)): parent.height/2) - height/2
-            width: 64; height: 64; radius: 16
-            gradient: Gradient { GradientStop { position: 0; color: "#ffffff" } GradientStop { position: 1; color: "#c2c2c2" } }
-            Text { anchors.centerIn: parent; font.pointSize: 14; text: "Drive" }
-            border.width: 2; border.color: point_joy_left.pressed? "gold" : "#ddd"
+            x: (point_joy_left.pressed ? Math.max(0, Math.min(point_joy_left.x, parent.width)) : parent.width / 2) - width / 2
+            y: (point_joy_left.pressed ? Math.max(0, Math.min(point_joy_left.y, parent.height)) : parent.height / 2) - height / 2
+            width: 64
+            height: 64
+            radius: 16
+            gradient: Gradient {
+                GradientStop {
+                    position: 0
+                    color: "#ffffff"
+                }
+                GradientStop {
+                    position: 1
+                    color: "#c2c2c2"
+                }
+            }
+            Text {
+                anchors.centerIn: parent
+                font.pointSize: 14
+                text: "Drive"
+            }
+            border.width: 2
+            border.color: point_joy_left.pressed ? "gold" : "#ddd"
         }
     }
 
@@ -88,21 +143,69 @@ Item {
         anchors.right: parent.right
         anchors.rightMargin: 0
         maximumTouchPoints: 1
-        touchPoints: [ TouchPoint { id: point_joy_right } ]
+        touchPoints: [
+            TouchPoint {
+                id: point_joy_right
+            }
+        ]
 
-    Text { anchors.left: parent.left; anchors.leftMargin: 4; anchors.verticalCenter: parent.verticalCenter; text: "←"; color: "#8098a8"; font.pixelSize: 18 }
-    Text { anchors.top: parent.top; anchors.topMargin: 2; anchors.horizontalCenter: parent.horizontalCenter; text: "↑"; color: "#8098a8"; font.pixelSize: 18 }
-    Text { anchors.bottom: parent.bottom; anchors.bottomMargin: 2; anchors.horizontalCenter: parent.horizontalCenter; text: "↓"; color: "#8098a8"; font.pixelSize: 18 }
-    Text { anchors.right: parent.right; anchors.rightMargin: 4; anchors.verticalCenter: parent.verticalCenter; text: "→"; color: "#8098a8"; font.pixelSize: 18 }
+        Text {
+            anchors.left: parent.left
+            anchors.leftMargin: 4
+            anchors.verticalCenter: parent.verticalCenter
+            text: "←"
+            color: "#8098a8"
+            font.pixelSize: 18
+        }
+        Text {
+            anchors.top: parent.top
+            anchors.topMargin: 2
+            anchors.horizontalCenter: parent.horizontalCenter
+            text: "↑"
+            color: "#8098a8"
+            font.pixelSize: 18
+        }
+        Text {
+            anchors.bottom: parent.bottom
+            anchors.bottomMargin: 2
+            anchors.horizontalCenter: parent.horizontalCenter
+            text: "↓"
+            color: "#8098a8"
+            font.pixelSize: 18
+        }
+        Text {
+            anchors.right: parent.right
+            anchors.rightMargin: 4
+            anchors.verticalCenter: parent.verticalCenter
+            text: "→"
+            color: "#8098a8"
+            font.pixelSize: 18
+        }
 
         Rectangle {
             id: joy_right
-            x: (point_joy_right.pressed? Math.max(0, Math.min(point_joy_right.x, parent.width)): parent.width/2) - width/2
-            y: (point_joy_right.pressed? Math.max(0, Math.min(point_joy_right.y, parent.height)): parent.height/2) - height/2
-            width: 64; height: 64; radius: 16
-            gradient: Gradient { GradientStop { position: 0; color: "#ffffff" } GradientStop { position: 1; color: "#c2c2c2" } }
-            Text { anchors.centerIn: parent; font.pointSize: 14; text: "Target" }
-            border.width: 2; border.color: point_joy_right.pressed? "gold" : "#ddd"
+            x: (point_joy_right.pressed ? Math.max(0, Math.min(point_joy_right.x, parent.width)) : parent.width / 2) - width / 2
+            y: (point_joy_right.pressed ? Math.max(0, Math.min(point_joy_right.y, parent.height)) : parent.height / 2) - height / 2
+            width: 64
+            height: 64
+            radius: 16
+            gradient: Gradient {
+                GradientStop {
+                    position: 0
+                    color: "#ffffff"
+                }
+                GradientStop {
+                    position: 1
+                    color: "#c2c2c2"
+                }
+            }
+            Text {
+                anchors.centerIn: parent
+                font.pointSize: 14
+                text: "Target"
+            }
+            border.width: 2
+            border.color: point_joy_right.pressed ? "gold" : "#ddd"
         }
     }
 }

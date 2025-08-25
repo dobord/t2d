@@ -42,6 +42,28 @@ log_warn(){ echo "[$(_ts)] [$APP_ID] [W] $*"; }
 log_err(){ echo "[$(_ts)] [$APP_ID] [E] $*" >&2; }
 [[ "$VERBOSE" == 1 ]] && set -x
 
+# Run code formatting targets before building (mandatory auto-format step)
+run_format(){
+  # Requires a configured build directory. Attempt aggregate target first.
+  if [[ ! -d "$ROOT_DIR/$BUILD_DIR" ]]; then
+    return 0
+  fi
+  log "Running code format targets"
+  if cmake --build "$ROOT_DIR/$BUILD_DIR" --target format_all -j $(nproc || echo 4) >/dev/null 2>&1; then
+    log "Formatting completed (target=format_all)"
+    return 0
+  fi
+  if cmake --build "$ROOT_DIR/$BUILD_DIR" --target format -j $(nproc || echo 4) >/dev/null 2>&1; then
+    log "Formatting completed (target=format)"
+    return 0
+  fi
+  if cmake --build "$ROOT_DIR/$BUILD_DIR" --target t2d_format -j $(nproc || echo 4) >/dev/null 2>&1; then
+    log "Formatting completed (target=t2d_format)"
+    return 0
+  fi
+  log_warn "No formatting target found (format_all/format/t2d_format). Skipping auto-format."
+}
+
 ensure_build(){
   if [[ "$NO_BUILD" == 1 ]]; then
     log "Skipping build (NO_BUILD=1)"
@@ -59,6 +81,8 @@ ensure_build(){
     fi
   fi
   log "Building targets"
+  # Mandatory auto-format before compiling
+  run_format || log_warn "Auto-format step encountered issues"
   cmake --build "$ROOT_DIR/$BUILD_DIR" --target t2d_server t2d_qt_client -j $(nproc || echo 4)
 }
 
