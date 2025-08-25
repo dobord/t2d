@@ -209,6 +209,11 @@ run_once(){
   kill_existing
   log "Starting server"
   local server_args=()
+  # Propagate log level to C++ logger unless already set externally
+  if [[ -n "$LOG_LEVEL" && -z "${T2D_LOG_LEVEL:-}" ]]; then
+    export T2D_LOG_LEVEL="${LOG_LEVEL,,}"
+    log_debug "Exported T2D_LOG_LEVEL=${T2D_LOG_LEVEL}"
+  fi
   if [[ "${NO_BOT_FIRE:-0}" == 1 ]]; then
     server_args+=("--no-bot-fire")
     log "Bot firing disabled via NO_BOT_FIRE=1"
