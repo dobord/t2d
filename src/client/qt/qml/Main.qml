@@ -31,6 +31,12 @@ Window {
         property real dragStartY: 0
         property real dragOrigOffsetX: 0
         property real dragOrigOffsetY: 0
+    // Global scale parameters (world -> screen). We target a tank radius (1.0 world unit) occupying
+    // targetTankScreenFraction of the shorter screen dimension at zoom=1. userZoom multiplies this.
+    property real tankWorldRadius: 1.0
+    property real targetTankScreenFraction: 0.10
+    // Effective world->screen scale used everywhere (painting & camera drag math).
+    property real worldToScreenScale: Math.min(scene.width, scene.height) * targetTankScreenFraction / tankWorldRadius * userZoom
         // Internal cached last computed desired turret angle (degrees)
         property real desiredTurretAngleDeg: 0
         Component.onCompleted: {
@@ -266,10 +272,7 @@ Window {
                 ctx.fillRect(0, 0, width, height);
                 const a = timingState.alpha;
                 const ownIndex = entityModel.count() > 0 ? 0 : -1;
-                const tankWorldRadius = 1.0;
-                const targetScreenRadius = Math.min(width, height) * 0.10;
-                const baseScale = targetScreenRadius / tankWorldRadius;
-                const scale = baseScale * rootItem.userZoom;
+                const scale = rootItem.worldToScreenScale;
                 ctx.save();
                 ctx.translate(width / 2, height / 2);
                 if (rootItem.followCamera && ownIndex >= 0) {
@@ -454,8 +457,7 @@ Window {
                     let ownIndex = entityModel.count() > 0 ? 0 : -1;
                     if (ownIndex < 0)
                         return;
-                    const baseScale = Math.min(width, height) * 0.10 / 1.0;
-                    const scale = baseScale * rootItem.userZoom;
+                    const scale = rootItem.worldToScreenScale;
                     const cx = entityModel.interpX(ownIndex, a);
                     const cy = entityModel.interpY(ownIndex, a);
                     let worldX = (ev.x - width / 2) / scale;
@@ -468,13 +470,12 @@ Window {
                         worldY += rootItem.cameraOffsetY;
                     }
                     if (rootItem.isMiddleDragging && !rootItem.followCamera) {
-                        // Pan speed adjustment: use baseScale (ignore zoom) so panning is not slowed down at high zoom levels.
-                        // This yields a consistent on-screen feeling: dragging N pixels always moves roughly the same scene amount.
+                        // 1:1 pixel mapping: shifting mouse by N pixels moves world N pixels on screen.
+                        // Since screen shift = (deltaWorld * scale), need deltaWorld = deltaScreen / scale.
                         let dxScreen = ev.x - rootItem.dragStartX;
                         let dyScreen = ev.y - rootItem.dragStartY;
-                        let dxWorld = dxScreen / baseScale; // was scale
-                        let dyWorld = dyScreen / baseScale;
-                        // Opposite direction so content follows cursor.
+                        let dxWorld = dxScreen / scale;
+                        let dyWorld = dyScreen / scale;
                         rootItem.cameraOffsetX = rootItem.dragOrigOffsetX - dxWorld;
                         rootItem.cameraOffsetY = rootItem.dragOrigOffsetY - dyWorld;
                     }
