@@ -17,6 +17,7 @@
 #  LOOP=0 disables restart loop (single run)
 #  NO_BUILD=1 skip build step (just run existing binaries)
 #  VERBOSE=1 extra logging
+#  NO_BOT_FIRE=1 disable bot firing (passes --no-bot-fire to server)  # convenience wrapper for config/env
 #
 # Examples:
 #   ./scripts/run_dev_loop.sh
@@ -87,7 +88,12 @@ run_once(){
   ensure_build
   kill_existing
   log "Starting server"
-  T2D_LOG_APP_ID="srv" "${SERVER_BIN}" &
+  local server_args=()
+  if [[ "${NO_BOT_FIRE:-0}" == 1 ]]; then
+    server_args+=("--no-bot-fire")
+    log "Bot firing disabled via NO_BOT_FIRE=1"
+  fi
+  T2D_LOG_APP_ID="srv" "${SERVER_BIN}" "${server_args[@]}" &
   SERVER_PID=$!
   log "Server PID=${SERVER_PID}"
   wait_port || { log "Server failed to open port"; kill ${SERVER_PID} || true; return 1; }
