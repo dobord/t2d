@@ -38,13 +38,6 @@ NO_BUILD="${NO_BUILD:-0}"
 VERBOSE="${VERBOSE:-0}"
 LOG_LEVEL="${LOG_LEVEL:-}"
 QML_LOG_LEVEL="${QML_LOG_LEVEL:-}"
-if [[ -z "$LOG_LEVEL" ]]; then
-  if [[ "$VERBOSE" == 1 ]]; then
-    LOG_LEVEL=DEBUG
-  else
-    LOG_LEVEL=INFO
-  fi
-fi
 ROOT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 SERVER_BIN="${ROOT_DIR}/${BUILD_DIR}/t2d_server"
 CLIENT_BIN="${ROOT_DIR}/${BUILD_DIR}/t2d_qt_client"
@@ -60,16 +53,15 @@ _level_value(){
     *) echo 20;;
   esac
 }
-_threshold=$(_level_value "$LOG_LEVEL")
+_threshold=20 # provisional; updated after flag parsing
 _should_log(){
   local sev=$1; local sv=$(_level_value "$sev");
-  [[ $sv -ge $_threshold ]]
+  if [[ $sv -ge $_threshold ]]; then return 0; else return 1; fi
 }
-log(){ _should_log INFO  && echo  "[$(_ts)] [$APP_ID] [I] $*"; }
-log_warn(){ _should_log WARN  && echo "[$(_ts)] [$APP_ID] [W] $*"; }
-log_err(){ _should_log ERROR && echo "[$(_ts)] [$APP_ID] [E] $*" >&2; }
-log_debug(){ _should_log DEBUG && echo "[$(_ts)] [$APP_ID] [D] $*"; }
-[[ "$VERBOSE" == 1 ]] && set -x && log_debug "Shell trace enabled (VERBOSE=1)"
+log(){ if _should_log INFO; then echo  "[$(_ts)] [$APP_ID] [I] $*"; fi; return 0; }
+log_warn(){ if _should_log WARN; then echo "[$(_ts)] [$APP_ID] [W] $*"; fi; return 0; }
+log_err(){ if _should_log ERROR; then echo "[$(_ts)] [$APP_ID] [E] $*" >&2; fi; return 0; }
+log_debug(){ if _should_log DEBUG; then echo "[$(_ts)] [$APP_ID] [D] $*"; fi; return 0; }
 
 # Parse flags (override env defaults)
 print_help(){ sed -n '1,/^set -euo pipefail/p' "$0" | sed 's/^# \{0,1\}//' | grep -E '^(run_dev_loop|PORT|BUILD_DIR|BUILD_TYPE|CMAKE_ARGS|LOOP=|NO_BUILD|VERBOSE|LOG_LEVEL|QML_LOG_LEVEL|NO_BOT_FIRE|-p|Usage:| -r| -d| -t| --cmake-args| --no-build| --once| --loop| --log-level| --qml-log-level| --no-bot-fire| -v)'; echo; echo "Example: $0 -d build-debug -p 40100 -r --no-bot-fire --cmake-args '-DT2D_ENABLE_SANITIZERS=ON'"; }
@@ -100,6 +92,12 @@ if ((${#PENDING_CMAKE_ARGS[@]})); then
     if [[ -z "$CMAKE_ARGS" ]]; then CMAKE_ARGS="$a"; else CMAKE_ARGS+=" $a"; fi
   done
 fi
+# Finalize LOG_LEVEL now that VERBOSE/log-level flags parsed
+if [[ -z "$LOG_LEVEL" ]]; then
+  if [[ "$VERBOSE" == 1 ]]; then LOG_LEVEL=DEBUG; else LOG_LEVEL=INFO; fi
+fi
+_threshold=$(_level_value "$LOG_LEVEL")
+[[ "$VERBOSE" == 1 ]] && set -x && log_debug "Shell trace enabled (VERBOSE=1)"
 log_debug "Effective flags: PORT=$PORT BUILD_DIR=$BUILD_DIR BUILD_TYPE=$BUILD_TYPE LOOP=$LOOP NO_BUILD=$NO_BUILD VERBOSE=$VERBOSE LOG_LEVEL=$LOG_LEVEL QML_LOG_LEVEL=$QML_LOG_LEVEL NO_BOT_FIRE=${NO_BOT_FIRE:-0} CMAKE_ARGS='$CMAKE_ARGS'"
 
 # Run code formatting targets before building (mandatory auto-format step)
