@@ -2,6 +2,7 @@
 import QtQuick 2.15
 import QtQuick.Window 2.15
 import QtQuick.Controls 2.15
+import QtQuick.Layouts 1.15
 import "." // ensure local QML (Joystick, CustomButton)
 
 Window {
@@ -517,18 +518,19 @@ Window {
                 anchors.fill: parent
                 anchors.margins: 4
                 spacing: 4
-                Row {
+                RowLayout {
                     id: tankHeader
                     height: 24
                     spacing: 6
                     anchors.left: parent.left
                     anchors.right: parent.right
                     Text { text: tankPanel.collapsed ? "" : "Tanks"; color: "#c7d4df"; font.pixelSize: 14; visible: !tankPanel.collapsed }
-                    Rectangle { anchors.horizontalStretch: true; color: "transparent" }
+                    Item { Layout.fillWidth: true }
                     Button {
                         id: tankToggle
                         text: tankPanel.collapsed ? "+" : "−"
                         width: 24; height: 24
+                        Layout.alignment: Qt.AlignRight
                         onClicked: tankPanel.collapsed = !tankPanel.collapsed
                     }
                 }
@@ -576,18 +578,19 @@ Window {
                 anchors.fill: parent
                 anchors.margins: 4
                 spacing: 4
-                Row {
+                RowLayout {
                     id: projHeader
                     height: 24
                     spacing: 6
                     anchors.left: parent.left
                     anchors.right: parent.right
                     Text { text: projectilePanel.collapsed ? "" : "Projectiles"; color: "#c7d4df"; font.pixelSize: 14; visible: !projectilePanel.collapsed }
-                    Rectangle { anchors.horizontalStretch: true; color: "transparent" }
+                    Item { Layout.fillWidth: true }
                     Button {
                         id: projToggle
                         text: projectilePanel.collapsed ? "+" : "−"
                         width: 24; height: 24
+                        Layout.alignment: Qt.AlignRight
                         onClicked: projectilePanel.collapsed = !projectilePanel.collapsed
                     }
                 }
