@@ -1,0 +1,73 @@
+name: Release
+
+on:
+  push:
+    tags:
+      - 'v*'
+  workflow_dispatch:
+    inputs:
+      tag:
+        description: 'Tag to build (optional if pushed)'
+        required: false
+
+permissions:
+  contents: write
+
+jobs:
+  build-release:
+    name: Build & Package (Release)
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+          submodules: recursive
+      - name: Derive version
+        id: ver
+        run: |
+          if [[ -n "${{ github.ref_name }}" ]]; then V_TAG=${{ github.ref_name }}; else V_TAG=$(git describe --tags --always); fi
+          echo "version=$V_TAG" >> $GITHUB_OUTPUT
+          echo "Version: $V_TAG" >> $GITHUB_STEP_SUMMARY
+      - name: Quick format & SPDX check
+        run: |
+          bash scripts/format_check.sh
+          bash scripts/spdx_check.sh
+      - name: Install deps
+        run: sudo apt-get update && sudo apt-get install -y protobuf-compiler libprotobuf-dev cmake g++ ninja-build ccache
+      - name: Configure
+        run: cmake -S . -B build -DCMAKE_BUILD_TYPE=Release -DT2D_BUILD_TESTS=ON -DT2D_BUILD_CLIENT=ON -G Ninja
+      - name: Build
+        run: cmake --build build -- -j4
+      - name: Run tests
+        working-directory: build
+        run: ctest --output-on-failure -T Test || (echo "Tests failed" && exit 1)
+      - name: Package server
+        run: bash scripts/package_server.sh
+      - name: Collect artifacts
+        run: |
+          mkdir -p release
+          cp build/t2d_server* release/ 2>/dev/null || true
+          cp build/t2d_desktop_client* release/ 2>/dev/null || true
+          cp build/t2d_qt_client* release/ 2>/dev/null || true
+          cp dist/t2d_server.tar.gz* release/ 2>/dev/null || true
+          echo "Artifacts:" >> $GITHUB_STEP_SUMMARY
+          ls -l release >> $GITHUB_STEP_SUMMARY || true
+      - name: Upload artifacts
+        uses: actions/upload-artifact@v4
+        with:
+          name: release-${{ steps.ver.outputs.version }}
+          path: release/*
+          if-no-files-found: ignore
+      - name: Create GitHub Release
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: ${{ steps.ver.outputs.version }}
+          name: ${{ steps.ver.outputs.version }}
+          draft: false
+          prerelease: false
+          files: |
+            release/*
+          generate_release_notes: true
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
