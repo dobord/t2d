@@ -1,5 +1,49 @@
-#!/usr/bin/env sh
+#!/usr/bin/env bash
 # SPDX-License-Identifier: Apache-2.0
-# Minimal wrapper shim; CI will invoke ./gradlew tasks
-DIR="$(cd "$(dirname "$0")" && pwd)"
-exec "$DIR/gradle/wrapper/gradle-wrapper.jar" "$@"
+# Self-bootstrapping Gradle wrapper (lightweight) used because canonical gradle-wrapper.jar is not vendored.
+# It reads distributionUrl from gradle/wrapper/gradle-wrapper.properties, downloads & caches the distro,
+# then invokes its gradle launcher. If gradle-wrapper.jar is later added, that jar will take precedence.
+
+set -euo pipefail
+
+SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
+PROPS="$SCRIPT_DIR/gradle/wrapper/gradle-wrapper.properties"
+WRAPPER_JAR="$SCRIPT_DIR/gradle/wrapper/gradle-wrapper.jar"
+
+if [[ -f "$WRAPPER_JAR" ]]; then
+	exec "${JAVA_HOME:-$(command -v java >/dev/null 2>&1 && echo java || true)}" -jar "$WRAPPER_JAR" "$@"
+fi
+
+if [[ ! -f "$PROPS" ]]; then
+	echo "gradle-wrapper.properties not found: $PROPS" >&2
+	exit 1
+fi
+
+DIST_URL_LINE=$(grep '^distributionUrl=' "$PROPS" || true)
+DIST_URL=${DIST_URL_LINE#distributionUrl=}
+if [[ -z "$DIST_URL" ]]; then
+	echo "distributionUrl missing in $PROPS" >&2
+	exit 1
+fi
+
+GRADLE_USER_HOME_DEFAULT="${GRADLE_USER_HOME:-$HOME/.gradle}"
+DIST_DIR="$GRADLE_USER_HOME_DEFAULT/wrapper/dists"
+mkdir -p "$DIST_DIR"
+ARCHIVE_NAME="${DIST_URL##*/}"
+BASE_NAME="${ARCHIVE_NAME%.zip}"
+TARGET_DIR="$DIST_DIR/$BASE_NAME"
+BIN_GRADLE="$TARGET_DIR/gradle-$BASE_NAME/bin/gradle"
+
+if [[ ! -x "$BIN_GRADLE" ]]; then
+	TMP_ZIP="$DIST_DIR/$ARCHIVE_NAME"
+	if [[ ! -f "$TMP_ZIP" ]]; then
+		echo "Downloading Gradle distribution: $DIST_URL" >&2
+		curl -fsSL "$DIST_URL" -o "$TMP_ZIP"
+	fi
+	echo "Extracting Gradle distribution to $TARGET_DIR" >&2
+	mkdir -p "$TARGET_DIR"
+	unzip -q -o "$TMP_ZIP" -d "$TARGET_DIR"
+	chmod +x "$BIN_GRADLE" || true
+fi
+
+exec "$BIN_GRADLE" "$@"
