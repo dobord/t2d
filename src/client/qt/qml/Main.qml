@@ -468,10 +468,14 @@ Window {
                         worldY += rootItem.cameraOffsetY;
                     }
                     if (rootItem.isMiddleDragging && !rootItem.followCamera) {
-                        let startWorldX = (rootItem.dragStartX - width / 2) / scale + rootItem.cameraOffsetX;
-                        let startWorldY = (rootItem.dragStartY - height / 2) / scale + rootItem.cameraOffsetY;
-                        let dxWorld = worldX - startWorldX;
-                        let dyWorld = worldY - startWorldY;
+                        // Correct panning: compute delta in screen space and convert via current scale.
+                        // Previous implementation recomputed startWorld using the continually updated
+                        // cameraOffset, causing scale-dependent drift and inverted magnitude.
+                        let dxScreen = ev.x - rootItem.dragStartX;
+                        let dyScreen = ev.y - rootItem.dragStartY;
+                        let dxWorld = dxScreen / scale;
+                        let dyWorld = dyScreen / scale;
+                        // Move camera opposite to cursor drag direction so scene follows cursor.
                         rootItem.cameraOffsetX = rootItem.dragOrigOffsetX - dxWorld;
                         rootItem.cameraOffsetY = rootItem.dragOrigOffsetY - dyWorld;
                     }
