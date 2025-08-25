@@ -1,0 +1,16 @@
+<!-- SPDX-License-Identifier: Apache-2.0 -->
+<manifest xmlns:android="http://schemas.android.com/apk/res/android"
+    package="io.t2d">
+    <application
+        android:label="t2d"
+        android:allowBackup="false"
+        android:usesCleartextTraffic="true"
+        android:debuggable="true">
+        <activity android:name="io.t2d.MainActivity">
+            <intent-filter>
+                <action android:name="android.intent.action.MAIN" />
+                <category android:name="android.intent.category.LAUNCHER" />
+            </intent-filter>
+        </activity>
+    </application>
+</manifest>

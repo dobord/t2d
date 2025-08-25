@@ -1,0 +1,5 @@
+#!/usr/bin/env sh
+# SPDX-License-Identifier: Apache-2.0
+# Minimal wrapper shim; CI will invoke ./gradlew tasks
+DIR="$(cd "$(dirname "$0")" && pwd)"
+exec "$DIR/gradle/wrapper/gradle-wrapper.jar" "$@"
