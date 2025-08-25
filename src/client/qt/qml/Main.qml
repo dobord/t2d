@@ -135,8 +135,9 @@ Window {
                 var tr = 0;
                 if (keyA && !keyD)
                     tr = 1;
-                    // CCW
-                else if (keyD && !keyA)
+                else
+                // CCW
+                if (keyD && !keyA)
                     tr = -1;  // CW
                 if (inputState.turn !== tr)
                     inputState.turn = tr;
