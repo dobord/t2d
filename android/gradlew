@@ -34,7 +34,16 @@ mkdir -p "$DIST_DIR"
 ARCHIVE_NAME="${DIST_URL##*/}"
 BASE_NAME="${ARCHIVE_NAME%.zip}"
 TARGET_DIR="$DIST_DIR/$BASE_NAME"
-BIN_GRADLE="$TARGET_DIR/gradle-$BASE_NAME/bin/gradle"
+# Gradle wrapper adds a hash dir inside target dir; detect actual gradle dir
+find_gradle_bin() {
+	local root="$1"
+	# Prefer hash subdir if exists
+	local cand
+	cand=$(find "$root" -maxdepth 3 -type f -path "*/gradle-*/bin/gradle" 2>/dev/null | head -n1 || true)
+	if [[ -n $cand ]]; then echo "$cand"; return 0; fi
+	echo "$root/gradle-$BASE_NAME/bin/gradle"
+}
+BIN_GRADLE=$(find_gradle_bin "$TARGET_DIR")
 
 if [[ ! -x "$BIN_GRADLE" ]]; then
 	TMP_ZIP="$DIST_DIR/$ARCHIVE_NAME"
@@ -45,7 +54,8 @@ if [[ ! -x "$BIN_GRADLE" ]]; then
 	echo "Extracting Gradle distribution to $TARGET_DIR" >&2
 	mkdir -p "$TARGET_DIR"
 	unzip -q -o "$TMP_ZIP" -d "$TARGET_DIR"
-	chmod +x "$BIN_GRADLE" || true
+		BIN_GRADLE=$(find_gradle_bin "$TARGET_DIR")
+		chmod +x "$BIN_GRADLE" 2>/dev/null || true
 fi
 
 exec "$BIN_GRADLE" "$@"
