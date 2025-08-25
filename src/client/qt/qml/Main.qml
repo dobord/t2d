@@ -409,9 +409,21 @@ Window {
                     ctx.rect(28, 41, 424, 558);
                     ctx.fill();
                     ctx.stroke();
-                    ctx.fillStyle = '#9b0101';
-                    ctx.fillRect(46, 576, 80, 23);
-                    ctx.fillRect(358, 576, 80, 23);
+                    // Rear brake lights: brighten & glow when local player braking
+                    const brakeOn = isOwn && inputState.brake;
+                    if (brakeOn) {
+                        ctx.save();
+                        ctx.fillStyle = '#ff2727';
+                        ctx.shadowColor = '#ff4545';
+                        ctx.shadowBlur = 32;
+                        ctx.fillRect(46, 576, 80, 23);
+                        ctx.fillRect(358, 576, 80, 23);
+                        ctx.restore();
+                    } else {
+                        ctx.fillStyle = '#5c1010'; // dim when not braking
+                        ctx.fillRect(46, 576, 80, 23);
+                        ctx.fillRect(358, 576, 80, 23);
+                    }
                     drawRoundedRect(ctx, 65, 49, 43, 30, 15, '#f1f0f0');
                     drawRoundedRect(ctx, 377, 49, 43, 30, 15, '#f1f0f0');
                     ctx.save();
