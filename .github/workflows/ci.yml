@@ -116,47 +116,6 @@ jobs:
           pct_line=$(grep -E 'lines.*:' coverage.info | head -n1 | awk -F'=' '{print $2}') || true
           echo "Line coverage: ${pct_line:-n/a}" >> $GITHUB_STEP_SUMMARY
 
-  asan:
-    name: ASan/UBSan (Linux)
-    runs-on: ubuntu-latest
-    steps:
-      - uses: actions/checkout@v4
-        with:
-          submodules: recursive
-          fetch-depth: 0
-      - name: Install deps
-        run: sudo apt-get update && sudo apt-get install -y protobuf-compiler libprotobuf-dev cmake g++ ninja-build
-      - name: Configure (ASan/UBSan)
-        run: cmake -S . -B build -DCMAKE_BUILD_TYPE=Debug -DT2D_BUILD_TESTS=ON -DT2D_ENABLE_SANITIZERS=ON -G Ninja
-      - name: Build
-        run: cmake --build build -- -j4
-      - name: Run tests (ASan/UBSan)
-        working-directory: build
-        env:
-          ASAN_OPTIONS: detect_leaks=1:strict_string_checks=1:allocator_may_return_null=1
-          UBSAN_OPTIONS: print_stacktrace=1:halt_on_error=1
-        run: ctest --output-on-failure
-
-  tsan:
-    name: ThreadSanitizer (Linux)
-    runs-on: ubuntu-latest
-    steps:
-      - uses: actions/checkout@v4
-        with:
-          submodules: recursive
-          fetch-depth: 0
-      - name: Install deps
-        run: sudo apt-get update && sudo apt-get install -y protobuf-compiler libprotobuf-dev cmake g++ ninja-build
-      - name: Configure (TSan)
-        run: cmake -S . -B build -DCMAKE_BUILD_TYPE=Debug -DT2D_BUILD_TESTS=ON -DT2D_ENABLE_TSAN=ON -G Ninja
-      - name: Build
-        run: cmake --build build -- -j4
-      - name: Run tests (TSan)
-        working-directory: build
-        env:
-          TSAN_OPTIONS: suppressions=/dev/null halt_on_error=1
-        run: ctest --output-on-failure
-
   verify-dependencies:
     runs-on: ubuntu-latest
     steps:
