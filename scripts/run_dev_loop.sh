@@ -49,13 +49,23 @@ run_format(){
     return 0
   fi
   log "Running code format targets"
-  # Prefer dedicated project formatting target to avoid formatting third_party
-  if cmake --build "$ROOT_DIR/$BUILD_DIR" --target t2d_format -j $(nproc || echo 4) >/dev/null 2>&1; then
-    log "Formatting completed (target=t2d_format)"; return 0; fi
-  if cmake --build "$ROOT_DIR/$BUILD_DIR" --target format_all -j $(nproc || echo 4) >/dev/null 2>&1; then
-    log "Formatting completed (target=format_all)"; return 0; fi
-  if cmake --build "$ROOT_DIR/$BUILD_DIR" --target format -j $(nproc || echo 4) >/dev/null 2>&1; then
-    log "Formatting completed (target=format)"; return 0; fi
+  # Prefer aggregated format_all (it is constructed only from first-party format targets: t2d_format, format_cmake, format_qml)
+  # This still avoids third_party because t2d_format already filters it out.
+  if [[ "$VERBOSE" == 1 ]]; then
+    if cmake --build "$ROOT_DIR/$BUILD_DIR" --target format_all -j $(nproc || echo 4); then
+      log "Formatting completed (target=format_all)"; return 0; fi
+    if cmake --build "$ROOT_DIR/$BUILD_DIR" --target t2d_format -j $(nproc || echo 4); then
+      log "Formatting completed (target=t2d_format)"; return 0; fi
+    if cmake --build "$ROOT_DIR/$BUILD_DIR" --target format -j $(nproc || echo 4); then
+      log "Formatting completed (target=format)"; return 0; fi
+  else
+    if cmake --build "$ROOT_DIR/$BUILD_DIR" --target format_all -j $(nproc || echo 4) >/dev/null 2>&1; then
+      log "Formatting completed (target=format_all)"; return 0; fi
+    if cmake --build "$ROOT_DIR/$BUILD_DIR" --target t2d_format -j $(nproc || echo 4) >/dev/null 2>&1; then
+      log "Formatting completed (target=t2d_format)"; return 0; fi
+    if cmake --build "$ROOT_DIR/$BUILD_DIR" --target format -j $(nproc || echo 4) >/dev/null 2>&1; then
+      log "Formatting completed (target=format)"; return 0; fi
+  fi
   log_warn "No formatting target found (format_all/format/t2d_format). Skipping auto-format."
 }
 
