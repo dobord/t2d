@@ -15,6 +15,15 @@ if (EXISTS ${ROOT_DIR}/build/game.pb.cc)
 	target_include_directories(t2d_native PRIVATE ${ROOT_DIR}/build)
 endif()
 
+# Prefer Android-specific lite generated proto if present (overrides full runtime inclusion above)
+set(ANDROID_LITE_PROTO_DIR ${ROOT_DIR}/android/proto/cpp)
+if (EXISTS ${ANDROID_LITE_PROTO_DIR}/game.pb.cc)
+	message(STATUS "Using Android lite protobuf sources")
+	target_sources(t2d_native PRIVATE ${ANDROID_LITE_PROTO_DIR}/game.pb.cc)
+	target_include_directories(t2d_native PRIVATE ${ANDROID_LITE_PROTO_DIR})
+	target_compile_definitions(t2d_native PRIVATE T2D_PROTO_LITE=1)
+endif()
+
 # Placeholder: later link core client logic
 
 find_library(log-lib log)

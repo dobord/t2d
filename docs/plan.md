@@ -61,6 +61,7 @@ The following epics are required to reach fully automated builds (server + Andro
 - [x] Linux build for server & clients (prototype + Qt UI)
 - [ ] Android build job (NDK + Gradle) producing APK artifact
 	- [x] Initial debug APK build job (arm64-v8a, native hello stub)
+	- [x] Proto lite generation script & CI integration
 - [ ] WebAssembly client build job (Docker + wasm bundle artifact)
 - [x] Separate build stages logically split across jobs (build/test, coverage, sanitizers, deps)
 	- [x] CCache integration

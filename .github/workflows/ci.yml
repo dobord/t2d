@@ -211,6 +211,8 @@ jobs:
         with:
           fetch-depth: 0
           submodules: recursive
+      - name: Install protoc
+        run: sudo apt-get update && sudo apt-get install -y protobuf-compiler
       - name: Set up Android SDK
         uses: android-actions/setup-android@v3
       - name: Install SDK components
@@ -220,6 +222,8 @@ jobs:
             "platforms;android-34" \
             "build-tools;34.0.0" \
             "ndk;29.0.13846066"
+      - name: Generate protobuf (lite)
+        run: bash scripts/gen_proto_android.sh
       - name: Grant execute
         run: chmod +x android/gradlew || true
       - name: Build APK
