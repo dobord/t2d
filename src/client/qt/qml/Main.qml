@@ -368,7 +368,7 @@ Window {
                         ctx.stroke();
                     }
                 }
-                const SPRITE_FRONT_OFFSET = -Math.PI / 2; // Protocol: 0° = +X (right). Art points up, so subtract 90°.
+                const SPRITE_FRONT_OFFSET = Math.PI / 2; // Protocol: 0° = +X (right). Sprite points up, so rotate +90° to align sprite front with +X.
                 function drawTank(ctx, wx, wy, hullRad, turretRad, isOwn) {
                     // Convert protocol angle (0°=+X) to sprite angle (0 sprite up) via SPRITE_FRONT_OFFSET.
                     const W = 480, H = 640;
