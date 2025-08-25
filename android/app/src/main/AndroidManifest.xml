@@ -1,12 +1,14 @@
 <!-- SPDX-License-Identifier: Apache-2.0 -->
-<manifest xmlns:android="http://schemas.android.com/apk/res/android"
-    package="io.t2d">
+<manifest xmlns:android="http://schemas.android.com/apk/res/android">
+    <!-- package attribute removed (namespace is set in build.gradle) -->
     <application
         android:label="t2d"
         android:allowBackup="false"
-        android:usesCleartextTraffic="true"
-        android:debuggable="true">
-        <activity android:name="io.t2d.MainActivity">
+        android:usesCleartextTraffic="true">
+        <!-- Explicit exported attribute required for Android 12+ when intent-filter present -->
+        <activity
+            android:name="io.t2d.MainActivity"
+            android:exported="true">
             <intent-filter>
                 <action android:name="android.intent.action.MAIN" />
                 <category android:name="android.intent.category.LAUNCHER" />
