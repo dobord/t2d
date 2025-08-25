@@ -30,14 +30,14 @@ Window {
         property real dragStartX: 0
         property real dragStartY: 0
         property real dragOrigOffsetX: 0
-    property real dragOrigOffsetY: 0
-    // Global scale parameters (world -> screen). We target a tank radius (1.0 world unit) occupying
-    // targetTankScreenFraction of the shorter screen dimension at zoom=1. userZoom multiplies this.
-    property real tankWorldRadius: 3.0
-    property real targetTankScreenFraction: 0.10
-    // Effective world->screen scale used everywhere (painting & camera drag math).
-    property real worldToScreenScale:   Math.min(scene.width,   scene.height)    * targetTankScreenFraction /   tankWorldRadius *    userZoom
-    // Internal cached last computed desired turret angle (degrees)
+        property real dragOrigOffsetY: 0
+        // Global scale parameters (world -> screen). We target a tank radius (1.0 world unit) occupying
+        // targetTankScreenFraction of the shorter screen dimension at zoom=1. userZoom multiplies this.
+        property real tankWorldRadius: 3.0
+        property real targetTankScreenFraction: 0.10
+        // Effective world->screen scale used everywhere (painting & camera drag math).
+        property real worldToScreenScale: Math.min(scene.width, scene.height) * targetTankScreenFraction / tankWorldRadius * userZoom
+        // Internal cached last computed desired turret angle (degrees)
         property real desiredTurretAngleDeg: 0
         Component.onCompleted: {
             rootItem.forceActiveFocus();
@@ -528,11 +528,19 @@ Window {
                     spacing: 6
                     anchors.left: parent.left
                     anchors.right: parent.right
-                    Text { text: tankPanel.collapsed ? "" : "Tanks"; color: "#c7d4df"; font.pixelSize: 14; visible: !tankPanel.collapsed }
-                    Item { Layout.fillWidth: true }
+                    Text {
+                        text: tankPanel.collapsed ? "" : "Tanks"
+                        color: "#c7d4df"
+                        font.pixelSize: 14
+                        visible: !tankPanel.collapsed
+                    }
+                    Item {
+                        Layout.fillWidth: true
+                    }
                     Button {
                         id: tankToggle
-                        width: 24; height: 24
+                        width: 24
+                        height: 24
                         Layout.alignment: Qt.AlignRight
                         opacity: hovered ? 0.9 : 0.45
                         hoverEnabled: true
@@ -570,9 +578,20 @@ Window {
                             anchors.fill: parent
                             anchors.margins: 4
                             spacing: 6
-                            Text { text: entityId; color: "#d0d3d6"; width: 38 }
-                            Text { text: `x:${x.toFixed(1)} y:${y.toFixed(1)}`; color: "#9fb2c3"; width: 138 }
-                            Text { text: `hp:${hp} a:${ammo}`; color: "#c5a96a" }
+                            Text {
+                                text: entityId
+                                color: "#d0d3d6"
+                                width: 38
+                            }
+                            Text {
+                                text: `x:${x.toFixed(1)} y:${y.toFixed(1)}`
+                                color: "#9fb2c3"
+                                width: 138
+                            }
+                            Text {
+                                text: `hp:${hp} a:${ammo}`
+                                color: "#c5a96a"
+                            }
                         }
                     }
                     ScrollBar.vertical: ScrollBar {}
@@ -603,11 +622,19 @@ Window {
                     spacing: 6
                     anchors.left: parent.left
                     anchors.right: parent.right
-                    Text { text: projectilePanel.collapsed ? "" : "Projectiles"; color: "#c7d4df"; font.pixelSize: 14; visible: !projectilePanel.collapsed }
-                    Item { Layout.fillWidth: true }
+                    Text {
+                        text: projectilePanel.collapsed ? "" : "Projectiles"
+                        color: "#c7d4df"
+                        font.pixelSize: 14
+                        visible: !projectilePanel.collapsed
+                    }
+                    Item {
+                        Layout.fillWidth: true
+                    }
                     Button {
                         id: projToggle
-                        width: 24; height: 24
+                        width: 24
+                        height: 24
                         Layout.alignment: Qt.AlignRight
                         opacity: hovered ? 0.9 : 0.45
                         hoverEnabled: true
@@ -645,9 +672,20 @@ Window {
                             anchors.fill: parent
                             anchors.margins: 4
                             spacing: 6
-                            Text { text: projId; color: "#d0d3d6"; width: 46 }
-                            Text { text: `x:${x.toFixed(1)}`; color: "#9fb2c3"; width: 56 }
-                            Text { text: `y:${y.toFixed(1)}`; color: "#9fb2c3" }
+                            Text {
+                                text: projId
+                                color: "#d0d3d6"
+                                width: 46
+                            }
+                            Text {
+                                text: `x:${x.toFixed(1)}`
+                                color: "#9fb2c3"
+                                width: 56
+                            }
+                            Text {
+                                text: `y:${y.toFixed(1)}`
+                                color: "#9fb2c3"
+                            }
                         }
                     }
                     ScrollBar.vertical: ScrollBar {}
@@ -684,7 +722,8 @@ Window {
             text: "Snapshot tanks=" + tankList.count + "  follow=" + (rootItem.followCamera ? "on" : "off") + "(G)" + "  grid=" + (rootItem.showGrid ? "on" : "off") + "(H)" + "  mouseAim=" + (rootItem.mouseAimEnabled ? "on" : "off") + "(M)" + "  zoom=" + rootItem.userZoom.toFixed(2) + "(+/- wheel)" + "  focus=" + rootItem.focus
             color: "#d0dde5"
             font.pixelSize: 14
-            Rectangle { // backdrop for readability
+            Rectangle {
+                // backdrop for readability
                 anchors.fill: parent
                 anchors.margins: -6
                 radius: 6

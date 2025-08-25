@@ -60,7 +60,7 @@ run_target() {
 STAGED_ALL=$(git diff --cached --name-only --diff-filter=ACMR || true)
 
 # C/C++ sources
-mapfile -t STAGED_CXX < <(echo "$STAGED_ALL" | grep -E '\\.(c|cc|cxx|cpp|h|hpp)$' || true)
+mapfile -t STAGED_CXX < <(echo "$STAGED_ALL" | grep -E '\.(c|cc|cxx|cpp|h|hpp)$' || true)
 FILTERED=()
 for f in "${STAGED_CXX[@]}"; do
   case "$f" in
@@ -70,7 +70,7 @@ for f in "${STAGED_CXX[@]}"; do
 done
 
 # QML sources
-mapfile -t STAGED_QML < <(echo "$STAGED_ALL" | grep -E '\\.qml$' || true)
+mapfile -t STAGED_QML < <(echo "$STAGED_ALL" | grep -E '\.qml$' || true)
 QML_FILTERED=()
 for f in "${STAGED_QML[@]}"; do
   case "$f" in
@@ -91,7 +91,7 @@ while read -r _q; do
       QML_FILTERED+=("$_q")
     fi
   fi
-done < <(git diff --name-only --diff-filter=ACMRT | grep -E '\\.qml$' || true)
+done < <(git diff --name-only --diff-filter=ACMRT | grep -E '\.qml$' || true)
 
 # Auto-add SPDX header to new first-party C/C++ files missing it.
 for f in "${FILTERED[@]}" "${QML_FILTERED[@]}"; do
