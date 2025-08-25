@@ -351,6 +351,7 @@ Window {
                 if (rootItem.showGrid) {
                     const gridSpacing = 5;            // world units between minor lines
                     const majorEvery = 5;             // every N minor lines draw a thicker (major) line
+                    const majorSpacing = gridSpacing * majorEvery; // world units between major lines (stable in world space)
                     // Determine world-space center the camera is focused on
                     let camX, camY;
                     if (rootItem.followCamera && ownIndex >= 0) {
@@ -378,9 +379,9 @@ Window {
                         // Horizontal (vertical lines): iterate world X positions starting at startGX.
                         // Use pre-declared counters to avoid qmlformat merging tokens (workaround for formatting issue).
                         let gx = startGX;
-                        let idx = 0;
                         while (gx <= worldMaxX) {
-                            const isMajor = (idx % majorEvery) === 0;
+                            // Major line if gx is (within epsilon) a multiple of majorSpacing.
+                            const isMajor = Math.abs((gx / majorSpacing) - Math.round(gx / majorSpacing)) < 1e-6;
                             ctx.strokeStyle = isMajor ? '#2d4752' : '#23333c';
                             ctx.lineWidth = isMajor ? 0.04 : 0.02;
                             ctx.beginPath();
@@ -388,13 +389,11 @@ Window {
                             ctx.lineTo(gx, worldMaxY);
                             ctx.stroke();
                             gx += gridSpacing;
-                            ++idx;
                         }
                         // Vertical (horizontal lines): iterate world Y positions starting at startGY.
                         let gy = startGY;
-                        let idy = 0;
                         while (gy <= worldMaxY) {
-                            const isMajor = (idy % majorEvery) === 0;
+                            const isMajor = Math.abs((gy / majorSpacing) - Math.round(gy / majorSpacing)) < 1e-6;
                             ctx.strokeStyle = isMajor ? '#2d4752' : '#23333c';
                             ctx.lineWidth = isMajor ? 0.04 : 0.02;
                             ctx.beginPath();
@@ -402,7 +401,6 @@ Window {
                             ctx.lineTo(worldMaxX, gy);
                             ctx.stroke();
                             gy += gridSpacing;
-                            ++idy;
                         }
                         ctx.restore();
                     }
