@@ -153,9 +153,8 @@ jobs:
           echo "Dependency manifest OK"
 
   clang-tidy:
-    name: Clang-Tidy (Advisory)
+    name: Clang-Tidy (Gating)
     runs-on: ubuntu-latest
-    continue-on-error: true # non-blocking initially; will gate later
     steps:
       - uses: actions/checkout@v4
         with:

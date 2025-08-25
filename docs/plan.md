@@ -65,7 +65,7 @@ The following epics are required to reach fully automated builds (server + Andro
 	- [x] CCache integration
 	- [ ] Artifact upload completion (APK, WASM bundle, debugging symbols) (PARTIAL: server binaries/package + desktop & Qt client uploaded)
 	- [x] Code coverage (lcov) reporting + summary
-	- [ ] Static analysis (clang-tidy) gating (script exists; CI job pending)
+	- [x] Static analysis (clang-tidy) gating (job now fails CI on findings)
 	- [x] Sanitizers matrix (ASan/UBSan + TSAN)
 	- [x] Version stamping from git metadata
 	- [ ] Release workflow (tag push) + changelog
@@ -163,7 +163,7 @@ E. Release workflow publishes artifacts on tag push.
 - [ ] WASM client build job (Emscripten) producing bundle artifact
 - [ ] Artifact uploads completion (APK, WASM bundle, symbol files)
 - [ ] Release workflow on tag push (publish artifacts + changelog)
-- [ ] clang-tidy CI job (non-blocking → gating)
+- [x] clang-tidy CI job (non-blocking → gating)
 - [ ] Performance microbench harness (serialization & framing) + baseline capture
 - [ ] Fuzzing target for frame parser (libFuzzer) in nightly CI
 - [ ] Replay validator test (reconstruct vs authoritative) & deterministic harness
