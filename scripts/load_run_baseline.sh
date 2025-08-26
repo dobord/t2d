@@ -60,10 +60,22 @@ if [[ ! -f "${ABS_CFG_PATH}" ]]; then
 	exit 1
 fi
 
-if [[ ! -x ${BUILD_DIR}/t2d_server ]]; then
-	echo "[build] Building profiling binaries..." >&2
-	cmake -S . -B "${BUILD_DIR}" -DT2D_ENABLE_PROFILING=ON -DT2D_BUILD_TESTS=OFF -DT2D_BUILD_CLIENT=ON -DT2D_BUILD_QT_CLIENT=OFF >/dev/null
-	cmake --build "${BUILD_DIR}" -j $(nproc) --target t2d_server t2d_test_client >/dev/null
+if [[ ! -x ${BUILD_DIR}/t2d_server || ! -x ${BUILD_DIR}/t2d_test_client ]]; then
+	echo "[build] Building profiling binaries (server + test client)..." >&2
+	# Configure if needed (idempotent)
+	if [[ ! -f ${BUILD_DIR}/CMakeCache.txt ]]; then
+		cmake -S . -B "${BUILD_DIR}" -DT2D_ENABLE_PROFILING=ON -DT2D_BUILD_TESTS=OFF -DT2D_BUILD_CLIENT=ON -DT2D_BUILD_QT_CLIENT=OFF >/dev/null
+	fi
+	cmake --build "${BUILD_DIR}" -j $(nproc) --target t2d_server t2d_test_client >/dev/null || {
+		echo "[build] Build failed" >&2
+		exit 1
+	}
+fi
+
+# Safety: verify test client exists before spawning
+if [[ ! -x ${BUILD_DIR}/t2d_test_client ]]; then
+	echo "[load] Missing t2d_test_client after build; aborting" >&2
+	exit 1
 fi
 
 pushd "${BUILD_DIR}" >/dev/null

@@ -58,7 +58,12 @@ if [[ -n "${OFFCPU_PROF_PID}" ]]; then wait ${OFFCPU_PROF_PID} 2>/dev/null || tr
 
 # Extract metrics from server.log
 SERVER_LOG=baseline_logs/server.log
-AVG_TICK_NS=$(grep -E '"metric":"runtime"' ${SERVER_LOG} | tail -1 | sed -E 's/.*"avg_tick_ns":([0-9]+).*/\1/' || echo 0)
+# Prefer final runtime flush if present, else periodic runtime sample
+if grep -q '"metric":"runtime_final"' ${SERVER_LOG}; then
+	AVG_TICK_NS=$(grep -E '"metric":"runtime_final"' ${SERVER_LOG} | tail -1 | sed -E 's/.*"avg_tick_ns":([0-9]+).*/\1/' || echo 0)
+else
+	AVG_TICK_NS=$(grep -E '"metric":"runtime"' ${SERVER_LOG} | tail -1 | sed -E 's/.*"avg_tick_ns":([0-9]+).*/\1/' || echo 0)
+fi
 FULL_BYTES=$(grep -E '"metric":"snapshot_totals"' ${SERVER_LOG} | tail -1 | sed -E 's/.*"full_bytes":([0-9]+).*/\1/' || echo 0)
 DELTA_BYTES=$(grep -E '"metric":"snapshot_totals"' ${SERVER_LOG} | tail -1 | sed -E 's/.*"delta_bytes":([0-9]+).*/\1/' || echo 0)
 FULL_COUNT=$(grep -E '"metric":"snapshot_totals"' ${SERVER_LOG} | tail -1 | sed -E 's/.*"full_count":([0-9]+).*/\1/' || echo 0)

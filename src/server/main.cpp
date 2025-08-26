@@ -298,6 +298,22 @@ int main(int argc, char **argv)
         }
     }
     t2d::log::info("Shutdown complete.");
+    // Final runtime metrics flush (ensures short profiling runs capture avg tick stats)
+    {
+        auto &rt = t2d::metrics::runtime();
+        uint64_t samples = rt.tick_samples.load();
+        uint64_t avg_ns = samples ? rt.tick_duration_ns_accum.load() / samples : 0;
+        t2d::log::info(
+            "{\"metric\":\"runtime_final\",\"avg_tick_ns\":{},\"samples\":{},\"queue_depth\":{},\"active_matches\":{},"
+            "\"bots_in_match\":{},\"projectiles_active\":{},\"connected_players\":{}}",
+            avg_ns,
+            samples,
+            rt.queue_depth.load(),
+            rt.active_matches.load(),
+            rt.bots_in_match.load(),
+            rt.projectiles_active.load(),
+            rt.connected_players.load());
+    }
     // Dump snapshot metrics (stdout JSON lines if JSON mode enabled externally in logger)
     auto fullB = t2d::metrics::snapshot().full_bytes.load();
     auto deltaB = t2d::metrics::snapshot().delta_bytes.load();
