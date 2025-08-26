@@ -319,6 +319,9 @@ inline void write(level lv, std::string_view msg)
         return;
     detail::start();
     auto tp = std::chrono::system_clock::now();
+#if T2D_PROFILING_ENABLED
+    t2d::metrics::runtime().log_lines_total.fetch_add(1, std::memory_order_relaxed);
+#endif
     if (detail::g_started.load(std::memory_order_acquire)) {
         {
             std::lock_guard lk(detail::g_q_mtx);

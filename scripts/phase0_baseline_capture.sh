@@ -133,7 +133,7 @@ if [[ -n "${OFFCPU_PROF_PID}" ]]; then wait ${OFFCPU_PROF_PID} 2>/dev/null || tr
 # Extract metrics from server.log (robust mode)
 ###############################################
 SERVER_LOG=baseline_logs/server.log
-AVG_TICK_NS=0 P99_TICK_NS=0 WAIT_P99_NS=0 CPU_USER_PCT=0 RSS_PEAK_BYTES=0 ALLOCS_PER_TICK_MEAN=0 ALLOCS_PER_TICK_P95=0 SCRATCH_REUSE_PCT=0 PROJ_POOL_HIT_PCT=0 PROJ_POOL_MISSES=0
+AVG_TICK_NS=0 P99_TICK_NS=0 WAIT_P99_NS=0 CPU_USER_PCT=0 RSS_PEAK_BYTES=0 ALLOCS_PER_TICK_MEAN=0 ALLOCS_PER_TICK_P95=0 SCRATCH_REUSE_PCT=0 PROJ_POOL_HIT_PCT=0 PROJ_POOL_MISSES=0 LOG_LINES_PER_TICK_MEAN=0
 FULL_BYTES=0 DELTA_BYTES=0 FULL_COUNT=0 DELTA_COUNT=0
 if [[ -f ${SERVER_LOG} ]]; then
 	# Temporarily disable -e because grep returning 1 (no matches) would abort script
@@ -151,6 +151,7 @@ if [[ -f ${SERVER_LOG} ]]; then
 		RSS_PEAK_BYTES=$(echo "${line}" | sed -E 's/.*"rss_peak_bytes":([0-9]+).*/\1/' || echo 0)
 		ALLOCS_PER_TICK_MEAN=$(echo "${line}" | sed -E 's/.*"allocs_per_tick_mean":([0-9\.]+).*/\1/' || echo 0)
 		ALLOCS_PER_TICK_P95=$(echo "${line}" | sed -E 's/.*"allocs_per_tick_p95":([0-9]+).*/\1/' || echo 0)
+		LOG_LINES_PER_TICK_MEAN=$(echo "${line}" | sed -E 's/.*"log_lines_per_tick_mean":([0-9\.]+).*/\1/' || echo 0)
 		SCRATCH_REUSE_PCT=$(echo "${line}" | sed -E 's/.*"snapshot_scratch_reuse_pct":([0-9\.]+).*/\1/' || echo 0)
 		PROJ_POOL_HIT_PCT=$(echo "${line}" | sed -E 's/.*"projectile_pool_hit_pct":([0-9\.]+).*/\1/' || echo 0)
 		PROJ_POOL_MISSES=$(echo "${line}" | sed -E 's/.*"projectile_pool_misses":([0-9]+).*/\1/' || echo 0)
@@ -160,6 +161,7 @@ if [[ -f ${SERVER_LOG} ]]; then
 		if ! [[ ${PROJ_POOL_MISSES} =~ ^[0-9]+$ ]]; then PROJ_POOL_MISSES=0; fi
 		# Ensure numeric (strip anything non-digit)
 		if ! [[ ${ALLOCS_PER_TICK_P95} =~ ^[0-9]+$ ]]; then ALLOCS_PER_TICK_P95=0; fi
+		if ! [[ ${LOG_LINES_PER_TICK_MEAN} =~ ^[0-9]+(\.[0-9]+)?$ ]]; then LOG_LINES_PER_TICK_MEAN=0; fi
 	fi
 	# snapshot totals (may appear earlier, so separate grep)
 	st_line=$(grep -E '"metric":"snapshot_totals"' "${SERVER_LOG}" | tail -1)

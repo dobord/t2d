@@ -67,6 +67,10 @@ struct RuntimeCounters
     std::atomic<uint64_t> projectile_pool_requests{0};
     std::atomic<uint64_t> projectile_pool_hits{0};
     std::atomic<uint64_t> projectile_pool_misses{0}; // growth events
+    // Logging metrics (profiling build): lines emitted per tick (info+debug+warn+error+trace)
+    std::atomic<uint64_t> log_lines_total{0};
+    std::atomic<uint64_t> log_lines_per_tick_accum{0};
+    std::atomic<uint64_t> log_lines_per_tick_samples{0};
 };
 
 inline RuntimeCounters &runtime()
@@ -144,6 +148,13 @@ inline void add_allocations_tick(uint64_t count)
     rt.allocations_per_tick_hist[RuntimeCounters::ALLOC_BUCKETS - 1].fetch_add(1, std::memory_order_relaxed);
 }
 
+inline void add_log_lines_tick(uint64_t count)
+{
+    auto &rt = runtime();
+    rt.log_lines_per_tick_accum.fetch_add(count, std::memory_order_relaxed);
+    rt.log_lines_per_tick_samples.fetch_add(1, std::memory_order_relaxed);
+}
+
 inline uint64_t approx_allocations_per_tick_p95()
 {
     auto &rt = runtime();
@@ -208,6 +219,10 @@ inline uint64_t projectile_pool_misses()
 {
     return runtime().projectile_pool_misses.load(std::memory_order_relaxed);
 }
+#else
+inline void add_allocations_tick(uint64_t) {}
+
+inline void add_log_lines_tick(uint64_t) {}
 #else
 inline void add_allocations_tick(uint64_t) {}
 

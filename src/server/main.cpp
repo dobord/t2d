@@ -483,6 +483,15 @@ int main(int argc, char **argv)
             j << ",\"snapshot_scratch_reuse_pct\":" << scratch_reuse;
             j << ",\"projectile_pool_hit_pct\":" << t2d::metrics::projectile_pool_hit_pct();
             j << ",\"projectile_pool_misses\":" << t2d::metrics::projectile_pool_misses();
+            {
+                double log_lines_mean = 0.0;
+                auto log_samples = rt.log_lines_per_tick_samples.load(std::memory_order_relaxed);
+                if (log_samples > 0) {
+                    log_lines_mean =
+                        (double)rt.log_lines_per_tick_accum.load(std::memory_order_relaxed) / (double)log_samples;
+                }
+                j << ",\"log_lines_per_tick_mean\":" << log_lines_mean;
+            }
 #endif
             {
                 double frees_per_tick_mean = 0.0;

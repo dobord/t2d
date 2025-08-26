@@ -210,6 +210,7 @@ coro::task<void> run_match(std::shared_ptr<coro::io_scheduler> scheduler, std::s
         uint64_t alloc_before = t2d::metrics::runtime().allocations_total.load(std::memory_order_relaxed);
         uint64_t alloc_bytes_before = t2d::metrics::runtime().allocations_bytes_total.load(std::memory_order_relaxed);
         uint64_t dealloc_before = t2d::metrics::runtime().deallocations_total.load(std::memory_order_relaxed);
+        uint64_t log_before = t2d::metrics::runtime().log_lines_total.load(std::memory_order_relaxed);
 #endif
         next += tick_interval;
         ctx->server_tick++;
@@ -872,6 +873,7 @@ coro::task<void> run_match(std::shared_ptr<coro::io_scheduler> scheduler, std::s
         uint64_t alloc_after = t2d::metrics::runtime().allocations_total.load(std::memory_order_relaxed);
         uint64_t alloc_bytes_after = t2d::metrics::runtime().allocations_bytes_total.load(std::memory_order_relaxed);
         uint64_t dealloc_after = t2d::metrics::runtime().deallocations_total.load(std::memory_order_relaxed);
+        uint64_t log_after = t2d::metrics::runtime().log_lines_total.load(std::memory_order_relaxed);
         if (alloc_after >= alloc_before) {
             auto delta = alloc_after - alloc_before;
             auto &rt = t2d::metrics::runtime();
@@ -895,6 +897,19 @@ coro::task<void> run_match(std::shared_ptr<coro::io_scheduler> scheduler, std::s
             rt.deallocations_per_tick_samples.fetch_add(1, std::memory_order_relaxed);
             if (delta_free > 0) {
                 rt.deallocations_ticks_with_free.fetch_add(1, std::memory_order_relaxed);
+            }
+        }
+        if (log_after >= log_before) {
+            auto delta_log = log_after - log_before;
+            if (delta_log > 0) {
+                auto &rt = t2d::metrics::runtime();
+                rt.log_lines_per_tick_accum.fetch_add(delta_log, std::memory_order_relaxed);
+                rt.log_lines_per_tick_samples.fetch_add(1, std::memory_order_relaxed);
+            } else {
+                // Even if zero, still count a sample so mean reflects silent ticks? Decide to count all ticks for
+                // consistency with allocation bytes above
+                auto &rt = t2d::metrics::runtime();
+                rt.log_lines_per_tick_samples.fetch_add(1, std::memory_order_relaxed);
             }
         }
 #endif
