@@ -7,6 +7,7 @@ set -euo pipefail
 # Force stable numeric locale (avoid commas in decimals like 0,270)
 export LC_NUMERIC=C
 
+# Defaults (can be overridden by env or CLI flags)
 DURATION=${DURATION:-60}
 CLIENTS=${CLIENTS:-12}
 PORT=${PORT:-40000}
@@ -20,6 +21,53 @@ PLAN_FILE=docs/performance_plan.md
 WAIT_BEFORE_PROF_MS=${WAIT_BEFORE_PROF_MS:-500}
 FALLBACK_FILTER=${FALLBACK_FILTER:-t2d_server}
 TOP_N_SYMBOLS=${TOP_N_SYMBOLS:-10}
+
+usage() {
+	cat <<EOF
+Usage: $0 [--clients N] [--duration SEC] [--port PORT] [--cpu-prof SEC] [--offcpu-prof SEC] [--no-perf]
+Environment overrides also respected: CLIENTS, DURATION, PORT, CPU_PROF_DUR, OFFCPU_PROF_DUR.
+--no-perf sets both CPU and Off-CPU profiling durations to 0 (metrics only).
+EOF
+}
+
+while [[ $# -gt 0 ]]; do
+	case $1 in
+	--clients)
+		CLIENTS=$2
+		shift 2
+		;;
+	--duration)
+		DURATION=$2
+		shift 2
+		;;
+	--port)
+		PORT=$2
+		shift 2
+		;;
+	--cpu-prof)
+		CPU_PROF_DUR=$2
+		shift 2
+		;;
+	--offcpu-prof)
+		OFFCPU_PROF_DUR=$2
+		shift 2
+		;;
+	--no-perf)
+		CPU_PROF_DUR=0
+		OFFCPU_PROF_DUR=0
+		shift
+		;;
+	-h | --help)
+		usage
+		exit 0
+		;;
+	*)
+		echo "Unknown arg: $1" >&2
+		usage
+		exit 1
+		;;
+	esac
+done
 
 mkdir -p "${RUN_DIR}" || true
 
@@ -130,18 +178,15 @@ if [[ ! -f "${FOLDED_FILE}" && -f "${RUN_DIR}/cpu/out.folded.full" ]]; then
 	FOLDED_FILE="${RUN_DIR}/cpu/out.folded.full"
 fi
 
-# Build top CPU symbols (inclusive) if folded present
 TOP_CPU_SECTION=""
 if [[ -f "${FOLDED_FILE}" ]]; then
-	awk -F';' -v TOPN=${TOP_N_SYMBOLS} 'function trim(s){gsub(/^ +| +$/,"",s);return s} { line=$0; sub(/^[^ ]+ /,"",line); c=$NF; if(c+0==0){c=$(NF);}; c+=0; n=split($0,parts,";"); for(i=1;i<=n;i++){# extract function token up to first space
-			split(parts[i],f," "); fn=trim(f[1]); if(fn!="") samples[fn]+=c; total+=c; } } END { if(total>0){ for(fn in samples) printf "%s %s\n", samples[fn], fn | "sort -nr" } }' "${FOLDED_FILE}" | head -${TOP_N_SYMBOLS} >"${RUN_DIR}/cpu/.top_syms" || true
-	if [[ -s "${RUN_DIR}/cpu/.top_syms" ]]; then
-		TOTAL_SAMPLES=$(awk '{s+=$1} END{print s}' "${RUN_DIR}/cpu/.top_syms")
+	# Each line: stack;func;... count  -> inclusive add 'count' to every frame in stack.
+	awk 'NF>1 {cnt=$NF; if(cnt+0==0) next; stack=$0; sub(/ [0-9]+$/,"",stack); n=split(stack,parts,";"); for(i=1;i<=n;i++){gsub(/^ +| +$/,"",parts[i]); if(parts[i]!="") inc[parts[i]]+=cnt} total+=cnt} END{for(f in inc) printf "%d\t%s\n", inc[f], f | "sort -nr"; if(total==0) total=1; print total > "/dev/stderr"}' "${FOLDED_FILE}" 2>"${RUN_DIR}/cpu/.total_samples" | head -${TOP_N_SYMBOLS} >"${RUN_DIR}/cpu/.top_syms" || true
+	if [[ -s "${RUN_DIR}/cpu/.top_syms" && -s "${RUN_DIR}/cpu/.total_samples" ]]; then
+		TOTAL_SAMPLES=$(cat "${RUN_DIR}/cpu/.total_samples" | tail -n1)
 		TOP_CPU_SECTION=$({
 			echo "- top_cpu_symbols:"
-			set +o pipefail
-			awk -v t=${TOTAL_SAMPLES:-0} '{pct= (t>0? ($1*100.0)/t:0); printf "  * %s (%.2f%%, samples=%s)\n", $2, pct, $1}' "${RUN_DIR}/cpu/.top_syms" || true
-			set -o pipefail
+			awk -v t=${TOTAL_SAMPLES:-1} '{pct=($1*100.0)/t; printf "  * %s (%.2f%%, samples=%s)\n", $2, pct, $1}' "${RUN_DIR}/cpu/.top_syms"
 		})
 	fi
 fi
@@ -153,14 +198,12 @@ if [[ ! -f "${OFF_FOLDED_FILE}" && -f "${RUN_DIR}/offcpu/out.folded.full" ]]; th
 	OFF_FOLDED_FILE="${RUN_DIR}/offcpu/out.folded.full"
 fi
 if [[ -f "${OFF_FOLDED_FILE}" ]]; then
-	awk -F';' -v TOPN=${TOP_N_SYMBOLS} 'function trim(s){gsub(/^ +| +$/,"",s);return s} { line=$0; sub(/^[^ ]+ /,"",line); c=$NF; if(c+0==0){c=$(NF);}; c+=0; n=split($0,parts,";"); for(i=1;i<=n;i++){ split(parts[i],f," "); fn=trim(f[1]); if(fn!="") samples[fn]+=c; total+=c; } } END { if(total>0){ for(fn in samples) printf "%s %s\n", samples[fn], fn | "sort -nr" } }' "${OFF_FOLDED_FILE}" | head -${TOP_N_SYMBOLS} >"${RUN_DIR}/offcpu/.top_syms" || true
-	if [[ -s "${RUN_DIR}/offcpu/.top_syms" ]]; then
-		TOTAL_SAMPLES_OFF=$(awk '{s+=$1} END{print s}' "${RUN_DIR}/offcpu/.top_syms")
+	awk 'NF>1 {cnt=$NF; if(cnt+0==0) next; stack=$0; sub(/ [0-9]+$/,"",stack); n=split(stack,parts,";"); for(i=1;i<=n;i++){gsub(/^ +| +$/,"",parts[i]); if(parts[i]!="") inc[parts[i]]+=cnt} total+=cnt} END{for(f in inc) printf "%d\t%s\n", inc[f], f | "sort -nr"; if(total==0) total=1; print total > "/dev/stderr"}' "${OFF_FOLDED_FILE}" 2>"${RUN_DIR}/offcpu/.total_samples" | head -${TOP_N_SYMBOLS} >"${RUN_DIR}/offcpu/.top_syms" || true
+	if [[ -s "${RUN_DIR}/offcpu/.top_syms" && -s "${RUN_DIR}/offcpu/.total_samples" ]]; then
+		TOTAL_SAMPLES_OFF=$(cat "${RUN_DIR}/offcpu/.total_samples" | tail -n1)
 		TOP_OFFCPU_SECTION=$({
 			echo "- top_offcpu_symbols:"
-			set +o pipefail
-			awk -v t=${TOTAL_SAMPLES_OFF:-0} '{pct=(t>0? ($1*100.0)/t:0); printf "  * %s (%.2f%%, samples=%s)\n", $2, pct, $1}' "${RUN_DIR}/offcpu/.top_syms" || true
-			set -o pipefail
+			awk -v t=${TOTAL_SAMPLES_OFF:-1} '{pct=($1*100.0)/t; printf "  * %s (%.2f%%, samples=%s)\n", $2, pct, $1}' "${RUN_DIR}/offcpu/.top_syms"
 		})
 	fi
 fi
