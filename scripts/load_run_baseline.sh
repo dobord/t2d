@@ -63,14 +63,14 @@ pushd "${BUILD_DIR}" >/dev/null
 
 # Launch server
 LOG_SERVER="../${LOG_DIR}/server.log"
-("${SERVER_BIN}" "${CFG}" >"${LOG_SERVER}" 2>&1 &)
+"${SERVER_BIN}" "${CFG}" >"${LOG_SERVER}" 2>&1 &
 SERVER_PID=$!
 echo ${SERVER_PID} >../${LOG_DIR}/server.pid
 sleep 1
 
 echo "[load] Spawning ${CLIENTS} clients..."
 for i in $(seq 1 ${CLIENTS}); do
-	("${CLIENT_BIN}" ${PORT} >"../${LOG_DIR}/client_${i}.log" 2>&1 &)
+	"${CLIENT_BIN}" ${PORT} >"../${LOG_DIR}/client_${i}.log" 2>&1 &
 	echo $! >>../${LOG_DIR}/clients.pid
 	# small stagger to avoid thundering herd connect
 	sleep 0.05
