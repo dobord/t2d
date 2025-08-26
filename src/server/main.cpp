@@ -312,6 +312,7 @@ int main(int argc, char **argv)
         T2D_GIT_SHA,
         T2D_BUILD_DIRTY,
         T2D_BUILD_DATE);
+    t2d::log::info("Profiling macro T2D_PROFILING_ENABLED={}", T2D_PROFILING_ENABLED);
     t2d::log::info("Tick rate: {} Hz", cfg.tick_rate);
     t2d::log::info("Listening on port: {}", cfg.listen_port);
     t2d::log::info("Auth mode: {}", cfg.auth_mode);
@@ -477,6 +478,12 @@ int main(int argc, char **argv)
             }
             j << ",\"alloc_bytes_per_tick_mean\":" << alloc_bytes_mean;
             j << ",\"alloc_tick_with_alloc_pct\":" << alloc_tick_pct;
+#if T2D_PROFILING_ENABLED
+            double scratch_reuse = t2d::metrics::snapshot_scratch_reuse_pct();
+            j << ",\"snapshot_scratch_reuse_pct\":" << scratch_reuse;
+            j << ",\"projectile_pool_hit_pct\":" << t2d::metrics::projectile_pool_hit_pct();
+            j << ",\"projectile_pool_misses\":" << t2d::metrics::projectile_pool_misses();
+#endif
             {
                 double frees_per_tick_mean = 0.0;
                 auto free_samples = rt.deallocations_per_tick_samples.load(std::memory_order_relaxed);

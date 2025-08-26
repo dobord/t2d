@@ -60,12 +60,24 @@ if [[ ! -f "${ABS_CFG_PATH}" ]]; then
 	exit 1
 fi
 
-if [[ ! -x ${BUILD_DIR}/t2d_server || ! -x ${BUILD_DIR}/t2d_test_client ]]; then
-	echo "[build] Building profiling binaries (server + test client)..." >&2
-	# Configure if needed (idempotent)
-	if [[ ! -f ${BUILD_DIR}/CMakeCache.txt ]]; then
-		cmake -S . -B "${BUILD_DIR}" -DT2D_ENABLE_PROFILING=ON -DT2D_BUILD_TESTS=OFF -DT2D_BUILD_CLIENT=ON -DT2D_BUILD_QT_CLIENT=OFF >/dev/null
+# Always ensure profiling cache flag is set (previous cached non-profiling build could linger)
+NEED_RECONFIG=0
+if [[ -f ${BUILD_DIR}/CMakeCache.txt ]]; then
+	if ! grep -q 'T2D_ENABLE_PROFILING:BOOL=ON' ${BUILD_DIR}/CMakeCache.txt 2>/dev/null; then
+		echo "[build] Existing build dir missing profiling; will reconfigure with -DT2D_ENABLE_PROFILING=ON" >&2
+		NEED_RECONFIG=1
 	fi
+else
+	NEED_RECONFIG=1
+fi
+
+if [[ ${NEED_RECONFIG} -eq 1 ]]; then
+	echo "[build] Configuring (profiling=ON)" >&2
+	cmake -S . -B "${BUILD_DIR}" -DT2D_ENABLE_PROFILING=ON -DT2D_BUILD_TESTS=OFF -DT2D_BUILD_CLIENT=ON -DT2D_BUILD_QT_CLIENT=OFF >/dev/null
+fi
+
+if [[ ! -x ${BUILD_DIR}/t2d_server || ! -x ${BUILD_DIR}/t2d_test_client || ${NEED_RECONFIG} -eq 1 ]]; then
+	echo "[build] Building profiling binaries (server + test client)..." >&2
 	cmake --build "${BUILD_DIR}" -j $(nproc) --target t2d_server t2d_test_client >/dev/null || {
 		echo "[build] Build failed" >&2
 		exit 1

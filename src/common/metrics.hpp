@@ -5,6 +5,12 @@
 #include <atomic>
 #include <cstdint>
 
+// Backward compatibility: treat build option T2D_ENABLE_PROFILING (CMake variable) as runtime macro if present via
+// T2D_PROFILING_ENABLED; unify on T2D_PROFILING_ENABLED in code (0/1 value defined in CMake interface target).
+#if defined(T2D_ENABLE_PROFILING) && !defined(T2D_PROFILING_ENABLED)
+#    define T2D_PROFILING_ENABLED 1
+#endif
+
 namespace t2d::metrics {
 
 struct SnapshotCounters
@@ -54,6 +60,13 @@ struct RuntimeCounters
     std::atomic<uint64_t> deallocations_per_tick_accum{0};
     std::atomic<uint64_t> deallocations_per_tick_samples{0};
     std::atomic<uint64_t> deallocations_ticks_with_free{0};
+    // Snapshot scratch buffer reuse metrics (profiling build)
+    std::atomic<uint64_t> snapshot_scratch_requests{0};
+    std::atomic<uint64_t> snapshot_scratch_reused{0};
+    // Projectile pool metrics
+    std::atomic<uint64_t> projectile_pool_requests{0};
+    std::atomic<uint64_t> projectile_pool_hits{0};
+    std::atomic<uint64_t> projectile_pool_misses{0}; // growth events
 };
 
 inline RuntimeCounters &runtime()
@@ -116,7 +129,7 @@ inline void add_wait_duration(uint64_t ns)
     rt.wait_hist[RuntimeCounters::TICK_BUCKETS - 1].fetch_add(1, std::memory_order_relaxed);
 }
 
-#if defined(T2D_ENABLE_PROFILING)
+#if T2D_PROFILING_ENABLED
 inline void add_allocations_tick(uint64_t count)
 {
     // Power-of-two bucket histogram (similar pattern to tick durations) base=1
@@ -151,12 +164,63 @@ inline uint64_t approx_allocations_per_tick_p95()
     }
     return (uint64_t)1 << (RuntimeCounters::ALLOC_BUCKETS - 1);
 }
+
+inline void add_snapshot_scratch_usage(bool reused)
+{
+    auto &rt = runtime();
+    rt.snapshot_scratch_requests.fetch_add(1, std::memory_order_relaxed);
+    if (reused) {
+        rt.snapshot_scratch_reused.fetch_add(1, std::memory_order_relaxed);
+    }
+}
+
+inline double snapshot_scratch_reuse_pct()
+{
+    auto &rt = runtime();
+    auto req = rt.snapshot_scratch_requests.load(std::memory_order_relaxed);
+    if (req == 0)
+        return 0.0;
+    auto reused = rt.snapshot_scratch_reused.load(std::memory_order_relaxed);
+    return 100.0 * static_cast<double>(reused) / static_cast<double>(req);
+}
+
+inline void add_projectile_pool_request(bool hit, bool miss)
+{
+    auto &rt = runtime();
+    rt.projectile_pool_requests.fetch_add(1, std::memory_order_relaxed);
+    if (hit)
+        rt.projectile_pool_hits.fetch_add(1, std::memory_order_relaxed);
+    if (miss)
+        rt.projectile_pool_misses.fetch_add(1, std::memory_order_relaxed);
+}
+
+inline double projectile_pool_hit_pct()
+{
+    auto &rt = runtime();
+    auto req = rt.projectile_pool_requests.load(std::memory_order_relaxed);
+    if (req == 0)
+        return 0.0;
+    auto hits = rt.projectile_pool_hits.load(std::memory_order_relaxed);
+    return 100.0 * (double)hits / (double)req;
+}
+
+inline uint64_t projectile_pool_misses()
+{
+    return runtime().projectile_pool_misses.load(std::memory_order_relaxed);
+}
 #else
 inline void add_allocations_tick(uint64_t) {}
 
 inline uint64_t approx_allocations_per_tick_p95()
 {
     return 0;
+}
+
+inline void add_snapshot_scratch_usage(bool) {}
+
+inline double snapshot_scratch_reuse_pct()
+{
+    return 0.0;
 }
 #endif
 

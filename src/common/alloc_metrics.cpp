@@ -7,7 +7,7 @@
 #include <cstdlib>
 #include <new>
 
-#if defined(T2D_ENABLE_PROFILING)
+#if T2D_PROFILING_ENABLED
 
 static inline void t2d_alloc_account(std::size_t sz)
 {
@@ -186,4 +186,4 @@ void operator delete[](void *p, std::align_val_t, const std::nothrow_t &) noexce
     }
 }
 
-#endif // T2D_ENABLE_PROFILING
+#endif // T2D_PROFILING_ENABLED

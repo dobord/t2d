@@ -35,14 +35,14 @@ Focus (phase 1): Authoritative server runtime (tick loop, networking, snapshot g
 | Metric | Description | Collection Method | Baseline (TBD) | Target |
 |--------|-------------|-------------------|----------------|--------|
 | tick_duration_ns_mean | Avg server tick time | Existing histogram | 287453 (S2 baseline 20250826-180618) | < 2 ms (S2) |
-| tick_duration_ns_p99 | 99th percentile tick | Existing histogram | 1000000 (recent 20250827-001746) | < 5 ms (S2) |
+| tick_duration_ns_p99 | 99th percentile tick | Existing histogram | 250000 (recent 20250827-024349) | < 5 ms (S2) |
 | snapshot_full_bytes_mean | Mean full snapshot size | Existing counter | 667.03 (S2 baseline 20250826-180618) | < 25 KB (target guess; refine) |
 | snapshot_delta_bytes_mean | Mean delta size | Existing counter | 499.94 (S2 baseline 20250826-180618) | < 4 KB (S2) |
-| CPU_user_pct | User CPU % process | perf / pidstat | 4.78 (recent 20250827-001746) | < 75% (S2) |
-| RSS_peak_MB | Peak resident memory | /proc/PID/statm sampling | 11.73 (recent 20250827-001746) | Stable (< +5% over 30 min) |
+| CPU_user_pct | User CPU % process | perf / pidstat | 2.00 (recent 20250827-024349) | < 75% (S2) |
+| RSS_peak_MB | Peak resident memory | /proc/PID/statm sampling | 7.25 (recent 20250827-024349) | Stable (< +5% over 30 min) |
 | allocations_per_tick | Dynamic allocations (instrumented) | Custom counter (profiling build) | – | Reduce 50% after phase 1 |
 | network_tx_bytes_per_sec | Outgoing bytes/sec | Metrics / tcpdump sample | – | N/A (observe) |
-| off_cpu_wait_ns_p99 | Scheduler wait (blocking) | Off-CPU profile | 64000000 (recent 20250827-001746) | Minimize (< tick SLA) |
+| off_cpu_wait_ns_p99 | Scheduler wait (blocking) | Off-CPU profile | 64000000 (recent 20250827-024349) | Minimize (< tick SLA) |
 
 ### 1.5 Performance SLA (Provisional)
 - Normal gameplay (S2): p99 tick < 5 ms; mean tick < 2 ms.
@@ -97,10 +97,72 @@ Initial targets defined in 1.4. Future columns to add once baseline captured: Ba
 Exit criteria: Baseline metrics & artifacts committed (or stored as CI artifacts) + initial hotspot list.
 
 ### Phase 1: Memory & Allocation Reduction
-- [ ] Instrument allocation counts per tick (profiling build)
-- [ ] Pool frequently recreated buffers (snapshot encode temp, projectile arrays)
-- [ ] Reduce string formatting in hot path (structured logging fields preformatted)
-- [ ] Re-measure allocations_per_tick (target 50% reduction)
+Goal: Cut dynamic heap allocation frequency in authoritative server tick path by >=50% (mean & p95) without regressing tick_duration_ns_p99.
+
+Planned Iterations (execute in order; commit after each with updated metrics):
+1. Allocation Instrumentation (Read-Only Phase)
+  - [x] Add lightweight per-tick allocation counter (increment on each targeted allocation site) enabled only when `T2D_ENABLE_PROFILING=ON`. (Implemented via global operator new tracking + per-tick delta aggregation.)
+  - [x] Track: `allocations_per_tick_mean`, `allocations_per_tick_p95` (histogram based p95 estimator implemented).
+  - [ ] (Optional later) Call site sampling: every Nth allocation capture return address & aggregate top sites (guarded by `T2D_ALLOC_SAMPLE_RATE`).
+  - [x] Expose final tick summary line including new metrics (extends existing `runtime_final`).
+  - [x] Baseline capture (Improvement Log row) before any pooling changes (multiple S2 runs captured; allocation metrics currently 0 indicating either effective preallocation or missing sites – under validation).
+2. Snapshot Encode Temp Buffer Pooling
+  - [x] Identify transient buffers (full snapshot serialization scratch, delta diff working arrays, projectile serialization staging). (Initial pass: serialization scratch string.)
+  - [x] Implement per-match reusable scratch buffer (grow-once, never shrink during match) replacing repetitive `std::string` reallocs for SerializeToString.
+  - [x] Metric: `snapshot_scratch_reuse_pct` = (reused_allocations / total_scratch_requests * 100) (profiling build only) added to `runtime_final` JSON.
+  - [ ] Extend pooling to additional delta diff working vectors if allocation sampling later shows hotspots.
+3. Projectile Data Pooling
+  - [ ] Replace per-tick new/delete (or implicit vector growth) with object pool / free list for projectile structures.
+  - [ ] Pre-size pool using rolling high-water mark (HWM) heuristic (e.g. grow by 1.25x when exceeded, cap by config).
+  - [ ] Metric: `projectile_pool_hit_pct` & `projectile_pool_misses`.
+4. Structured Logging Optimization
+  - [ ] Audit hot path INFO/DEBUG logs executed every tick; convert repeated string concatenations to structured logging with pre-built format/static keys.
+  - [ ] Precompute invariant strings (e.g. entity type labels) at initialization.
+  - [ ] Metric: `log_lines_per_tick_mean` (profiling build only) for before/after comparison.
+5. Validation & Regression Guard
+  - [ ] Re-run Scenario S2 & S3; record before/after for: allocations_per_tick_mean, allocations_per_tick_p95, tick_duration_ns_mean/p99, snapshot_full_mean_bytes.
+  - [ ] Must show >=50% reduction in both allocations_per_tick_mean & p95 with <5% regression in tick_duration_ns_p99 (else refine / rollback specific change).
+6. Exit Criteria (Phase 1 DONE when all below checked)
+  - [ ] Improvement Log rows added (Instrumentation Baseline, Post-Pooling, Post-Logging Optimization).
+  - [ ] Metrics table in Section 1.4 updated with Baseline for `allocations_per_tick` and (new) `allocations_per_tick_p95`.
+  - [ ] Optional: Add CI script (or dev script) asserting allocations_per_tick_mean within defined threshold (skip in Release if profiling disabled).
+
+Risk & Mitigation:
+* Risk: Over-instrumentation adds measurable overhead. Mitigation: Compile-time flag & branchless counter increment (possibly `std::atomic<uint32_t>` with relaxed ordering or per-thread counters reduced at tick end).
+* Risk: Pool introduces memory bloat after spikes. Mitigation: Cap max retained size & expose metric for peak scratch size to revisit.
+* Risk: Logging changes reduce diagnostic richness. Mitigation: Preserve fields; only change construction method.
+
+Notes:
+* Avoid global operator new overload at this stage—target explicit hot allocation sites first (higher signal, lower complexity).
+* Defer arena allocator experiment until Phase 2 (serialization focus) to keep variable introduction controlled.
+* Add any new metrics to `/metrics` endpoint only if negligible overhead; otherwise keep profiling-only.
+
+Definition of new metrics (profiling build):
+| Metric | Type | Description |
+|--------|------|-------------|
+| allocations_per_tick_mean | Gauge (derived) | Mean allocations per tick over run |
+| allocations_per_tick_p95 | Gauge (derived) | 95th percentile allocations/tick |
+| snapshot_scratch_reuse_pct | Gauge | % scratch buffer requests served without new allocation |
+| projectile_pool_hit_pct | Gauge | % projectile acquisitions served from pool |
+| projectile_pool_misses | Counter | Number of pool growth events |
+| log_lines_per_tick_mean | Gauge (derived) | Average log lines emitted per tick (INFO+DEBUG) |
+
+Implementation Pseudocode (Instrumentation Sketch):
+```
+// tick loop start
+auto allocs_this_tick = alloc_counter.exchange(0, std::memory_order_relaxed);
+alloc_histogram.add(allocs_this_tick);
+
+// Allocation site example
+inline void* snapshot_temp_alloc(size_t n) {
+  if constexpr (profiling_enabled) alloc_counter.fetch_add(1, std::memory_order_relaxed);
+  return ::operator new(n);
+}
+```
+
+Sampling (optional future): every Kth allocation capture limited depth backtrace for top-N site ranking.
+
+Exit Deliverable: Updated doc + logs demonstrating reduction + new metrics integrated into automated baseline script.
 
 ### Phase 2: Snapshot Serialization Optimization
 - [ ] Profile serialization inclusive time
@@ -189,8 +251,14 @@ Global initiative reaches initial completion when Phases 0–3 are DONE and p99 
 
 ---
 ## 10. Next Immediate Actions
-(Reflects entry state — to be updated after first baseline commit.)
-- [ ] Implement Phase 0 tasks (profiling option + scripts) and capture first baseline.
+Focus shifts to Phase 1 (Memory & Allocation Reduction).
+- [ ] Implement per-tick allocation counter & integrate into runtime final metrics line.
+- [ ] Capture S2 & S3 baseline (allocations_per_tick_mean & p95) BEFORE pooling.
+- [ ] Design & implement snapshot scratch buffer reuse (grow-once strategy) + reuse metric.
+- [ ] Implement projectile object/data pool + hit/miss metrics.
+- [ ] Optimize structured logging in tick hot paths (remove repeated string formatting).
+- [ ] Re-measure (S2, S3) and update Improvement Log + Section 1.4 with new metrics.
+- [ ] Decide on adding CI guard for allocations_per_tick_mean regression.
 
 ---
 Maintainers: Add yourselves here when contributing performance changes.
@@ -605,3 +673,218 @@ Baseline capture 20250827-001746:
   * [libstdc++.so.6.0.33] (99.84%, samples=18843)
   * clone3 (99.84%, samples=18843)
   * __x64_sys_futex_[k] (62.16%, samples=11731)
+\n<!-- BASELINE_RUN_20250827-020203 -->
+Baseline capture 20250827-020203:
+- avg_tick_ns=235853 (~0.236 ms)
+- p99_tick_ns=1000000 (~1.000 ms)
+- snapshot_full_bytes_total=113010 (count=162)
+- snapshot_delta_bytes_total=343585 (count=813)
+- snapshot_full_mean_bytes=697.59
+- snapshot_delta_mean_bytes=422.61
+- wait_p99_ns=64000000 (~64.000 ms)
+- cpu_user_pct=4.46
+- rss_peak_bytes=12058624 (~11.50 MB)
+- allocs_per_tick_mean=0.00
+- allocs_per_tick_p95=[2025-08-27 02:03:05.458] [I] {"metric":"runtime_final","avg_tick_ns":235853,"p99_tick_ns":1000000,"wait_p99_ns":64000000,"cpu_user_pct":4.46,"rss_peak_bytes":12058624,"allocs_per_tick_mean":0.00,"samples":4875,"queue_depth":0,"active_matches":0,"bots_in_match":0,"projectiles_active":13,"connected_players":11}
+- clients=12 duration=60s port=40000
+- cpu_profile=baseline_artifacts/20250827-020203/cpu/cpu_flame.svg (if generated)
+- offcpu_profile=baseline_artifacts/20250827-020203/offcpu/offcpu_flame.svg (if generated)
+\n<!-- BASELINE_RUN_20250827-020338 -->
+Baseline capture 20250827-020338:
+- avg_tick_ns=118445 (~0.118 ms)
+- p99_tick_ns=500000 (~0.500 ms)
+- snapshot_full_bytes_total=6982 (count=15)
+- snapshot_delta_bytes_total=14728 (count=85)
+- snapshot_full_mean_bytes=465.47
+- snapshot_delta_mean_bytes=173.27
+- wait_p99_ns=64000000 (~64.000 ms)
+- cpu_user_pct=2.45
+- rss_peak_bytes=7733248 (~7.38 MB)
+- allocs_per_tick_mean=0.00
+- allocs_per_tick_p95=[2025-08-27 02:03:50.464] [I] {"metric":"runtime_final","avg_tick_ns":118445,"p99_tick_ns":500000,"wait_p99_ns":64000000,"cpu_user_pct":2.45,"rss_peak_bytes":7733248,"allocs_per_tick_mean":0.00,"samples":504,"queue_depth":0,"active_matches":2,"bots_in_match":2,"projectiles_active":7,"connected_players":6}
+- clients=6 duration=10s port=40000
+- cpu_profile=baseline_artifacts/20250827-020338/cpu/cpu_flame.svg (if generated)
+- offcpu_profile=baseline_artifacts/20250827-020338/offcpu/offcpu_flame.svg (if generated)
+- top_cpu_symbols:
+  * walk_entry_and_subtree (650.00%, samples=162500000)
+  * [code] (280.00%, samples=70000000)
+  * swapper (80.00%, samples=20000000)
+  * secondary_startup_64_no_verify (80.00%, samples=20000000)
+  * pv_native_safe_halt (80.00%, samples=20000000)
+  * do_idle (80.00%, samples=20000000)
+  * cpu_startup_entry (80.00%, samples=20000000)
+  * cpuidle_idle_call (80.00%, samples=20000000)
+  * cpuidle_enter_state (80.00%, samples=20000000)
+  * cpuidle_enter (80.00%, samples=20000000)
+\n<!-- BASELINE_RUN_20250827-020424 -->
+Baseline capture 20250827-020424:
+- avg_tick_ns=141033 (~0.141 ms)
+- p99_tick_ns=500000 (~0.500 ms)
+- snapshot_full_bytes_total=4134 (count=8)
+- snapshot_delta_bytes_total=15795 (count=45)
+- snapshot_full_mean_bytes=516.75
+- snapshot_delta_mean_bytes=351.00
+- wait_p99_ns=64000000 (~64.000 ms)
+- cpu_user_pct=1.78
+- rss_peak_bytes=7733248 (~7.38 MB)
+- allocs_per_tick_mean=0.00
+- allocs_per_tick_p95=0
+- clients=4 duration=8s port=40000
+- cpu_profile=baseline_artifacts/20250827-020424/cpu/cpu_flame.svg (if generated)
+- offcpu_profile=baseline_artifacts/20250827-020424/offcpu/offcpu_flame.svg (if generated)
+\n<!-- BASELINE_RUN_20250827-020708 -->
+Baseline capture 20250827-020708:
+- avg_tick_ns=167263 (~0.167 ms)
+- p99_tick_ns=500000 (~0.500 ms)
+- snapshot_full_bytes_total=191749 (count=268)
+- snapshot_delta_bytes_total=672706 (count=1350)
+- snapshot_full_mean_bytes=715.48
+- snapshot_delta_mean_bytes=498.30
+- wait_p99_ns=64000000 (~64.000 ms)
+- cpu_user_pct=3.46
+- rss_peak_bytes=15466496 (~14.75 MB)
+- allocs_per_tick_mean=0.00
+- allocs_per_tick_p95=0
+- clients=20 duration=90s port=40000
+- cpu_profile=baseline_artifacts/20250827-020708/cpu/cpu_flame.svg (if generated)
+- offcpu_profile=baseline_artifacts/20250827-020708/offcpu/offcpu_flame.svg (if generated)
+- top_cpu_symbols:
+  * void (217.44%, samples=2120000000)
+  * t2d_server (100.00%, samples=975000000)
+  * start_thread (100.00%, samples=975000000)
+  * [libstdc++.so.6.0.33] (100.00%, samples=975000000)
+  * clone3 (100.00%, samples=975000000)
+  * entry_SYSCALL_64_after_hwframe (85.38%, samples=832500000)
+  * do_syscall_64 (85.38%, samples=832500000)
+  * x64_sys_call (84.36%, samples=822500000)
+  * _raw_spin_unlock_irqrestore (72.56%, samples=707500000)
+  * __x64_sys_futex (57.18%, samples=557500000)
+- top_offcpu_symbols:
+  * __schedule_[k] (200.00%, samples=65394)
+  * t2d_server (100.00%, samples=32697)
+  * schedule_[k] (100.00%, samples=32696)
+  * entry_SYSCALL_64_after_hwframe_[k] (99.98%, samples=32690)
+  * do_syscall_64_[k] (99.98%, samples=32690)
+  * start_thread (99.91%, samples=32667)
+  * [libstdc++.so.6.0.33] (99.91%, samples=32667)
+  * clone3 (99.91%, samples=32667)
+  * x64_sys_call_[k] (99.82%, samples=32637)
+  * __x64_sys_futex_[k] (66.11%, samples=21616)
+\n<!-- BASELINE_RUN_20250827-023458 -->
+Baseline capture 20250827-023458:
+- avg_tick_ns=144607 (~0.145 ms)
+- p99_tick_ns=500000 (~0.500 ms)
+- snapshot_full_bytes_total=192347 (count=268)
+- snapshot_delta_bytes_total=621064 (count=1350)
+- snapshot_full_mean_bytes=717.71
+- snapshot_delta_mean_bytes=460.05
+- wait_p99_ns=64000000 (~64.000 ms)
+- cpu_user_pct=6.48
+- rss_peak_bytes=15335424 (~14.62 MB)
+- allocs_per_tick_mean=0.00
+- allocs_per_tick_p95=0
+- clients=20 duration=60s port=40000
+- snapshot_scratch_reuse_pct=[2025-08-27 02:36:01.301] [I] {"metric":"runtime_final","avg_tick_ns":144607,"p99_tick_ns":500000,"wait_p99_ns":64000000,"cpu_user_pct":6.48,"rss_peak_bytes":15335424,"allocs_per_tick_mean":0.00,"allocs_per_tick_p95":0,"alloc_bytes_per_tick_mean":0.00,"alloc_tick_with_alloc_pct":0.00,"frees_per_tick_mean":0.00,"free_tick_with_free_pct":0.00,"samples":8094,"queue_depth":0,"active_matches":0,"bots_in_match":0,"projectiles_active":15,"connected_players":19}
+- cpu_profile=baseline_artifacts/20250827-023458/cpu/cpu_flame.svg (if generated)
+- offcpu_profile=baseline_artifacts/20250827-023458/offcpu/offcpu_flame.svg (if generated)
+- top_cpu_symbols:
+  * void (223.68%, samples=1062500000)
+  * t2d_server (100.00%, samples=475000000)
+  * start_thread (100.00%, samples=475000000)
+  * [libstdc++.so.6.0.33] (100.00%, samples=475000000)
+  * clone3 (100.00%, samples=475000000)
+  * entry_SYSCALL_64_after_hwframe (83.68%, samples=397500000)
+  * do_syscall_64 (83.68%, samples=397500000)
+  * x64_sys_call (82.63%, samples=392500000)
+  * _raw_spin_unlock_irqrestore (76.84%, samples=365000000)
+  * __x64_sys_futex (72.63%, samples=345000000)
+\n<!-- BASELINE_RUN_20250827-023814 -->
+Baseline capture 20250827-023814:
+- avg_tick_ns=155515 (~0.156 ms)
+- p99_tick_ns=500000 (~0.500 ms)
+- snapshot_full_bytes_total=151798 (count=227)
+- snapshot_delta_bytes_total=499766 (count=1148)
+- snapshot_full_mean_bytes=668.71
+- snapshot_delta_mean_bytes=435.34
+- wait_p99_ns=64000000 (~64.000 ms)
+- cpu_user_pct=8.58
+- rss_peak_bytes=13107200 (~12.50 MB)
+- allocs_per_tick_mean=0.00
+- allocs_per_tick_p95=0
+- clients=20 duration=45s port=40000
+- snapshot_scratch_reuse_pct=0
+- projectile_pool_hit_pct=0
+- projectile_pool_misses=0
+- cpu_profile=baseline_artifacts/20250827-023814/cpu/cpu_flame.svg (if generated)
+- offcpu_profile=baseline_artifacts/20250827-023814/offcpu/offcpu_flame.svg (if generated)
+- top_cpu_symbols:
+  * swapper (100.00%, samples=5000000)
+  * secondary_startup_64_no_verify (100.00%, samples=5000000)
+  * pv_native_safe_halt (100.00%, samples=5000000)
+  * do_idle (100.00%, samples=5000000)
+  * cpu_startup_entry (100.00%, samples=5000000)
+  * cpuidle_idle_call (100.00%, samples=5000000)
+  * cpuidle_enter_state (100.00%, samples=5000000)
+  * cpuidle_enter (100.00%, samples=5000000)
+  * call_cpuidle (100.00%, samples=5000000)
+  * acpi_idle_enter (100.00%, samples=5000000)
+\n<!-- BASELINE_RUN_20250827-024112 -->
+Baseline capture 20250827-024112:
+- avg_tick_ns=120636 (~0.121 ms)
+- p99_tick_ns=500000 (~0.500 ms)
+- snapshot_full_bytes_total=16940 (count=30)
+- snapshot_delta_bytes_total=53088 (count=158)
+- snapshot_full_mean_bytes=564.67
+- snapshot_delta_mean_bytes=336.00
+- wait_p99_ns=64000000 (~64.000 ms)
+- cpu_user_pct=5.06
+- rss_peak_bytes=7864320 (~7.50 MB)
+- allocs_per_tick_mean=0.00
+- allocs_per_tick_p95=0
+- clients=8 duration=15s port=40000
+- snapshot_scratch_reuse_pct=0
+- projectile_pool_hit_pct=0
+- projectile_pool_misses=0
+- cpu_profile=baseline_artifacts/20250827-024112/cpu/cpu_flame.svg (if generated)
+- offcpu_profile=baseline_artifacts/20250827-024112/offcpu/offcpu_flame.svg (if generated)
+- top_cpu_symbols:
+  * [code] (637.50%, samples=127500000)
+  * [[anon:v8]] (237.50%, samples=47500000)
+  * swapper (75.00%, samples=15000000)
+  * start_secondary (75.00%, samples=15000000)
+  * secondary_startup_64_no_verify (75.00%, samples=15000000)
+  * pv_native_safe_halt (75.00%, samples=15000000)
+  * do_idle (75.00%, samples=15000000)
+  * cpu_startup_entry (75.00%, samples=15000000)
+  * cpuidle_idle_call (75.00%, samples=15000000)
+  * cpuidle_enter_state (75.00%, samples=15000000)
+\n<!-- BASELINE_RUN_20250827-024349 -->
+Baseline capture 20250827-024349:
+- avg_tick_ns=87705 (~0.088 ms)
+- p99_tick_ns=250000 (~0.250 ms)
+- snapshot_full_bytes_total=2182 (count=5)
+- snapshot_delta_bytes_total=4270 (count=30)
+- snapshot_full_mean_bytes=436.40
+- snapshot_delta_mean_bytes=142.33
+- wait_p99_ns=64000000 (~64.000 ms)
+- cpu_user_pct=2.00
+- rss_peak_bytes=7602176 (~7.25 MB)
+- allocs_per_tick_mean=0.00
+- allocs_per_tick_p95=1
+- clients=4 duration=5s port=40000
+- snapshot_scratch_reuse_pct=97.14
+- projectile_pool_hit_pct=0.00
+- projectile_pool_misses=4
+- cpu_profile=baseline_artifacts/20250827-024349/cpu/cpu_flame.svg (if generated)
+- offcpu_profile=baseline_artifacts/20250827-024349/offcpu/offcpu_flame.svg (if generated)
+- top_cpu_symbols:
+  * [code] (400.00%, samples=80000000)
+  * swapper (87.50%, samples=17500000)
+  * start_secondary (87.50%, samples=17500000)
+  * secondary_startup_64_no_verify (87.50%, samples=17500000)
+  * pv_native_safe_halt (87.50%, samples=17500000)
+  * do_idle (87.50%, samples=17500000)
+  * cpu_startup_entry (87.50%, samples=17500000)
+  * cpuidle_idle_call (87.50%, samples=17500000)
+  * cpuidle_enter_state (87.50%, samples=17500000)
+  * cpuidle_enter (87.50%, samples=17500000)

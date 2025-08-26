@@ -206,7 +206,7 @@ coro::task<void> run_match(std::shared_ptr<coro::io_scheduler> scheduler, std::s
         }
         auto tick_start = now;
         // Snapshot allocation counter at tick start (profiling builds only)
-#if defined(T2D_ENABLE_PROFILING)
+#if T2D_PROFILING_ENABLED
         uint64_t alloc_before = t2d::metrics::runtime().allocations_total.load(std::memory_order_relaxed);
         uint64_t alloc_bytes_before = t2d::metrics::runtime().allocations_bytes_total.load(std::memory_order_relaxed);
         uint64_t dealloc_before = t2d::metrics::runtime().deallocations_total.load(std::memory_order_relaxed);
@@ -388,19 +388,34 @@ coro::task<void> run_match(std::shared_ptr<coro::io_scheduler> scheduler, std::s
                 uint32_t fired = t2d::phys::fire_projectile_if_ready(
                     adv, phys_world, ctx->projectile_speed, ctx->projectile_density, forward_offset, pid);
                 if (fired) {
-                    // Record projectile meta for snapshots (position will sync from physics later)
-                    // Get muzzle position from turret transform again
+                    // Obtain slot from pool
+                    bool hit = false, miss = false;
+                    uint32_t slot_index;
+                    if (!ctx->projectile_free_indices.empty()) {
+                        slot_index = ctx->projectile_free_indices.back();
+                        ctx->projectile_free_indices.pop_back();
+                        hit = true;
+                    } else {
+                        slot_index = static_cast<uint32_t>(ctx->projectiles_storage.size());
+                        ctx->projectiles_storage.push_back({});
+                        miss = true; // growth event
+                    }
                     b2Transform xt = b2Body_GetTransform(adv.turret);
                     b2Vec2 dir{xt.q.c, xt.q.s};
                     b2Vec2 pos{xt.p.x + dir.x * forward_offset, xt.p.y + dir.y * forward_offset};
-                    ctx->projectiles.push_back(
-                        {fired,
-                         pos.x,
-                         pos.y,
-                         dir.x * ctx->projectile_speed,
-                         dir.y * ctx->projectile_speed,
-                         adv.entity_id});
-                    // map projectile body for collision processing
+                    auto &slot = ctx->projectiles_storage[slot_index];
+                    slot.id = fired;
+                    slot.x = pos.x;
+                    slot.y = pos.y;
+                    slot.vx = dir.x * ctx->projectile_speed;
+                    slot.vy = dir.y * ctx->projectile_speed;
+                    slot.owner = adv.entity_id;
+                    ctx->projectiles.push_back(slot); // copy lightweight POD
+                    if (ctx->projectiles.size() > ctx->projectile_pool_hwm)
+                        ctx->projectile_pool_hwm = static_cast<uint32_t>(ctx->projectiles.size());
+#if T2D_PROFILING_ENABLED
+                    t2d::metrics::add_projectile_pool_request(hit, miss);
+#endif
                     projectile_bodies.emplace(fired, phys_world.projectile_bodies.back());
                     if (sess->is_bot)
                         t2d::mm::instance().clear_bot_fire(sess);
@@ -486,6 +501,13 @@ coro::task<void> run_match(std::shared_ptr<coro::io_scheduler> scheduler, std::s
                         projectile_bodies.erase(body_it);
                     }
                     ctx->removed_projectiles_since_full.push_back(pid);
+                    // Return storage slot to freelist (find in storage by id)
+                    for (uint32_t si = 0; si < ctx->projectiles_storage.size(); ++si) {
+                        if (ctx->projectiles_storage[si].id == pid) {
+                            ctx->projectile_free_indices.push_back(si);
+                            break;
+                        }
+                    }
                     ctx->projectiles.erase(ctx->projectiles.begin() + *it);
                 }
             }
@@ -600,10 +622,18 @@ coro::task<void> run_match(std::shared_ptr<coro::io_scheduler> scheduler, std::s
                     ps->set_vy(p.vy);
 #endif
                 }
-                // Approx size: serialized later per recipient; rough proto size estimation using string
-                std::string tmp;
-                sm.SerializeToString(&tmp);
-                t2d::metrics::add_full(tmp.size());
+                // Approx size: serialize into reusable scratch buffer (size() after serialize provides byte count)
+                {
+                    bool reused = !ctx->snapshot_scratch.empty();
+                    if (!sm.SerializeToString(&ctx->snapshot_scratch)) {
+                        // Fallback: should not happen; skip metrics if serialize fails
+                    } else {
+                        t2d::metrics::add_full(ctx->snapshot_scratch.size());
+#if T2D_PROFILING_ENABLED
+                        t2d::metrics::add_snapshot_scratch_usage(reused);
+#endif
+                    }
+                }
 #if T2D_ENABLE_SNAPSHOT_QUANT
                 // Compression placeholder: RLE + optional zlib (only metrics currently recorded by rle_try/zlib_try)
                 // Future: send compressed variant conditionally to clients advertising support.
@@ -728,9 +758,17 @@ coro::task<void> run_match(std::shared_ptr<coro::io_scheduler> scheduler, std::s
                 for (auto cid : ctx->removed_crates_since_full)
                     delta->add_removed_crates(cid);
                 // Deltas for ammo boxes omitted (they are static until picked up; appear only in full snapshots)
-                std::string tmp;
-                sm.SerializeToString(&tmp);
-                t2d::metrics::add_delta(tmp.size());
+                {
+                    bool reused = !ctx->snapshot_scratch.empty();
+                    if (!sm.SerializeToString(&ctx->snapshot_scratch)) {
+                        // skip metrics if failure
+                    } else {
+                        t2d::metrics::add_delta(ctx->snapshot_scratch.size());
+#if T2D_PROFILING_ENABLED
+                        t2d::metrics::add_snapshot_scratch_usage(reused);
+#endif
+                    }
+                }
 #if T2D_ENABLE_SNAPSHOT_QUANT
                 // As above, compression logic lives in snapshot_compress.* (not applied to wire in prototype)
 #endif
@@ -830,7 +868,7 @@ coro::task<void> run_match(std::shared_ptr<coro::io_scheduler> scheduler, std::s
         t2d::metrics::runtime().projectiles_active.store(ctx->projectiles.size(), std::memory_order_relaxed);
         auto tick_ns = std::chrono::duration_cast<std::chrono::nanoseconds>(clock::now() - tick_start).count();
         t2d::metrics::add_tick_duration(static_cast<uint64_t>(tick_ns));
-#if defined(T2D_ENABLE_PROFILING)
+#if T2D_PROFILING_ENABLED
         uint64_t alloc_after = t2d::metrics::runtime().allocations_total.load(std::memory_order_relaxed);
         uint64_t alloc_bytes_after = t2d::metrics::runtime().allocations_bytes_total.load(std::memory_order_relaxed);
         uint64_t dealloc_after = t2d::metrics::runtime().deallocations_total.load(std::memory_order_relaxed);

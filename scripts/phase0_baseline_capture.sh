@@ -133,7 +133,7 @@ if [[ -n "${OFFCPU_PROF_PID}" ]]; then wait ${OFFCPU_PROF_PID} 2>/dev/null || tr
 # Extract metrics from server.log (robust mode)
 ###############################################
 SERVER_LOG=baseline_logs/server.log
-AVG_TICK_NS=0 P99_TICK_NS=0 WAIT_P99_NS=0 CPU_USER_PCT=0 RSS_PEAK_BYTES=0 ALLOCS_PER_TICK_MEAN=0 ALLOCS_PER_TICK_P95=0
+AVG_TICK_NS=0 P99_TICK_NS=0 WAIT_P99_NS=0 CPU_USER_PCT=0 RSS_PEAK_BYTES=0 ALLOCS_PER_TICK_MEAN=0 ALLOCS_PER_TICK_P95=0 SCRATCH_REUSE_PCT=0 PROJ_POOL_HIT_PCT=0 PROJ_POOL_MISSES=0
 FULL_BYTES=0 DELTA_BYTES=0 FULL_COUNT=0 DELTA_COUNT=0
 if [[ -f ${SERVER_LOG} ]]; then
 	# Temporarily disable -e because grep returning 1 (no matches) would abort script
@@ -151,6 +151,13 @@ if [[ -f ${SERVER_LOG} ]]; then
 		RSS_PEAK_BYTES=$(echo "${line}" | sed -E 's/.*"rss_peak_bytes":([0-9]+).*/\1/' || echo 0)
 		ALLOCS_PER_TICK_MEAN=$(echo "${line}" | sed -E 's/.*"allocs_per_tick_mean":([0-9\.]+).*/\1/' || echo 0)
 		ALLOCS_PER_TICK_P95=$(echo "${line}" | sed -E 's/.*"allocs_per_tick_p95":([0-9]+).*/\1/' || echo 0)
+		SCRATCH_REUSE_PCT=$(echo "${line}" | sed -E 's/.*"snapshot_scratch_reuse_pct":([0-9\.]+).*/\1/' || echo 0)
+		PROJ_POOL_HIT_PCT=$(echo "${line}" | sed -E 's/.*"projectile_pool_hit_pct":([0-9\.]+).*/\1/' || echo 0)
+		PROJ_POOL_MISSES=$(echo "${line}" | sed -E 's/.*"projectile_pool_misses":([0-9]+).*/\1/' || echo 0)
+		# numeric validation
+		if ! [[ ${SCRATCH_REUSE_PCT} =~ ^[0-9]+(\.[0-9]+)?$ ]]; then SCRATCH_REUSE_PCT=0; fi
+		if ! [[ ${PROJ_POOL_HIT_PCT} =~ ^[0-9]+(\.[0-9]+)?$ ]]; then PROJ_POOL_HIT_PCT=0; fi
+		if ! [[ ${PROJ_POOL_MISSES} =~ ^[0-9]+$ ]]; then PROJ_POOL_MISSES=0; fi
 		# Ensure numeric (strip anything non-digit)
 		if ! [[ ${ALLOCS_PER_TICK_P95} =~ ^[0-9]+$ ]]; then ALLOCS_PER_TICK_P95=0; fi
 	fi
@@ -251,6 +258,9 @@ if ! grep -q "${MARKER}" "${PLAN_FILE}"; then
 		echo "- allocs_per_tick_mean=${ALLOCS_PER_TICK_MEAN}"
 		echo "- allocs_per_tick_p95=${ALLOCS_PER_TICK_P95}"
 		echo "- clients=${CLIENTS} duration=${DURATION}s port=${PORT}"
+		echo "- snapshot_scratch_reuse_pct=${SCRATCH_REUSE_PCT}"
+		echo "- projectile_pool_hit_pct=${PROJ_POOL_HIT_PCT}"
+		echo "- projectile_pool_misses=${PROJ_POOL_MISSES}"
 		echo "- cpu_profile=${RUN_DIR}/cpu/cpu_flame.svg (if generated)"
 		echo "- offcpu_profile=${RUN_DIR}/offcpu/offcpu_flame.svg (if generated)"
 		if [[ -n "${TOP_CPU_SECTION}" ]]; then echo "${TOP_CPU_SECTION}"; fi
@@ -277,6 +287,9 @@ Mean delta snapshot bytes: ${MEAN_DELTA_BYTES}
 Wait p99 (ns): ${WAIT_P99_NS}
 Wait p99 (ms): ${WAIT_P99_MS}
 CPU user pct: ${CPU_USER_PCT}
+Snapshot scratch reuse pct: ${SCRATCH_REUSE_PCT}
+Projectile pool hit pct: ${PROJ_POOL_HIT_PCT}
+Projectile pool misses: ${PROJ_POOL_MISSES}
 RSS peak bytes: ${RSS_PEAK_BYTES} (~${RSS_PEAK_MB} MB)
 Allocs per tick mean: ${ALLOCS_PER_TICK_MEAN}
 Allocs per tick p95: ${ALLOCS_PER_TICK_P95}

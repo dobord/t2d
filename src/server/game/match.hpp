@@ -71,6 +71,10 @@ struct MatchContext
 
     std::vector<ProjectileSimple> projectiles;
     uint32_t next_projectile_id{1};
+    // Projectile object pool (freelist indices into projectiles_storage)
+    std::vector<ProjectileSimple> projectiles_storage; // stable capacity, entries reused
+    std::vector<uint32_t> projectile_free_indices; // indices in storage available for reuse
+    uint32_t projectile_pool_hwm{0}; // high-water mark (for future heuristics)
 
     // Crates (movable obstacles) represented only by physics bodies; snapshot not yet serialized (visual client side
     // placeholder optional)
@@ -117,6 +121,9 @@ struct MatchContext
     bool match_end_sent{false};
     // Aggregated kill feed events for batching per tick (victim, attacker)
     std::vector<std::pair<uint32_t, uint32_t>> kill_feed_events;
+    // Reusable scratch buffer for snapshot serialization size estimation (SerializeToString target)
+    // Grows on demand, never shrinks during match lifetime. Profiling builds record reuse metric.
+    std::string snapshot_scratch;
 };
 
 inline float movement_speed()
