@@ -53,6 +53,13 @@ done
 
 mkdir -p "${LOG_DIR}" "${BUILD_DIR}" || true
 
+# Resolve absolute config path early (from project root)
+ABS_CFG_PATH=$(realpath "${CFG}")
+if [[ ! -f "${ABS_CFG_PATH}" ]]; then
+	echo "[load] Config not found: ${CFG}" >&2
+	exit 1
+fi
+
 if [[ ! -x ${BUILD_DIR}/t2d_server ]]; then
 	echo "[build] Building profiling binaries..." >&2
 	cmake -S . -B "${BUILD_DIR}" -DT2D_ENABLE_PROFILING=ON -DT2D_BUILD_TESTS=OFF -DT2D_BUILD_CLIENT=ON -DT2D_BUILD_QT_CLIENT=OFF >/dev/null
@@ -63,7 +70,6 @@ pushd "${BUILD_DIR}" >/dev/null
 
 # Launch server
 LOG_SERVER="../${LOG_DIR}/server.log"
-ABS_CFG_PATH=$(realpath "${CFG}")
 "${SERVER_BIN}" "${ABS_CFG_PATH}" >"${LOG_SERVER}" 2>&1 &
 SERVER_PID=$!
 echo ${SERVER_PID} >../${LOG_DIR}/server.pid
