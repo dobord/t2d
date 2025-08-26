@@ -133,7 +133,7 @@ if [[ -n "${OFFCPU_PROF_PID}" ]]; then wait ${OFFCPU_PROF_PID} 2>/dev/null || tr
 # Extract metrics from server.log (robust mode)
 ###############################################
 SERVER_LOG=baseline_logs/server.log
-AVG_TICK_NS=0 P99_TICK_NS=0 WAIT_P99_NS=0 CPU_USER_PCT=0 RSS_PEAK_BYTES=0 ALLOCS_PER_TICK_MEAN=0
+AVG_TICK_NS=0 P99_TICK_NS=0 WAIT_P99_NS=0 CPU_USER_PCT=0 RSS_PEAK_BYTES=0 ALLOCS_PER_TICK_MEAN=0 ALLOCS_PER_TICK_P95=0
 FULL_BYTES=0 DELTA_BYTES=0 FULL_COUNT=0 DELTA_COUNT=0
 if [[ -f ${SERVER_LOG} ]]; then
 	# Temporarily disable -e because grep returning 1 (no matches) would abort script
@@ -150,6 +150,7 @@ if [[ -f ${SERVER_LOG} ]]; then
 		CPU_USER_PCT=$(echo "${line}" | sed -E 's/.*"cpu_user_pct":([0-9\.]+).*/\1/' || echo 0)
 		RSS_PEAK_BYTES=$(echo "${line}" | sed -E 's/.*"rss_peak_bytes":([0-9]+).*/\1/' || echo 0)
 		ALLOCS_PER_TICK_MEAN=$(echo "${line}" | sed -E 's/.*"allocs_per_tick_mean":([0-9\.]+).*/\1/' || echo 0)
+		ALLOCS_PER_TICK_P95=$(echo "${line}" | sed -E 's/.*"allocs_per_tick_p95":([0-9]+).*/\1/' || echo 0)
 	fi
 	# snapshot totals (may appear earlier, so separate grep)
 	st_line=$(grep -E '"metric":"snapshot_totals"' "${SERVER_LOG}" | tail -1)
@@ -246,6 +247,7 @@ if ! grep -q "${MARKER}" "${PLAN_FILE}"; then
 		echo "- cpu_user_pct=${CPU_USER_PCT}"
 		echo "- rss_peak_bytes=${RSS_PEAK_BYTES} (~${RSS_PEAK_MB} MB)"
 		echo "- allocs_per_tick_mean=${ALLOCS_PER_TICK_MEAN}"
+		echo "- allocs_per_tick_p95=${ALLOCS_PER_TICK_P95}"
 		echo "- clients=${CLIENTS} duration=${DURATION}s port=${PORT}"
 		echo "- cpu_profile=${RUN_DIR}/cpu/cpu_flame.svg (if generated)"
 		echo "- offcpu_profile=${RUN_DIR}/offcpu/offcpu_flame.svg (if generated)"
@@ -275,6 +277,7 @@ Wait p99 (ms): ${WAIT_P99_MS}
 CPU user pct: ${CPU_USER_PCT}
 RSS peak bytes: ${RSS_PEAK_BYTES} (~${RSS_PEAK_MB} MB)
 Allocs per tick mean: ${ALLOCS_PER_TICK_MEAN}
+Allocs per tick p95: ${ALLOCS_PER_TICK_P95}
 EOF
 
 # Update baseline table cells for collected metrics (only overwrite when we have non-zero values where applicable).
