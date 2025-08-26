@@ -19,7 +19,7 @@ if [[ -f "$ROOT/.clang-format" ]]; then
 	cp "$ROOT/.clang-format" "$TMPDIR/.clang-format"
 fi
 STATUS=0
-FILES=$(git -C "$ROOT" ls-files '*.cpp' '*.hpp' '*.h' '*.cc' '*.cxx' | grep -v '^third_party/' || true)
+FILES=$(git -C "$ROOT" ls-files '*.cpp' '*.hpp' '*.h' '*.cc' '*.cxx' | grep -v '/third_party/' | grep -v '^third_party/' || true)
 for rel in $FILES; do
 	f="$ROOT/$rel"
 	mkdir -p "$TMPDIR/$(dirname "$rel")"
@@ -46,7 +46,7 @@ echo "C/C++ formatting OK"
 
 # Shell script formatting check (shfmt diff mode)
 if command -v shfmt >/dev/null 2>&1; then
-	SH_FILES=$(git -C "$ROOT" ls-files '*.sh' | grep -v '^third_party/' || true)
+	SH_FILES=$(git -C "$ROOT" ls-files '*.sh' | grep -v '/third_party/' | grep -v '^third_party/' || true)
 	if [ -n "$SH_FILES" ]; then
 		if [[ $APPLY -eq 1 ]]; then
 			# Apply formatting in-place

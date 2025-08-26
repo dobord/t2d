@@ -65,17 +65,17 @@ STAGED_ALL=$(git diff --cached --name-only --diff-filter=ACMR || true)
 mapfile -t STAGED_CXX < <(echo "$STAGED_ALL" | grep -E '\.(c|cc|cxx|cpp|h|hpp)$' || true)
 FILTERED=()
 for f in "${STAGED_CXX[@]}"; do
-  case "$f" in
-    third_party/*) continue;;
-    *) FILTERED+=("$f");;
-  esac
+  if [[ "$f" == third_party/* || "$f" == */third_party/* ]]; then
+    continue
+  fi
+  FILTERED+=("$f")
 done
 
 # Also include modified (but not yet staged) tracked C/C++ files for auto-formatting
 while read -r _c; do
   [ -z "$_c" ] && continue
   case "$_c" in
-    third_party/*) continue;;
+  third_party/*|*/third_party/*) continue;;
     *.c|*.cc|*.cxx|*.cpp|*.h|*.hpp) ;; # allowed
     *) continue;;
   esac
@@ -90,17 +90,17 @@ done < <(git diff --name-only --diff-filter=ACMRT | grep -E '\.(c|cc|cxx|cpp|h|h
 mapfile -t STAGED_QML < <(echo "$STAGED_ALL" | grep -E '\.qml$' || true)
 QML_FILTERED=()
 for f in "${STAGED_QML[@]}"; do
-  case "$f" in
-    third_party/*) continue;;
-    *) QML_FILTERED+=("$f");;
-  esac
+  if [[ "$f" == third_party/* || "$f" == */third_party/* ]]; then
+    continue
+  fi
+  QML_FILTERED+=("$f")
 done
 
 # Also include modified (but not yet staged) tracked QML files so they are auto-formatted & staged.
 while read -r _q; do
   [ -z "$_q" ] && continue
   case "$_q" in
-    third_party/*) continue;;
+  third_party/*|*/third_party/*) continue;;
   esac
   # ensure tracked (skip untracked brand-new files; user must git add them first)
   if git ls-files --error-unmatch "$_q" >/dev/null 2>&1; then
@@ -114,15 +114,15 @@ done < <(git diff --name-only --diff-filter=ACMRT | grep -E '\.qml$' || true)
 mapfile -t STAGED_SH < <(echo "$STAGED_ALL" | grep -E '\.sh$' || true)
 SH_FILTERED=()
 for f in "${STAGED_SH[@]}"; do
-  case "$f" in
-    third_party/*) continue;;
-    *) SH_FILTERED+=("$f");;
-  esac
+  if [[ "$f" == third_party/* || "$f" == */third_party/* ]]; then
+    continue
+  fi
+  SH_FILTERED+=("$f")
 done
 while read -r _s; do
   [ -z "$_s" ] && continue
   case "$_s" in
-    third_party/*) continue;;
+  third_party/*|*/third_party/*) continue;;
     *.sh) ;; 
     *) continue;;
   esac
@@ -137,15 +137,15 @@ done < <(git diff --name-only --diff-filter=ACMRT | grep -E '\.sh$' || true)
 mapfile -t STAGED_PROTO < <(echo "$STAGED_ALL" | grep -E '\.proto$' || true)
 PROTO_FILTERED=()
 for f in "${STAGED_PROTO[@]}"; do
-  case "$f" in
-    third_party/*) continue;;
-    *) PROTO_FILTERED+=("$f");;
-  esac
+  if [[ "$f" == third_party/* || "$f" == */third_party/* ]]; then
+    continue
+  fi
+  PROTO_FILTERED+=("$f")
 done
 while read -r _p; do
   [ -z "$_p" ] && continue
   case "$_p" in
-    third_party/*) continue;;
+  third_party/*|*/third_party/*) continue;;
     *.proto) ;;
     *) continue;;
   esac
