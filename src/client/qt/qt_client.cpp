@@ -138,6 +138,7 @@ coro::task<void> run_network(
     uint64_t matchStartServerTick = 0;
     uint64_t loop_iter = 0;
     while (!g_shutdown.load()) {
+        auto iter_start = std::chrono::steady_clock::now();
         if ((loop_iter % 50) == 0) {
             t2d::ClientMessage hb;
             auto *h = hb.mutable_heartbeat();
@@ -249,7 +250,23 @@ coro::task<void> run_network(
             co_await send_frame(cli, qj);
             t2d::log::info("requeue requested");
         }
-        co_await sched->yield_for(20ms);
+        // Adaptive pacing: wait only remaining time until next expected server tick
+        uint64_t interval_ns = tickRate > 0 ? (1000000000ull / tickRate) : 50000000ull; // fallback 20 Hz
+        auto elapsed_ns = (uint64_t)std::chrono::duration_cast<std::chrono::nanoseconds>(
+                              std::chrono::steady_clock::now() - iter_start)
+                              .count();
+        if (elapsed_ns < interval_ns) {
+            auto remain_ns = interval_ns - elapsed_ns;
+            // Clamp to avoid extremely tiny sleeps that may spin; allow 0 -> simple yield
+            if (remain_ns < 500000ull) { // <0.5ms
+                co_await sched->yield();
+            } else {
+                co_await sched->yield_for(std::chrono::nanoseconds(remain_ns));
+            }
+        } else {
+            // Behind schedule; just yield cooperatively without extra sleep
+            co_await sched->yield();
+        }
     }
     t2d::log::info("qt_client network loop exit");
 }
