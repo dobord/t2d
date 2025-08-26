@@ -179,6 +179,10 @@ run_format() {
 	if [[ ! -d "$ROOT_DIR/$BUILD_DIR" ]]; then
 		return 0
 	fi
+	if [[ "${SKIP_FORMAT:-0}" == 1 ]]; then
+		log "Skipping formatting (SKIP_FORMAT=1)"
+		return 0
+	fi
 	log "Running code format targets"
 	# Prefer aggregated format_all (it is constructed only from first-party format targets: t2d_format, format_cmake, format_qml)
 	# This still avoids third_party because t2d_format already filters it out.

@@ -373,7 +373,7 @@ if (CLANG_FORMAT_BIN)
         ALL_CXX_SOURCE_FILES
         EXCLUDE
         REGEX
-        ".*/third_party/.*")
+        "(^|/)third_party/")
     # Avoid target name collision if a third_party submodule already defined 'format'
     if (NOT TARGET format)
         add_custom_target(
@@ -425,7 +425,7 @@ if (QMLFORMAT_BIN)
         ALL_QML_FILES
         EXCLUDE
         REGEX
-        ".*/third_party/.*")
+        "(^|/)third_party/")
     # Filter out empty QML files (qmlformat fails to parse empty input)
     set(_non_empty_qml)
     foreach (_qml IN LISTS ALL_QML_FILES)
@@ -471,7 +471,7 @@ if (SHFMT_BIN)
         ALL_SH_FILES
         EXCLUDE
         REGEX
-        ".*/third_party/.*")
+        "(^|/)third_party/")
     if (ALL_SH_FILES AND NOT TARGET format_sh)
         add_custom_target(
             format_sh
