@@ -98,6 +98,36 @@ Near-term acceptable contributions:
 - Benchmark heavy loops (physics, snapshot build) before micro-optimizing.
 - Prefer clear code; document any non-obvious optimizations.
 
+### Profiling Tooling (perf + FlameGraph)
+To capture CPU/Off-CPU flame graphs consistently:
+
+1. Install perf (Linux tools package) and FlameGraph scripts (if not already present):
+	- FlameGraph repository: https://github.com/brendangregg/FlameGraph
+	- After cloning, place `flamegraph.pl` and `stackcollapse-perf.pl` in your `PATH` (e.g. `/usr/local/bin`).
+2. Ensure frame pointers are enabled: build with `-fno-omit-frame-pointer` (the profiling CMake option `T2D_ENABLE_PROFILING` already sets this).
+3. Relax kernel restrictions (required to attach perf to non-root processes):
+	```bash
+	sudo sysctl kernel.perf_event_paranoid=1
+	sudo sysctl kernel.kptr_restrict=0
+	# Verify
+	cat /proc/sys/kernel/perf_event_paranoid
+	cat /proc/sys/kernel/kptr_restrict
+	```
+	For a one-off session you can also write the values directly into the files under `/proc/sys/kernel/`.
+4. Run capture scripts (examples):
+	- CPU: `PID=<server_pid> DUR=30 OUT_DIR=profiles/cpu/$(date +%Y%m%d-%H%M%S) ./scripts/profile_cpu.sh`
+	- Off-CPU: `PID=<server_pid> DUR=30 OUT_DIR=profiles/offcpu/$(date +%Y%m%d-%H%M%S) ./scripts/profile_offcpu.sh`
+	- Automated baseline: `CLIENTS=20 DURATION=90 CPU_PROF_DUR=40 OFFCPU_PROF_DUR=40 ./scripts/phase0_baseline_capture.sh`
+5. Artifacts:
+	- Raw data: `perf.data`
+	- Expanded stacks: `perf.script`
+	- Folded stacks: `out.folded` (+ `out.folded.full` if fallback filtering used)
+	- SVG flame graph: `cpu_flame.svg` / `offcpu_flame.svg`
+6. Fallback behavior: if direct PID attach fails (transient process visibility races), scripts fall back to a system-wide capture (`-a`) then filter by binary name (`FALLBACK_FILTER`, default `t2d_server`). Adjust if multiple server processes are active.
+7. Do not commit large `perf.data` files. Commit only derived artifacts (SVG) when they are needed for code review context; prefer attaching them to issues or storing as CI artifacts.
+
+Security note: Lowering `perf_event_paranoid` affects system-wide observability. Revert if necessary after profiling (`sudo sysctl kernel.perf_event_paranoid=4`).
+
 ## Issue Triage Labels (Proposed)
 - `bug`, `enhancement`, `protocol`, `performance`, `docs`, `build`, `good-first-issue`.
 

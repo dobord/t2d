@@ -14,6 +14,9 @@ OUT_ROOT=baseline_artifacts
 TIMESTAMP=$(date +%Y%m%d-%H%M%S)
 RUN_DIR=${OUT_ROOT}/${TIMESTAMP}
 PLAN_FILE=docs/performance_plan.md
+WAIT_BEFORE_PROF_MS=${WAIT_BEFORE_PROF_MS:-500}
+FALLBACK_FILTER=${FALLBACK_FILTER:-t2d_server}
+TOP_N_SYMBOLS=${TOP_N_SYMBOLS:-10}
 
 mkdir -p "${RUN_DIR}" || true
 
@@ -36,13 +39,32 @@ fi
 SERVER_PID=$(cat baseline_logs/server.pid)
 echo "[phase0] Detected server PID=${SERVER_PID}"
 
+# Optional stabilization delay before attaching profilers
+if [[ ${WAIT_BEFORE_PROF_MS} -gt 0 ]]; then
+	SLEEP_SEC=$(awk -v ms=${WAIT_BEFORE_PROF_MS} 'BEGIN{printf("%.3f", ms/1000.0)}')
+	echo "[phase0] Waiting ${WAIT_BEFORE_PROF_MS}ms before starting perf attaches"
+	sleep ${SLEEP_SEC}
+fi
+
+# Preflight: check perf_event_paranoid (needs <=2 typically; <=1 preferable for kernel stacks)
+if [[ -f /proc/sys/kernel/perf_event_paranoid ]]; then
+	PERF_PARANOID=$(cat /proc/sys/kernel/perf_event_paranoid || echo 999)
+	if [[ ${PERF_PARANOID} -gt 2 ]]; then
+		echo "[phase0][warn] kernel.perf_event_paranoid=${PERF_PARANOID} > 2; perf profiling likely to fail. Suggested temporary fix (root):" >&2
+		echo "  sudo sysctl kernel.perf_event_paranoid=1" >&2
+		echo "  sudo sysctl kernel.kptr_restrict=0" >&2
+	fi
+fi
+
 echo "[phase0] Launching CPU perf attach (${CPU_PROF_DUR}s)"
-PID=${SERVER_PID} DUR=${CPU_PROF_DUR} OUT_DIR=${RUN_DIR}/cpu ./scripts/profile_cpu.sh >/dev/null 2>&1 &
+mkdir -p "${RUN_DIR}/cpu"
+PID=${SERVER_PID} DUR=${CPU_PROF_DUR} FALLBACK_FILTER=${FALLBACK_FILTER} OUT_DIR=${RUN_DIR}/cpu ./scripts/profile_cpu.sh >"${RUN_DIR}/cpu/profile.log" 2>&1 &
 CPU_PROF_PID=$!
 
 if [[ ${OFFCPU_PROF_DUR} -gt 0 ]]; then
 	echo "[phase0] Launching Off-CPU perf attach (${OFFCPU_PROF_DUR}s)"
-	PID=${SERVER_PID} DUR=${OFFCPU_PROF_DUR} OUT_DIR=${RUN_DIR}/offcpu ./scripts/profile_offcpu.sh >/dev/null 2>&1 &
+	mkdir -p "${RUN_DIR}/offcpu"
+	PID=${SERVER_PID} DUR=${OFFCPU_PROF_DUR} FALLBACK_FILTER=${FALLBACK_FILTER} OUT_DIR=${RUN_DIR}/offcpu ./scripts/profile_offcpu.sh >"${RUN_DIR}/offcpu/profile.log" 2>&1 &
 	OFFCPU_PROF_PID=$!
 else
 	OFFCPU_PROF_PID=""
@@ -76,6 +98,40 @@ MEAN_DELTA_BYTES=$(awk -v b=${DELTA_BYTES} -v c=${DELTA_COUNT} 'BEGIN{ if(c>0) p
 # Extract top CPU symbols if folded stacks exist (inclusive approximation)
 TOP_CPU_SECTION=""
 FOLDED_FILE="${RUN_DIR}/cpu/out.folded"
+if [[ ! -f "${FOLDED_FILE}" && -f "${RUN_DIR}/cpu/out.folded.full" ]]; then
+	FOLDED_FILE="${RUN_DIR}/cpu/out.folded.full"
+fi
+
+# Build top CPU symbols (inclusive) if folded present
+TOP_CPU_SECTION=""
+if [[ -f "${FOLDED_FILE}" ]]; then
+	awk -F';' -v TOPN=${TOP_N_SYMBOLS} 'function trim(s){gsub(/^ +| +$/,"",s);return s} { line=$0; sub(/^[^ ]+ /,"",line); c=$NF; if(c+0==0){c=$(NF);}; c+=0; n=split($0,parts,";"); for(i=1;i<=n;i++){# extract function token up to first space
+			split(parts[i],f," "); fn=trim(f[1]); if(fn!="") samples[fn]+=c; total+=c; } } END { if(total>0){ for(fn in samples) printf "%s %s\n", samples[fn], fn | "sort -nr" } }' "${FOLDED_FILE}" | head -${TOP_N_SYMBOLS} >"${RUN_DIR}/cpu/.top_syms" || true
+	if [[ -s "${RUN_DIR}/cpu/.top_syms" ]]; then
+		TOTAL_SAMPLES=$(awk '{s+=$1} END{print s}' "${RUN_DIR}/cpu/.top_syms")
+		TOP_CPU_SECTION=$({
+			echo "- top_cpu_symbols:"
+			awk -v t=${TOTAL_SAMPLES:-0} '{pct= (t>0? ($1*100.0)/t:0); printf "  * %s (%.2f%%, samples=%s)\n", $2, pct, $1}' "${RUN_DIR}/cpu/.top_syms"
+		})
+	fi
+fi
+
+# Build top Off-CPU symbols if available
+TOP_OFFCPU_SECTION=""
+OFF_FOLDED_FILE="${RUN_DIR}/offcpu/out.folded"
+if [[ ! -f "${OFF_FOLDED_FILE}" && -f "${RUN_DIR}/offcpu/out.folded.full" ]]; then
+	OFF_FOLDED_FILE="${RUN_DIR}/offcpu/out.folded.full"
+fi
+if [[ -f "${OFF_FOLDED_FILE}" ]]; then
+	awk -F';' -v TOPN=${TOP_N_SYMBOLS} 'function trim(s){gsub(/^ +| +$/,"",s);return s} { line=$0; sub(/^[^ ]+ /,"",line); c=$NF; if(c+0==0){c=$(NF);}; c+=0; n=split($0,parts,";"); for(i=1;i<=n;i++){ split(parts[i],f," "); fn=trim(f[1]); if(fn!="") samples[fn]+=c; total+=c; } } END { if(total>0){ for(fn in samples) printf "%s %s\n", samples[fn], fn | "sort -nr" } }' "${OFF_FOLDED_FILE}" | head -${TOP_N_SYMBOLS} >"${RUN_DIR}/offcpu/.top_syms" || true
+	if [[ -s "${RUN_DIR}/offcpu/.top_syms" ]]; then
+		TOTAL_SAMPLES_OFF=$(awk '{s+=$1} END{print s}' "${RUN_DIR}/offcpu/.top_syms")
+		TOP_OFFCPU_SECTION=$({
+			echo "- top_offcpu_symbols:"
+			awk -v t=${TOTAL_SAMPLES_OFF:-0} '{pct=(t>0? ($1*100.0)/t:0); printf "  * %s (%.2f%%, samples=%s)\n", $2, pct, $1}' "${RUN_DIR}/offcpu/.top_syms"
+		})
+	fi
+fi
 if [[ -f "${FOLDED_FILE}" ]]; then
 	# Build inclusive sample counts per function
 	TOP_TMP=$(awk -F';' '{n=split($0, parts, ";"); split(parts[n], lf, " "); cnt=lf[length(lf)]; if(cnt=="") cnt=0; cnt+=0; for(i=1;i<=n;i++){ split(parts[i], f, " "); fn=f[1]; samples[fn]+=cnt;} total+=cnt;} END {for (f in samples) printf "%s %s\n", samples[f], f > "/dev/stderr"; print total > "/dev/stdout"}' "${FOLDED_FILE}" 2>"${RUN_DIR}/cpu/.symcounts") || true
@@ -103,6 +159,7 @@ if ! grep -q "${MARKER}" "${PLAN_FILE}"; then
 		echo "- cpu_profile=${RUN_DIR}/cpu/cpu_flame.svg (if generated)"
 		echo "- offcpu_profile=${RUN_DIR}/offcpu/offcpu_flame.svg (if generated)"
 		if [[ -n "${TOP_CPU_SECTION}" ]]; then echo "${TOP_CPU_SECTION}"; fi
+		if [[ -n "${TOP_OFFCPU_SECTION}" ]]; then echo "${TOP_OFFCPU_SECTION}"; fi
 	} >>"${PLAN_FILE}"
 fi
 
