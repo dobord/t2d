@@ -46,6 +46,9 @@ struct RuntimeCounters
     std::atomic<uint64_t> allocations_bytes_per_tick_accum{0};
     std::atomic<uint64_t> allocations_bytes_per_tick_samples{0};
     std::atomic<uint64_t> allocations_ticks_with_alloc{0};
+    // Allocation count per tick histogram (power-of-two buckets) for p95 estimation
+    static constexpr int ALLOC_BUCKETS = 12; // up to 2^(11) (~2048) before overflow bucket
+    std::atomic<uint64_t> allocations_per_tick_hist[ALLOC_BUCKETS]{}; // bucket 0: <1, 1:<2, ... 10:<1024, 11: overflow
     // Deallocation metrics
     std::atomic<uint64_t> deallocations_total{0};
     std::atomic<uint64_t> deallocations_per_tick_accum{0};
@@ -112,6 +115,50 @@ inline void add_wait_duration(uint64_t ns)
     }
     rt.wait_hist[RuntimeCounters::TICK_BUCKETS - 1].fetch_add(1, std::memory_order_relaxed);
 }
+
+#if defined(T2D_ENABLE_PROFILING)
+inline void add_allocations_tick(uint64_t count)
+{
+    // Power-of-two bucket histogram (similar pattern to tick durations) base=1
+    auto &rt = runtime();
+    for (int i = 0; i < RuntimeCounters::ALLOC_BUCKETS - 1; ++i) {
+        uint64_t bound = (uint64_t)1 << i; // 1,2,4,... 1024
+        if (count < bound) {
+            rt.allocations_per_tick_hist[i].fetch_add(1, std::memory_order_relaxed);
+            return;
+        }
+    }
+    rt.allocations_per_tick_hist[RuntimeCounters::ALLOC_BUCKETS - 1].fetch_add(1, std::memory_order_relaxed);
+}
+
+inline uint64_t approx_allocations_per_tick_p95()
+{
+    auto &rt = runtime();
+    uint64_t total = rt.allocations_per_tick_samples.load(std::memory_order_relaxed);
+    if (total == 0)
+        return 0;
+    uint64_t target = (total * 95 + 95 - 1) / 100; // ceil(total*0.95)
+    uint64_t cumulative = 0;
+    for (int i = 0; i < RuntimeCounters::ALLOC_BUCKETS; ++i) {
+        cumulative += rt.allocations_per_tick_hist[i].load(std::memory_order_relaxed);
+        if (cumulative >= target) {
+            if (i == RuntimeCounters::ALLOC_BUCKETS - 1) {
+                // Overflow bucket; approximate as upper bound *2
+                return (uint64_t)1 << (RuntimeCounters::ALLOC_BUCKETS - 1);
+            }
+            return (uint64_t)1 << i; // upper bound of bucket (exclusive) ~ approximate p95
+        }
+    }
+    return (uint64_t)1 << (RuntimeCounters::ALLOC_BUCKETS - 1);
+}
+#else
+inline void add_allocations_tick(uint64_t) {}
+
+inline uint64_t approx_allocations_per_tick_p95()
+{
+    return 0;
+}
+#endif
 
 inline uint64_t approx_wait_p99()
 {

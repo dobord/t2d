@@ -461,6 +461,8 @@ int main(int argc, char **argv)
             j << ",\"cpu_user_pct\":" << cpu_pct;
             j << ",\"rss_peak_bytes\":" << rt.rss_peak_bytes.load(std::memory_order_relaxed);
             j << ",\"allocs_per_tick_mean\":" << allocs_per_tick_mean;
+            uint64_t allocs_p95 = t2d::metrics::approx_allocations_per_tick_p95();
+            j << ",\"allocs_per_tick_p95\":" << allocs_p95;
             double alloc_bytes_mean = 0.0;
             auto ab_samples = rt.allocations_bytes_per_tick_samples.load(std::memory_order_relaxed);
             if (ab_samples > 0) {

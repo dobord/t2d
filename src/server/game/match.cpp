@@ -842,6 +842,7 @@ coro::task<void> run_match(std::shared_ptr<coro::io_scheduler> scheduler, std::s
             if (delta > 0) {
                 rt.allocations_ticks_with_alloc.fetch_add(1, std::memory_order_relaxed);
             }
+            t2d::metrics::add_allocations_tick(delta);
         }
         if (alloc_bytes_after >= alloc_bytes_before) {
             auto delta_b = alloc_bytes_after - alloc_bytes_before;
