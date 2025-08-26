@@ -70,6 +70,23 @@ FULL_COUNT=$(grep -E '"metric":"snapshot_totals"' ${SERVER_LOG} | tail -1 | sed 
 DELTA_COUNT=$(grep -E '"metric":"snapshot_totals"' ${SERVER_LOG} | tail -1 | sed -E 's/.*"delta_count":([0-9]+).*/\1/' || echo 0)
 
 MEAN_TICK_MS=$(awk -v ns=${AVG_TICK_NS} 'BEGIN{ printf("%.3f", ns/1000000.0) }')
+MEAN_FULL_BYTES=$(awk -v b=${FULL_BYTES} -v c=${FULL_COUNT} 'BEGIN{ if(c>0) printf("%.2f", b/c); else print 0 }')
+MEAN_DELTA_BYTES=$(awk -v b=${DELTA_BYTES} -v c=${DELTA_COUNT} 'BEGIN{ if(c>0) printf("%.2f", b/c); else print 0 }')
+
+# Extract top CPU symbols if folded stacks exist (inclusive approximation)
+TOP_CPU_SECTION=""
+FOLDED_FILE="${RUN_DIR}/cpu/out.folded"
+if [[ -f "${FOLDED_FILE}" ]]; then
+	# Build inclusive sample counts per function
+	TOP_TMP=$(awk -F';' '{n=split($0, parts, ";"); split(parts[n], lf, " "); cnt=lf[length(lf)]; if(cnt=="") cnt=0; cnt+=0; for(i=1;i<=n;i++){ split(parts[i], f, " "); fn=f[1]; samples[fn]+=cnt;} total+=cnt;} END {for (f in samples) printf "%s %s\n", samples[f], f > "/dev/stderr"; print total > "/dev/stdout"}' "${FOLDED_FILE}" 2>"${RUN_DIR}/cpu/.symcounts") || true
+	TOTAL_SAMPLES=$(echo "${TOP_TMP}" | tail -n1)
+	if [[ -f "${RUN_DIR}/cpu/.symcounts" && ${TOTAL_SAMPLES:-0} -gt 0 ]]; then
+		TOP_CPU_SECTION=$({
+			echo "- top_cpu_symbols:"
+			sort -nr "${RUN_DIR}/cpu/.symcounts" | head -10 | awk -v t=${TOTAL_SAMPLES} '{pct=($1*100.0)/t; printf "  * %s (%.2f%%, samples=%s)\n", $2, pct, $1}'
+		})
+	fi
+fi
 
 # Append baseline metrics section note if not already appended (idempotent marker)
 MARKER="<!-- BASELINE_RUN_${TIMESTAMP} -->"
@@ -80,9 +97,12 @@ if ! grep -q "${MARKER}" "${PLAN_FILE}"; then
 		echo "- avg_tick_ns=${AVG_TICK_NS} (~${MEAN_TICK_MS} ms)"
 		echo "- snapshot_full_bytes_total=${FULL_BYTES} (count=${FULL_COUNT})"
 		echo "- snapshot_delta_bytes_total=${DELTA_BYTES} (count=${DELTA_COUNT})"
+		echo "- snapshot_full_mean_bytes=${MEAN_FULL_BYTES}"
+		echo "- snapshot_delta_mean_bytes=${MEAN_DELTA_BYTES}"
 		echo "- clients=${CLIENTS} duration=${DURATION}s port=${PORT}"
 		echo "- cpu_profile=${RUN_DIR}/cpu/cpu_flame.svg (if generated)"
 		echo "- offcpu_profile=${RUN_DIR}/offcpu/offcpu_flame.svg (if generated)"
+		if [[ -n "${TOP_CPU_SECTION}" ]]; then echo "${TOP_CPU_SECTION}"; fi
 	} >>"${PLAN_FILE}"
 fi
 
@@ -98,4 +118,6 @@ Avg tick (ns): ${AVG_TICK_NS}
 Avg tick (ms): ${MEAN_TICK_MS}
 Full snapshot bytes total: ${FULL_BYTES} (count ${FULL_COUNT})
 Delta snapshot bytes total: ${DELTA_BYTES} (count ${DELTA_COUNT})
+Mean full snapshot bytes: ${MEAN_FULL_BYTES}
+Mean delta snapshot bytes: ${MEAN_DELTA_BYTES}
 EOF
