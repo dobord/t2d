@@ -41,4 +41,62 @@ if [ $STATUS -ne 0 ]; then
     exit 1
   fi
 fi
-echo "Formatting OK"
+echo "C/C++ formatting OK"
+
+# Shell script formatting check (shfmt diff mode)
+if command -v shfmt >/dev/null 2>&1; then
+  SH_FILES=$(git -C "$ROOT" ls-files '*.sh' | grep -v '^third_party/' || true)
+  if [ -n "$SH_FILES" ]; then
+    SH_STATUS=0
+    for shf in $SH_FILES; do
+      # shfmt does not have a built-in dry-run diff across many versions; emulate via temp copy
+      cp "$ROOT/$shf" "$TMPDIR/$shf.shfmt" || continue
+      shfmt "$TMPDIR/$shf.shfmt" > "$TMPDIR/$shf.out" 2>/dev/null || continue
+      if ! diff -u "$ROOT/$shf" "$TMPDIR/$shf.out" >/dev/null; then
+        echo "Needs formatting (shfmt): $shf"
+        SH_STATUS=1
+        if [[ $APPLY -eq 1 ]]; then
+          shfmt -w "$ROOT/$shf" || true
+        fi
+      fi
+    done
+    if [ $SH_STATUS -ne 0 ]; then
+      if [[ $APPLY -eq 1 ]]; then
+        echo "Applied shfmt to offending shell scripts. Please stage & commit." >&2
+      else
+        echo "Shell script formatting issues detected. Install shfmt and run with --apply to fix." >&2
+        STATUS=1
+      fi
+    else
+      echo "Shell script formatting OK"
+    fi
+  fi
+fi
+
+# Protobuf formatting check (buf format -d) if buf present
+if command -v buf >/dev/null 2>&1; then
+  if [ -f "$ROOT/buf.yaml" ] || [ -f "$ROOT/buf.yml" ]; then
+    if ! buf format -d > "$TMPDIR/buf.diff" 2>/dev/null; then
+      echo "Warning: buf format encountered an error (skipping check)" >&2
+    else
+      if [ -s "$TMPDIR/buf.diff" ]; then
+        echo "Protobuf formatting issues detected (buf)."
+        if [[ $APPLY -eq 1 ]]; then
+          buf format -w || true
+          echo "Applied buf formatting. Please stage & commit." >&2
+        else
+          echo "Run: buf format -w  (or scripts/format_check.sh --apply)" >&2
+        fi
+        STATUS=1
+      else
+        echo "Protobuf formatting OK"
+      fi
+    fi
+  fi
+fi
+
+if [ $STATUS -eq 0 ]; then
+  echo "All formatting OK"
+else
+  exit 1
+fi

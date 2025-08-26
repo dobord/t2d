@@ -44,6 +44,8 @@ BUILD_DIR="$ROOT/build"
 have_any=0
 command -v clang-format >/dev/null 2>&1 && have_any=1
 command -v cmake-format >/dev/null 2>&1 && have_any=1 || true
+command -v shfmt >/dev/null 2>&1 && have_any=1 || true
+command -v buf >/dev/null 2>&1 && have_any=1 || true
 
 if [ ! -d "$BUILD_DIR" ]; then
   cmake -S "$ROOT" -B "$BUILD_DIR" >/dev/null
@@ -108,18 +110,72 @@ while read -r _q; do
   fi
 done < <(git diff --name-only --diff-filter=ACMRT | grep -E '\.qml$' || true)
 
+# Shell scripts
+mapfile -t STAGED_SH < <(echo "$STAGED_ALL" | grep -E '\.sh$' || true)
+SH_FILTERED=()
+for f in "${STAGED_SH[@]}"; do
+  case "$f" in
+    third_party/*) continue;;
+    *) SH_FILTERED+=("$f");;
+  esac
+done
+while read -r _s; do
+  [ -z "$_s" ] && continue
+  case "$_s" in
+    third_party/*) continue;;
+    *.sh) ;; 
+    *) continue;;
+  esac
+  if git ls-files --error-unmatch "$_s" >/dev/null 2>&1; then
+    if ! printf '%s\n' "${SH_FILTERED[@]}" | grep -Fxq "$_s"; then
+      SH_FILTERED+=("$_s")
+    fi
+  fi
+done < <(git diff --name-only --diff-filter=ACMRT | grep -E '\.sh$' || true)
+
+# Proto files
+mapfile -t STAGED_PROTO < <(echo "$STAGED_ALL" | grep -E '\.proto$' || true)
+PROTO_FILTERED=()
+for f in "${STAGED_PROTO[@]}"; do
+  case "$f" in
+    third_party/*) continue;;
+    *) PROTO_FILTERED+=("$f");;
+  esac
+done
+while read -r _p; do
+  [ -z "$_p" ] && continue
+  case "$_p" in
+    third_party/*) continue;;
+    *.proto) ;;
+    *) continue;;
+  esac
+  if git ls-files --error-unmatch "$_p" >/dev/null 2>&1; then
+    if ! printf '%s\n' "${PROTO_FILTERED[@]}" | grep -Fxq "$_p"; then
+      PROTO_FILTERED+=("$_p")
+    fi
+  fi
+done < <(git diff --name-only --diff-filter=ACMRT | grep -E '\.proto$' || true)
+
 # Auto-add SPDX header to new first-party C/C++ files missing it.
-for f in "${FILTERED[@]}" "${QML_FILTERED[@]}"; do
+for f in "${FILTERED[@]}" "${QML_FILTERED[@]}" "${SH_FILTERED[@]}" "${PROTO_FILTERED[@]}"; do
   # Only operate on files that exist in the working tree
   [ -f "$f" ] || continue
   if ! grep -E -q 'SPDX-License-Identifier:\s*Apache-2.0' "$f"; then
-    # Determine comment prefix (all current first-party sources use //; adjust if ever adding pure C headers with /* */ style)
-    # Preserve shebang if present
     tmp="$f.tmp.spdx";
     if head -1 "$f" | grep -q '^#!'; then
-      { head -1 "$f"; echo "// SPDX-License-Identifier: Apache-2.0"; tail -n +2 "$f"; } > "$tmp"
+      shebang_line="$(head -1 "$f")"
+      tail_part="$(tail -n +2 "$f")"
+      case "$f" in
+        *.sh) { echo "$shebang_line"; echo "# SPDX-License-Identifier: Apache-2.0"; echo "$tail_part"; } > "$tmp" ;;
+        *.proto|*.cpp|*.cc|*.cxx|*.hpp|*.h|*.qml) { echo "$shebang_line"; echo "// SPDX-License-Identifier: Apache-2.0"; echo "$tail_part"; } > "$tmp" ;;
+        *) { echo "$shebang_line"; echo "# SPDX-License-Identifier: Apache-2.0"; echo "$tail_part"; } > "$tmp" ;;
+      esac
     else
-      { echo "// SPDX-License-Identifier: Apache-2.0"; cat "$f"; } > "$tmp"
+      case "$f" in
+        *.sh) { echo "# SPDX-License-Identifier: Apache-2.0"; cat "$f"; } > "$tmp" ;;
+        *.proto|*.cpp|*.cc|*.cxx|*.hpp|*.h|*.qml) { echo "// SPDX-License-Identifier: Apache-2.0"; cat "$f"; } > "$tmp" ;;
+        *) { echo "# SPDX-License-Identifier: Apache-2.0"; cat "$f"; } > "$tmp" ;;
+      esac
     fi
     mv "$tmp" "$f"
   fi
@@ -137,6 +193,19 @@ if command -v qmlformat >/dev/null 2>&1; then
   QMLFORMAT_BIN="$(command -v qmlformat)"
 elif [ -f "$BUILD_DIR/CMakeCache.txt" ]; then
   QMLFORMAT_BIN="$(grep -E '^QMLFORMAT_BIN:FILEPATH=' "$BUILD_DIR/CMakeCache.txt" | cut -d= -f2 || true)"
+fi
+
+# Run shfmt on shell scripts (if available)
+if command -v shfmt >/dev/null 2>&1 && [ ${#SH_FILTERED[@]} -gt 0 ]; then
+  echo "[pre-commit] shfmt formatting ${#SH_FILTERED[@]} shell script(s)" >&2
+  shfmt -w "${SH_FILTERED[@]}" || echo "[pre-commit] WARNING: shfmt failed" >&2
+fi
+
+# Run buf format on proto files (if available)
+if command -v buf >/dev/null 2>&1 && [ ${#PROTO_FILTERED[@]} -gt 0 ]; then
+  echo "[pre-commit] buf formatting protobuf module (changed proto count: ${#PROTO_FILTERED[@]})" >&2
+  # buf format operates module-wide; safe for small set of protos
+  buf format -w || echo "[pre-commit] WARNING: buf format failed" >&2
 fi
 # If still not found, inspect qt_local.cmake for custom Qt prefixes (gcc_64 style) and look in their bin dirs
 if [ -z "$QMLFORMAT_BIN" ] && [ -f "$ROOT/qt_local.cmake" ]; then
@@ -203,10 +272,12 @@ fi
 
 # Re-stage any changes produced (only our filtered set + root CMakeLists)
 CHANGED=0
-FILES_TO_CHECK=("${FILTERED[@]}" "${QML_FILTERED[@]}")
+FILES_TO_CHECK=("${FILTERED[@]}" "${QML_FILTERED[@]}" "${SH_FILTERED[@]}" "${PROTO_FILTERED[@]}")
 if ! git diff --quiet -- "${FILES_TO_CHECK[@]}" CMakeLists.txt 2>/dev/null; then
   [ ${#FILTERED[@]} -gt 0 ] && git add "${FILTERED[@]}" 2>/dev/null || true
   [ ${#QML_FILTERED[@]} -gt 0 ] && git add "${QML_FILTERED[@]}" 2>/dev/null || true
+  [ ${#SH_FILTERED[@]} -gt 0 ] && git add "${SH_FILTERED[@]}" 2>/dev/null || true
+  [ ${#PROTO_FILTERED[@]} -gt 0 ] && git add "${PROTO_FILTERED[@]}" 2>/dev/null || true
   if [ -f CMakeLists.txt ]; then git add CMakeLists.txt 2>/dev/null || true; fi
   CHANGED=1
 fi

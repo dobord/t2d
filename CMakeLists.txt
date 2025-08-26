@@ -429,6 +429,54 @@ if (QMLFORMAT_BIN)
     endif ()
 endif ()
 
+# Shell scripts formatting (optional, requires shfmt)
+find_program(SHFMT_BIN shfmt)
+if (SHFMT_BIN)
+    # Collect first-party shell scripts (root *.sh + scripts/**/*.sh) excluding third_party
+    set(ALL_SH_FILES)
+    file(
+        GLOB_RECURSE _root_sh
+        RELATIVE ${CMAKE_CURRENT_SOURCE_DIR}
+        ${CMAKE_CURRENT_SOURCE_DIR}/*.sh)
+    list(APPEND ALL_SH_FILES ${_root_sh})
+    if (EXISTS ${CMAKE_CURRENT_SOURCE_DIR}/scripts)
+        file(
+            GLOB_RECURSE _scripts_sh
+            RELATIVE ${CMAKE_CURRENT_SOURCE_DIR}
+            ${CMAKE_CURRENT_SOURCE_DIR}/scripts/*.sh)
+        list(APPEND ALL_SH_FILES ${_scripts_sh})
+    endif ()
+    # Filter out any accidental third_party scripts
+    list(
+        FILTER
+        ALL_SH_FILES
+        EXCLUDE
+        REGEX
+        ".*/third_party/.*")
+    if (ALL_SH_FILES AND NOT TARGET format_sh)
+        add_custom_target(
+            format_sh
+            COMMAND ${SHFMT_BIN} -w ${ALL_SH_FILES}
+            WORKING_DIRECTORY ${CMAKE_CURRENT_SOURCE_DIR}
+            COMMENT "Formatting shell scripts with shfmt")
+    endif ()
+endif ()
+
+# Protobuf formatting (optional, requires buf)
+find_program(BUF_BIN buf)
+if (BUF_BIN)
+    # Only create target if proto directory exists
+    if (EXISTS ${CMAKE_CURRENT_SOURCE_DIR}/proto)
+        if (NOT TARGET format_proto)
+            add_custom_target(
+                format_proto
+                COMMAND ${BUF_BIN} format -w
+                WORKING_DIRECTORY ${CMAKE_CURRENT_SOURCE_DIR}
+                COMMENT "Formatting protobuf files with buf format")
+        endif ()
+    endif ()
+endif ()
+
 # Aggregate formatting target (format_all) to run all available formatting steps (C++, CMake, QML)
 set(_fmt_targets)
 if (TARGET t2d_format)
@@ -442,6 +490,12 @@ if (TARGET format_cmake)
 endif ()
 if (TARGET format_qml)
     list(APPEND _fmt_targets format_qml)
+endif ()
+if (TARGET format_sh)
+    list(APPEND _fmt_targets format_sh)
+endif ()
+if (TARGET format_proto)
+    list(APPEND _fmt_targets format_proto)
 endif ()
 list(LENGTH _fmt_targets _fmt_len)
 if (_fmt_len GREATER 0 AND NOT TARGET format_all)

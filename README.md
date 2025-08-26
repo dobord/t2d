@@ -154,6 +154,8 @@ First‑party sources (C/C++, QML, CMake) are auto‑formatted via a layered set
 |-----------------|---------|-------|
 | `t2d_format` | clang-format on C/C++ (excludes `third_party/`) | Always safe to run |
 | `format_qml` | Runs `qmlformat` on QML files | Created only if Qt's `qmlformat` located |
+| `format_sh` | Runs `shfmt` on shell scripts (`*.sh` in root & `scripts/`) | Created only if `shfmt` present |
+| `format_proto` | Runs `buf format -w` on protobuf module | Created only if `buf` present |
 | `format_cmake` (if present) | Formats CMakeLists / *.cmake | Requires `cmake-format` |
 | `format_all` | Aggregates the above found targets | Only present when at least one underlying target exists |
 | `scripts/install_precommit_format_hook.sh` | Installs git pre-commit that formats staged & modified tracked C/C++/QML + injects SPDX if missing | Honors `T2D_FORMAT_BLOCK` / `t2d.formatBlock` and `T2D_QML_FORMAT_REQUIRED` |

@@ -1,0 +1,10 @@
+# SPDX-License-Identifier: Apache-2.0
+version: v1
+
+# Minimal buf configuration enabling default lint & breaking change detection (file based).
+lint:
+  use:
+    - DEFAULT
+breaking:
+  use:
+    - FILE
