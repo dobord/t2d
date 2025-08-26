@@ -151,6 +151,8 @@ if [[ -f ${SERVER_LOG} ]]; then
 		RSS_PEAK_BYTES=$(echo "${line}" | sed -E 's/.*"rss_peak_bytes":([0-9]+).*/\1/' || echo 0)
 		ALLOCS_PER_TICK_MEAN=$(echo "${line}" | sed -E 's/.*"allocs_per_tick_mean":([0-9\.]+).*/\1/' || echo 0)
 		ALLOCS_PER_TICK_P95=$(echo "${line}" | sed -E 's/.*"allocs_per_tick_p95":([0-9]+).*/\1/' || echo 0)
+		# Ensure numeric (strip anything non-digit)
+		if ! [[ ${ALLOCS_PER_TICK_P95} =~ ^[0-9]+$ ]]; then ALLOCS_PER_TICK_P95=0; fi
 	fi
 	# snapshot totals (may appear earlier, so separate grep)
 	st_line=$(grep -E '"metric":"snapshot_totals"' "${SERVER_LOG}" | tail -1)
