@@ -10,6 +10,8 @@
 
 #pragma once
 
+#include "common/metrics.hpp" // for profiling log line counting
+
 #include <array>
 #include <atomic>
 #include <cctype>
