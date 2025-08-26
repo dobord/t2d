@@ -35,7 +35,7 @@ Focus (phase 1): Authoritative server runtime (tick loop, networking, snapshot g
 | Metric | Description | Collection Method | Baseline (TBD) | Target |
 |--------|-------------|-------------------|----------------|--------|
 | tick_duration_ns_mean | Avg server tick time | Existing histogram | 287453 (S2 baseline 20250826-180618) | < 2 ms (S2) |
-| tick_duration_ns_p99 | 99th percentile tick | Existing histogram | – | < 5 ms (S2) |
+| tick_duration_ns_p99 | 99th percentile tick | Existing histogram | 2000000 (recent 20250826-183305) | < 5 ms (S2) |
 | snapshot_full_bytes_mean | Mean full snapshot size | Existing counter | 667.03 (S2 baseline 20250826-180618) | < 25 KB (target guess; refine) |
 | snapshot_delta_bytes_mean | Mean delta size | Existing counter | 499.94 (S2 baseline 20250826-180618) | < 4 KB (S2) |
 | CPU_user_pct | User CPU % process | perf / pidstat | – | < 75% (S2) |
@@ -396,3 +396,104 @@ Baseline capture 20250826-180618:
 - clients=20 duration=90s port=40000
 - cpu_profile=baseline_artifacts/20250826-180618/cpu/cpu_flame.svg (if generated)
 - offcpu_profile=baseline_artifacts/20250826-180618/offcpu/offcpu_flame.svg (if generated)
+\n<!-- BASELINE_RUN_20250826-181746 -->
+Baseline capture 20250826-181746:
+- avg_tick_ns=104897 (~0,105 ms)
+- p99_tick_ns=500000 (~0,500 ms)
+- snapshot_full_bytes_total=6982 (count=15)
+- snapshot_delta_bytes_total=14749 (count=85)
+- snapshot_full_mean_bytes=465,47
+- snapshot_delta_mean_bytes=173,52
+- clients=6 duration=10s port=40000
+- cpu_profile=baseline_artifacts/20250826-181746/cpu/cpu_flame.svg (if generated)
+- offcpu_profile=baseline_artifacts/20250826-181746/offcpu/offcpu_flame.svg (if generated)
+\n<!-- BASELINE_RUN_20250826-182356 -->
+Baseline capture 20250826-182356:
+- avg_tick_ns=126857 (~0,127 ms)
+- p99_tick_ns=1000000 (~1,000 ms)
+- snapshot_full_bytes_total=417 (count=1)
+- snapshot_delta_bytes_total=735 (count=5)
+- snapshot_full_mean_bytes=417,00
+- snapshot_delta_mean_bytes=147,00
+- wait_p99_ns=64000000 (~64,000 ms)
+- cpu_user_pct=[2025-08-26 18:24:03.962] [I] {"metric":"runtime_final","avg_tick_ns":126857,"p99_tick_ns":1000000,"wait_p99_ns":64000000,"cpu_user_pct":{:.2f},"rss_peak_bytes":0.333217,"allocs_per_tick_mean":{:.2f},"samples":7192576,"queue_depth":0.000000,"active_matches":31,"bots_in_match":0,"projectiles_active":1,"connected_players":2} 0 2
+- rss_peak_bytes=0 (~0,00 MB)
+- allocs_per_tick_mean=[2025-08-26 18:24:03.962] [I] {"metric":"runtime_final","avg_tick_ns":126857,"p99_tick_ns":1000000,"wait_p99_ns":64000000,"cpu_user_pct":{:.2f},"rss_peak_bytes":0.333217,"allocs_per_tick_mean":{:.2f},"samples":7192576,"queue_depth":0.000000,"active_matches":31,"bots_in_match":0,"projectiles_active":1,"connected_players":2} 0 2
+- clients=2 duration=5s port=40000
+- cpu_profile=baseline_artifacts/20250826-182356/cpu/cpu_flame.svg (if generated)
+- offcpu_profile=baseline_artifacts/20250826-182356/offcpu/offcpu_flame.svg (if generated)
+\n<!-- BASELINE_RUN_20250826-182712 -->
+Baseline capture 20250826-182712:
+- avg_tick_ns=97620 (~0,098 ms)
+- p99_tick_ns=250000 (~0,250 ms)
+- snapshot_full_bytes_total=417 (count=1)
+- snapshot_delta_bytes_total=735 (count=5)
+- snapshot_full_mean_bytes=417,00
+- snapshot_delta_mean_bytes=147,00
+- wait_p99_ns=64000000 (~64,000 ms)
+- cpu_user_pct=0.33
+- rss_peak_bytes=7454720 (~7,11 MB)
+- allocs_per_tick_mean=0.00
+- clients=2 duration=5s port=40000
+- cpu_profile=baseline_artifacts/20250826-182712/cpu/cpu_flame.svg (if generated)
+- offcpu_profile=baseline_artifacts/20250826-182712/offcpu/offcpu_flame.svg (if generated)
+\n<!-- BASELINE_RUN_20250826-183018 -->
+Baseline capture 20250826-183018:
+- avg_tick_ns=0 (~0,000 ms)
+- p99_tick_ns=0 (~0.000 ms)
+- snapshot_full_bytes_total=0 (count=0)
+- snapshot_delta_bytes_total=0 (count=0)
+- snapshot_full_mean_bytes=0
+- snapshot_delta_mean_bytes=0
+- wait_p99_ns=0 (~0.000 ms)
+- cpu_user_pct=0.00
+- rss_peak_bytes=7192576 (~6,86 MB)
+- allocs_per_tick_mean=0.00
+- clients=1 duration=3s port=40000
+- cpu_profile=baseline_artifacts/20250826-183018/cpu/cpu_flame.svg (if generated)
+- offcpu_profile=baseline_artifacts/20250826-183018/offcpu/offcpu_flame.svg (if generated)
+\n<!-- BASELINE_RUN_20250826-183048 -->
+Baseline capture 20250826-183048:
+- avg_tick_ns=0 (~0,000 ms)
+- p99_tick_ns=0 (~0.000 ms)
+- snapshot_full_bytes_total=0 (count=0)
+- snapshot_delta_bytes_total=0 (count=0)
+- snapshot_full_mean_bytes=0
+- snapshot_delta_mean_bytes=0
+- wait_p99_ns=0 (~0.000 ms)
+- cpu_user_pct=0.00
+- rss_peak_bytes=7208960 (~6,88 MB)
+- allocs_per_tick_mean=0.00
+- clients=1 duration=2s port=40000
+- cpu_profile=baseline_artifacts/20250826-183048/cpu/cpu_flame.svg (if generated)
+- offcpu_profile=baseline_artifacts/20250826-183048/offcpu/offcpu_flame.svg (if generated)
+\n<!-- BASELINE_RUN_20250826-183237 -->
+Baseline capture 20250826-183237:
+- avg_tick_ns=0 (~0,000 ms)
+- p99_tick_ns=0 (~0.000 ms)
+- snapshot_full_bytes_total=0 (count=0)
+- snapshot_delta_bytes_total=0 (count=0)
+- snapshot_full_mean_bytes=0
+- snapshot_delta_mean_bytes=0
+- wait_p99_ns=0 (~0.000 ms)
+- cpu_user_pct=0.00
+- rss_peak_bytes=7192576 (~6,86 MB)
+- allocs_per_tick_mean=0.00
+- clients=1 duration=2s port=40000
+- cpu_profile=baseline_artifacts/20250826-183237/cpu/cpu_flame.svg (if generated)
+- offcpu_profile=baseline_artifacts/20250826-183237/offcpu/offcpu_flame.svg (if generated)
+\n<!-- BASELINE_RUN_20250826-183305 -->
+Baseline capture 20250826-183305:
+- avg_tick_ns=179503 (~0,180 ms)
+- p99_tick_ns=2000000 (~2,000 ms)
+- snapshot_full_bytes_total=834 (count=2)
+- snapshot_delta_bytes_total=1325 (count=10)
+- snapshot_full_mean_bytes=417,00
+- snapshot_delta_mean_bytes=132,50
+- wait_p99_ns=64000000 (~64,000 ms)
+- cpu_user_pct=0.57
+- rss_peak_bytes=7585792 (~7,23 MB)
+- allocs_per_tick_mean=0.00
+- clients=2 duration=6s port=40000
+- cpu_profile=baseline_artifacts/20250826-183305/cpu/cpu_flame.svg (if generated)
+- offcpu_profile=baseline_artifacts/20250826-183305/offcpu/offcpu_flame.svg (if generated)

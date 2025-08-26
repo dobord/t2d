@@ -43,6 +43,89 @@ static coro::task<void> heartbeat_monitor(std::shared_ptr<coro::io_scheduler> sc
     co_return;
 }
 
+// Periodic resource sampler: captures user CPU time and RSS peak approximation.
+static coro::task<void> resource_sampler(std::shared_ptr<coro::io_scheduler> sched)
+{
+    co_await sched->schedule();
+    using clock = std::chrono::steady_clock;
+    // Track previous process times to compute deltas.
+    long clk_tck = sysconf(_SC_CLK_TCK);
+    if (clk_tck <= 0)
+        clk_tck = 100; // fallback
+    auto last_wall = clock::now();
+    uint64_t last_utime_ticks = 0, last_stime_ticks = 0;
+    bool first = true;
+    while (!t2d::g_shutdown.load()) {
+        // Read /proc/self/stat (utime=14, stime=15 fields)
+        FILE *f = std::fopen("/proc/self/stat", "r");
+        if (f) {
+            char buf[4096];
+            if (std::fgets(buf, sizeof(buf), f)) {
+                // Tokenize carefully (second field can contain spaces inside parentheses). Simplistic approach: find
+                // last ')' then split.
+                char *rp = strrchr(buf, ')');
+                if (rp) {
+                    // count fields after rp+2
+                    int field = 3; // we start counting after pid and comm
+                    char *p = rp + 2;
+                    char *save = nullptr;
+                    uint64_t ut = 0, st = 0;
+                    for (char *tok = strtok_r(p, " ", &save); tok; tok = strtok_r(nullptr, " ", &save)) {
+                        if (field == 14)
+                            ut = strtoull(tok, nullptr, 10);
+                        if (field == 15)
+                            st = strtoull(tok, nullptr, 10);
+                        if (field > 15)
+                            break;
+                        ++field;
+                    }
+                    if (ut || st) {
+                        if (first) {
+                            last_utime_ticks = ut;
+                            last_stime_ticks = st;
+                            first = false;
+                        } else {
+                            auto now = clock::now();
+                            auto wall_ns =
+                                std::chrono::duration_cast<std::chrono::nanoseconds>(now - last_wall).count();
+                            last_wall = now;
+                            uint64_t dut = (ut - last_utime_ticks);
+                            uint64_t dst = (st - last_stime_ticks);
+                            last_utime_ticks = ut;
+                            last_stime_ticks = st;
+                            uint64_t cpu_ns = (dut + dst) * (1000000000ull / (uint64_t)clk_tck);
+                            auto &rt = t2d::metrics::runtime();
+                            rt.user_cpu_ns_accum.fetch_add(cpu_ns, std::memory_order_relaxed);
+                            rt.wall_clock_ns_accum.fetch_add(wall_ns, std::memory_order_relaxed);
+                        }
+                    }
+                }
+            }
+            std::fclose(f);
+        }
+        // RSS current from /proc/self/statm (2nd field resident pages)
+        FILE *fm = std::fopen("/proc/self/statm", "r");
+        if (fm) {
+            unsigned long pages_total = 0, pages_res = 0;
+            if (fscanf(fm, "%lu %lu", &pages_total, &pages_res) == 2) {
+                long page_sz = sysconf(_SC_PAGESIZE);
+                if (page_sz <= 0)
+                    page_sz = 4096;
+                uint64_t rss_bytes = (uint64_t)pages_res * (uint64_t)page_sz;
+                auto &rt = t2d::metrics::runtime();
+                uint64_t prev = rt.rss_peak_bytes.load(std::memory_order_relaxed);
+                while (rss_bytes > prev
+                       && !rt.rss_peak_bytes.compare_exchange_weak(prev, rss_bytes, std::memory_order_relaxed)) {
+                    // loop
+                }
+            }
+            std::fclose(fm);
+        }
+        co_await sched->yield_for(std::chrono::seconds(1));
+    }
+    co_return;
+}
+
 // Entry point for the authoritative game server.
 // NOTE: Networking, matchmaking, and game loops are skeletal placeholders.
 
@@ -269,6 +352,8 @@ int main(int argc, char **argv)
             cfg.map_height}));
     // Launch heartbeat monitor
     scheduler->spawn(heartbeat_monitor(scheduler, cfg.heartbeat_timeout_seconds));
+    // Launch resource sampler (profiling / production lightweight)
+    scheduler->spawn(resource_sampler(scheduler));
     if (cfg.metrics_port != 0) {
         scheduler->spawn(t2d::net::run_metrics_endpoint(scheduler, cfg.metrics_port));
     }
@@ -286,15 +371,37 @@ int main(int argc, char **argv)
             auto &rt = t2d::metrics::runtime();
             uint64_t samples = rt.tick_samples.load();
             uint64_t avg_ns = samples ? rt.tick_duration_ns_accum.load() / samples : 0;
-            t2d::log::info(
-                "{\"metric\":\"runtime\",\"avg_tick_ns\":{},\"queue_depth\":{},\"active_matches\":{},\"bots_in_match\":"
-                "{},\"projectiles_active\":{},\"connected_players\":{}}",
-                avg_ns,
-                rt.queue_depth.load(),
-                rt.active_matches.load(),
-                rt.bots_in_match.load(),
-                rt.projectiles_active.load(),
-                rt.connected_players.load());
+            uint64_t p99_ns = t2d::metrics::approx_tick_p99();
+            // Compute user CPU % over accumulated window if wall_clock_ns_accum > 0
+            uint64_t user_cpu_ns = rt.user_cpu_ns_accum.load(std::memory_order_relaxed);
+            uint64_t wall_ns = rt.wall_clock_ns_accum.load(std::memory_order_relaxed);
+            double cpu_pct = (wall_ns > 0) ? (100.0 * (double)user_cpu_ns / (double)wall_ns) : 0.0;
+            uint64_t wait_p99_ns = t2d::metrics::approx_wait_p99();
+            double allocs_per_tick_mean = 0.0;
+            auto alloc_samples = rt.allocations_per_tick_samples.load(std::memory_order_relaxed);
+            if (alloc_samples > 0) {
+                allocs_per_tick_mean =
+                    (double)rt.allocations_per_tick_accum.load(std::memory_order_relaxed) / (double)alloc_samples;
+            }
+            {
+                std::ostringstream j;
+                j.setf(std::ios::fixed);
+                j.precision(2);
+                j << "{\"metric\":\"runtime\"";
+                j << ",\"avg_tick_ns\":" << avg_ns;
+                j << ",\"p99_tick_ns\":" << p99_ns;
+                j << ",\"wait_p99_ns\":" << wait_p99_ns;
+                j << ",\"cpu_user_pct\":" << cpu_pct;
+                j << ",\"rss_peak_bytes\":" << rt.rss_peak_bytes.load(std::memory_order_relaxed);
+                j << ",\"allocs_per_tick_mean\":" << allocs_per_tick_mean;
+                j << ",\"queue_depth\":" << rt.queue_depth.load();
+                j << ",\"active_matches\":" << rt.active_matches.load();
+                j << ",\"bots_in_match\":" << rt.bots_in_match.load();
+                j << ",\"projectiles_active\":" << rt.projectiles_active.load();
+                j << ",\"connected_players\":" << rt.connected_players.load();
+                j << "}";
+                t2d::log::info("{}", j.str());
+            }
         }
     }
     t2d::log::info("Shutdown complete.");
@@ -303,16 +410,37 @@ int main(int argc, char **argv)
         auto &rt = t2d::metrics::runtime();
         uint64_t samples = rt.tick_samples.load();
         uint64_t avg_ns = samples ? rt.tick_duration_ns_accum.load() / samples : 0;
-        t2d::log::info(
-            "{\"metric\":\"runtime_final\",\"avg_tick_ns\":{},\"samples\":{},\"queue_depth\":{},\"active_matches\":{},"
-            "\"bots_in_match\":{},\"projectiles_active\":{},\"connected_players\":{}}",
-            avg_ns,
-            samples,
-            rt.queue_depth.load(),
-            rt.active_matches.load(),
-            rt.bots_in_match.load(),
-            rt.projectiles_active.load(),
-            rt.connected_players.load());
+        uint64_t p99_ns = t2d::metrics::approx_tick_p99();
+        uint64_t wait_p99_ns = t2d::metrics::approx_wait_p99();
+        uint64_t user_cpu_ns = rt.user_cpu_ns_accum.load(std::memory_order_relaxed);
+        uint64_t wall_ns = rt.wall_clock_ns_accum.load(std::memory_order_relaxed);
+        double cpu_pct = (wall_ns > 0) ? (100.0 * (double)user_cpu_ns / (double)wall_ns) : 0.0;
+        double allocs_per_tick_mean = 0.0;
+        auto alloc_samples = rt.allocations_per_tick_samples.load(std::memory_order_relaxed);
+        if (alloc_samples > 0) {
+            allocs_per_tick_mean =
+                (double)rt.allocations_per_tick_accum.load(std::memory_order_relaxed) / (double)alloc_samples;
+        }
+        {
+            std::ostringstream j;
+            j.setf(std::ios::fixed);
+            j.precision(2);
+            j << "{\"metric\":\"runtime_final\"";
+            j << ",\"avg_tick_ns\":" << avg_ns;
+            j << ",\"p99_tick_ns\":" << p99_ns;
+            j << ",\"wait_p99_ns\":" << wait_p99_ns;
+            j << ",\"cpu_user_pct\":" << cpu_pct;
+            j << ",\"rss_peak_bytes\":" << rt.rss_peak_bytes.load(std::memory_order_relaxed);
+            j << ",\"allocs_per_tick_mean\":" << allocs_per_tick_mean;
+            j << ",\"samples\":" << samples;
+            j << ",\"queue_depth\":" << rt.queue_depth.load();
+            j << ",\"active_matches\":" << rt.active_matches.load();
+            j << ",\"bots_in_match\":" << rt.bots_in_match.load();
+            j << ",\"projectiles_active\":" << rt.projectiles_active.load();
+            j << ",\"connected_players\":" << rt.connected_players.load();
+            j << "}";
+            t2d::log::info("{}", j.str());
+        }
     }
     // Dump snapshot metrics (stdout JSON lines if JSON mode enabled externally in logger)
     auto fullB = t2d::metrics::snapshot().full_bytes.load();

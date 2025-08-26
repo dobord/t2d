@@ -198,10 +198,17 @@ coro::task<void> run_match(std::shared_ptr<coro::io_scheduler> scheduler, std::s
     while (true) {
         auto now = clock::now();
         if (now < next) {
-            co_await scheduler->yield_for(next - now);
+            auto wait_dur = next - now;
+            // Record wait duration (off-CPU sleep) as approximation of scheduler idle time.
+            t2d::metrics::add_wait_duration(std::chrono::duration_cast<std::chrono::nanoseconds>(wait_dur).count());
+            co_await scheduler->yield_for(wait_dur);
             continue;
         }
         auto tick_start = now;
+        // Snapshot allocation counter at tick start (profiling builds only)
+#if defined(T2D_ENABLE_PROFILING)
+        uint64_t alloc_before = t2d::metrics::runtime().allocations_total.load(std::memory_order_relaxed);
+#endif
         next += tick_interval;
         ctx->server_tick++;
         // Handle disconnects: identify players removed from session manager snapshot
@@ -821,6 +828,15 @@ coro::task<void> run_match(std::shared_ptr<coro::io_scheduler> scheduler, std::s
         t2d::metrics::runtime().projectiles_active.store(ctx->projectiles.size(), std::memory_order_relaxed);
         auto tick_ns = std::chrono::duration_cast<std::chrono::nanoseconds>(clock::now() - tick_start).count();
         t2d::metrics::add_tick_duration(static_cast<uint64_t>(tick_ns));
+#if defined(T2D_ENABLE_PROFILING)
+        uint64_t alloc_after = t2d::metrics::runtime().allocations_total.load(std::memory_order_relaxed);
+        if (alloc_after >= alloc_before) {
+            auto delta = alloc_after - alloc_before;
+            auto &rt = t2d::metrics::runtime();
+            rt.allocations_per_tick_accum.fetch_add(delta, std::memory_order_relaxed);
+            rt.allocations_per_tick_samples.fetch_add(1, std::memory_order_relaxed);
+        }
+#endif
     }
 }
 

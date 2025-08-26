@@ -126,6 +126,13 @@ To capture CPU/Off-CPU flame graphs consistently:
 6. Fallback behavior: if direct PID attach fails (transient process visibility races), scripts fall back to a system-wide capture (`-a`) then filter by binary name (`FALLBACK_FILTER`, default `t2d_server`). Adjust if multiple server processes are active.
 7. Do not commit large `perf.data` files. Commit only derived artifacts (SVG) when they are needed for code review context; prefer attaching them to issues or storing as CI artifacts.
 
+Additional runtime metrics (profiling builds `T2D_ENABLE_PROFILING`):
+- `t2d_p99_tick_ns` / `t2d_tick_duration_ns_*` histogram buckets (existing)
+- `t2d_wait_p99_ns` (scheduler wait / sleep between ticks)
+- `t2d_cpu_user_pct` (process user+sys CPU % sampled via /proc)
+- `t2d_rss_peak_bytes` (peak RSS observed)
+- `t2d_allocs_per_tick_mean` (mean dynamic allocations per tick via global operator new hook)
+
 Security note: Lowering `perf_event_paranoid` affects system-wide observability. Revert if necessary after profiling (`sudo sysctl kernel.perf_event_paranoid=4`).
 
 ## Issue Triage Labels (Proposed)

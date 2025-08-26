@@ -22,6 +22,18 @@ static std::string build_metrics_body()
     auto &rt = t2d::metrics::runtime();
     uint64_t samples = rt.tick_samples.load();
     uint64_t avg_ns = samples ? rt.tick_duration_ns_accum.load() / samples : 0;
+    uint64_t p99_ns = t2d::metrics::approx_tick_p99();
+    uint64_t wait_p99_ns = t2d::metrics::approx_wait_p99();
+    auto &rt_ref = rt; // alias for clarity
+    uint64_t user_cpu_ns = rt_ref.user_cpu_ns_accum.load(std::memory_order_relaxed);
+    uint64_t wall_ns = rt_ref.wall_clock_ns_accum.load(std::memory_order_relaxed);
+    double cpu_pct = (wall_ns > 0) ? (100.0 * (double)user_cpu_ns / (double)wall_ns) : 0.0;
+    double allocs_per_tick_mean = 0.0;
+    auto alloc_samples = rt_ref.allocations_per_tick_samples.load(std::memory_order_relaxed);
+    if (alloc_samples > 0) {
+        allocs_per_tick_mean =
+            (double)rt_ref.allocations_per_tick_accum.load(std::memory_order_relaxed) / (double)alloc_samples;
+    }
     // Snapshot metrics
     oss << "# TYPE t2d_snapshot_full_bytes counter\n";
     oss << "t2d_snapshot_full_bytes " << snap.full_bytes.load() << "\n";
@@ -44,6 +56,16 @@ static std::string build_metrics_body()
     oss << "t2d_projectiles_active " << rt.projectiles_active.load() << "\n";
     oss << "# TYPE t2d_avg_tick_ns gauge\n";
     oss << "t2d_avg_tick_ns " << avg_ns << "\n";
+    oss << "# TYPE t2d_p99_tick_ns gauge\n";
+    oss << "t2d_p99_tick_ns " << p99_ns << "\n";
+    oss << "# TYPE t2d_wait_p99_ns gauge\n";
+    oss << "t2d_wait_p99_ns " << wait_p99_ns << "\n";
+    oss << "# TYPE t2d_cpu_user_pct gauge\n";
+    oss << "t2d_cpu_user_pct " << cpu_pct << "\n";
+    oss << "# TYPE t2d_rss_peak_bytes gauge\n";
+    oss << "t2d_rss_peak_bytes " << rt.rss_peak_bytes.load() << "\n";
+    oss << "# TYPE t2d_allocs_per_tick_mean gauge\n";
+    oss << "t2d_allocs_per_tick_mean " << allocs_per_tick_mean << "\n";
     // Tick duration histogram (nanoseconds). Buckets are geometric (x2) starting at 250k ns (0.25ms).
     // Expose in Prometheus histogram format: *_bucket, *_sum, *_count.
     oss << "# TYPE t2d_tick_duration_ns histogram\n";

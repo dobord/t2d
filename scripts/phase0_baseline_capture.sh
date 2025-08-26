@@ -83,8 +83,18 @@ SERVER_LOG=baseline_logs/server.log
 # Prefer final runtime flush if present, else periodic runtime sample
 if grep -q '"metric":"runtime_final"' ${SERVER_LOG}; then
 	AVG_TICK_NS=$(grep -E '"metric":"runtime_final"' ${SERVER_LOG} | tail -1 | sed -E 's/.*"avg_tick_ns":([0-9]+).*/\1/' || echo 0)
+	P99_TICK_NS=$(grep -E '"metric":"runtime_final"' ${SERVER_LOG} | tail -1 | sed -E 's/.*"p99_tick_ns":([0-9]+).*/\1/' || echo 0)
+	WAIT_P99_NS=$(grep -E '"metric":"runtime_final"' ${SERVER_LOG} | tail -1 | sed -E 's/.*"wait_p99_ns":([0-9]+).*/\1/' || echo 0)
+	CPU_USER_PCT=$(grep -E '"metric":"runtime_final"' ${SERVER_LOG} | tail -1 | sed -E 's/.*"cpu_user_pct":([0-9\.]+).*/\1/' || echo 0)
+	RSS_PEAK_BYTES=$(grep -E '"metric":"runtime_final"' ${SERVER_LOG} | tail -1 | sed -E 's/.*"rss_peak_bytes":([0-9]+).*/\1/' || echo 0)
+	ALLOCS_PER_TICK_MEAN=$(grep -E '"metric":"runtime_final"' ${SERVER_LOG} | tail -1 | sed -E 's/.*"allocs_per_tick_mean":([0-9\.]+).*/\1/' || echo 0)
 else
 	AVG_TICK_NS=$(grep -E '"metric":"runtime"' ${SERVER_LOG} | tail -1 | sed -E 's/.*"avg_tick_ns":([0-9]+).*/\1/' || echo 0)
+	P99_TICK_NS=$(grep -E '"metric":"runtime"' ${SERVER_LOG} | tail -1 | sed -E 's/.*"p99_tick_ns":([0-9]+).*/\1/' || echo 0)
+	WAIT_P99_NS=$(grep -E '"metric":"runtime"' ${SERVER_LOG} | tail -1 | sed -E 's/.*"wait_p99_ns":([0-9]+).*/\1/' || echo 0)
+	CPU_USER_PCT=$(grep -E '"metric":"runtime"' ${SERVER_LOG} | tail -1 | sed -E 's/.*"cpu_user_pct":([0-9\.]+).*/\1/' || echo 0)
+	RSS_PEAK_BYTES=$(grep -E '"metric":"runtime"' ${SERVER_LOG} | tail -1 | sed -E 's/.*"rss_peak_bytes":([0-9]+).*/\1/' || echo 0)
+	ALLOCS_PER_TICK_MEAN=$(grep -E '"metric":"runtime"' ${SERVER_LOG} | tail -1 | sed -E 's/.*"allocs_per_tick_mean":([0-9\.]+).*/\1/' || echo 0)
 fi
 FULL_BYTES=$(grep -E '"metric":"snapshot_totals"' ${SERVER_LOG} | tail -1 | sed -E 's/.*"full_bytes":([0-9]+).*/\1/' || echo 0)
 DELTA_BYTES=$(grep -E '"metric":"snapshot_totals"' ${SERVER_LOG} | tail -1 | sed -E 's/.*"delta_bytes":([0-9]+).*/\1/' || echo 0)
@@ -92,6 +102,9 @@ FULL_COUNT=$(grep -E '"metric":"snapshot_totals"' ${SERVER_LOG} | tail -1 | sed 
 DELTA_COUNT=$(grep -E '"metric":"snapshot_totals"' ${SERVER_LOG} | tail -1 | sed -E 's/.*"delta_count":([0-9]+).*/\1/' || echo 0)
 
 MEAN_TICK_MS=$(awk -v ns=${AVG_TICK_NS} 'BEGIN{ printf("%.3f", ns/1000000.0) }')
+P99_TICK_MS=$(awk -v ns=${P99_TICK_NS:-0} 'BEGIN{ if(ns>0) printf("%.3f", ns/1000000.0); else printf("0.000"); }')
+WAIT_P99_MS=$(awk -v ns=${WAIT_P99_NS:-0} 'BEGIN{ if(ns>0) printf("%.3f", ns/1000000.0); else printf("0.000"); }')
+RSS_PEAK_MB=$(awk -v b=${RSS_PEAK_BYTES:-0} 'BEGIN{ printf("%.2f", b/1024/1024); }')
 MEAN_FULL_BYTES=$(awk -v b=${FULL_BYTES} -v c=${FULL_COUNT} 'BEGIN{ if(c>0) printf("%.2f", b/c); else print 0 }')
 MEAN_DELTA_BYTES=$(awk -v b=${DELTA_BYTES} -v c=${DELTA_COUNT} 'BEGIN{ if(c>0) printf("%.2f", b/c); else print 0 }')
 
@@ -151,10 +164,15 @@ if ! grep -q "${MARKER}" "${PLAN_FILE}"; then
 		echo "\n${MARKER}"
 		echo "Baseline capture ${TIMESTAMP}:"
 		echo "- avg_tick_ns=${AVG_TICK_NS} (~${MEAN_TICK_MS} ms)"
+		echo "- p99_tick_ns=${P99_TICK_NS} (~${P99_TICK_MS} ms)"
 		echo "- snapshot_full_bytes_total=${FULL_BYTES} (count=${FULL_COUNT})"
 		echo "- snapshot_delta_bytes_total=${DELTA_BYTES} (count=${DELTA_COUNT})"
 		echo "- snapshot_full_mean_bytes=${MEAN_FULL_BYTES}"
 		echo "- snapshot_delta_mean_bytes=${MEAN_DELTA_BYTES}"
+		echo "- wait_p99_ns=${WAIT_P99_NS} (~${WAIT_P99_MS} ms)"
+		echo "- cpu_user_pct=${CPU_USER_PCT}"
+		echo "- rss_peak_bytes=${RSS_PEAK_BYTES} (~${RSS_PEAK_MB} MB)"
+		echo "- allocs_per_tick_mean=${ALLOCS_PER_TICK_MEAN}"
 		echo "- clients=${CLIENTS} duration=${DURATION}s port=${PORT}"
 		echo "- cpu_profile=${RUN_DIR}/cpu/cpu_flame.svg (if generated)"
 		echo "- offcpu_profile=${RUN_DIR}/offcpu/offcpu_flame.svg (if generated)"
@@ -173,8 +191,26 @@ cat <<EOF
 Artifacts in: ${RUN_DIR}
 Avg tick (ns): ${AVG_TICK_NS}
 Avg tick (ms): ${MEAN_TICK_MS}
+P99 tick (ns): ${P99_TICK_NS}
+P99 tick (ms): ${P99_TICK_MS}
 Full snapshot bytes total: ${FULL_BYTES} (count ${FULL_COUNT})
 Delta snapshot bytes total: ${DELTA_BYTES} (count ${DELTA_COUNT})
 Mean full snapshot bytes: ${MEAN_FULL_BYTES}
 Mean delta snapshot bytes: ${MEAN_DELTA_BYTES}
+Wait p99 (ns): ${WAIT_P99_NS}
+Wait p99 (ms): ${WAIT_P99_MS}
+CPU user pct: ${CPU_USER_PCT}
+RSS peak bytes: ${RSS_PEAK_BYTES} (~${RSS_PEAK_MB} MB)
+Allocs per tick mean: ${ALLOCS_PER_TICK_MEAN}
 EOF
+
+# Update table row for tick_duration_ns_p99 (Baseline column) if we have a value.
+if [[ -n "${P99_TICK_NS}" && ${P99_TICK_NS} -gt 0 ]]; then
+	TMP_PLAN=$(mktemp)
+	awk -v val="${P99_TICK_NS}" -v ts="${TIMESTAMP}" 'BEGIN{FS=OFS="|"} {
+		if($2 ~ /tick_duration_ns_p99/){
+			$5 = " " val " (recent " ts ") ";
+		}
+		print $0;
+	}' "${PLAN_FILE}" >"${TMP_PLAN}" && mv "${TMP_PLAN}" "${PLAN_FILE}" || true
+fi
