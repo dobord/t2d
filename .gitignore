@@ -55,6 +55,9 @@ Thumbs.db
 # Local profiling build dir
 /build-prof/
 
+# Baseline performance profiling artifacts
+/baseline_artifacts/
+
 # CTest artifacts created if tests accidentally run from source root
 /Testing/
 

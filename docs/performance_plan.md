@@ -194,3 +194,27 @@ Global initiative reaches initial completion when Phases 0–3 are DONE and p99 
 
 ---
 Maintainers: Add yourselves here when contributing performance changes.
+\n<!-- BASELINE_RUN_20250826-163238 -->
+Baseline capture 20250826-163238:
+- avg_tick_ns=0 (~0,000 ms)
+- snapshot_full_bytes_total=0 (count=0)
+- snapshot_delta_bytes_total=0 (count=0)
+- clients=6 duration=20s port=40000
+- cpu_profile=baseline_artifacts/20250826-163238/cpu/cpu_flame.svg (if generated)
+- offcpu_profile=baseline_artifacts/20250826-163238/offcpu/offcpu_flame.svg (if generated)
+\n<!-- BASELINE_RUN_20250826-163343 -->
+Baseline capture 20250826-163343:
+- avg_tick_ns=0 (~0,000 ms)
+- snapshot_full_bytes_total=0 (count=0)
+- snapshot_delta_bytes_total=0 (count=0)
+- clients=6 duration=25s port=40000
+- cpu_profile=baseline_artifacts/20250826-163343/cpu/cpu_flame.svg (if generated)
+- offcpu_profile=baseline_artifacts/20250826-163343/offcpu/offcpu_flame.svg (if generated)
+\n<!-- BASELINE_RUN_20250826-163439 -->
+Baseline capture 20250826-163439:
+- avg_tick_ns=0 (~0,000 ms)
+- snapshot_full_bytes_total=0 (count=0)
+- snapshot_delta_bytes_total=0 (count=0)
+- clients=6 duration=15s port=40000
+- cpu_profile=baseline_artifacts/20250826-163439/cpu/cpu_flame.svg (if generated)
+- offcpu_profile=baseline_artifacts/20250826-163439/offcpu/offcpu_flame.svg (if generated)
