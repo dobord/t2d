@@ -89,7 +89,21 @@ sleep 1
 
 echo "[load] Spawning ${CLIENTS} clients..."
 for i in $(seq 1 ${CLIENTS}); do
-	"${CLIENT_BIN}" ${PORT} >"../${LOG_DIR}/client_${i}.log" 2>&1 &
+	# Optional cleanup of stale client logs (root-owned etc.) before first spawn
+	if [[ $i -eq 1 && ${CLEAN_CLIENT_LOGS:-1} -eq 1 ]]; then
+		find "../${LOG_DIR}" -maxdepth 1 -type f -name 'client_*.log' -exec rm -f {} + 2>/dev/null || true
+	fi
+	LOG_FILE="../${LOG_DIR}/client_${i}.log"
+	# Pre-create/truncate log file; handle permission issues from leftover root-owned files gracefully
+	if ! : >"${LOG_FILE}" 2>/dev/null; then
+		echo "[load][warn] cannot write ${LOG_FILE}; attempting remove+recreate" >&2
+		rm -f "${LOG_FILE}" 2>/dev/null || true
+		if ! : >"${LOG_FILE}" 2>/dev/null; then
+			echo "[load][error] still cannot create ${LOG_FILE}; skipping client ${i}" >&2
+			continue
+		fi
+	fi
+	"${CLIENT_BIN}" ${PORT} >"${LOG_FILE}" 2>&1 &
 	echo $! >>../${LOG_DIR}/clients.pid
 	# small stagger to avoid thundering herd connect
 	sleep 0.05
