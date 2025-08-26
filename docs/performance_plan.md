@@ -34,10 +34,10 @@ Focus (phase 1): Authoritative server runtime (tick loop, networking, snapshot g
 ### 1.4 Baseline Metrics (To Collect Before Any Optimizations)
 | Metric | Description | Collection Method | Baseline (TBD) | Target |
 |--------|-------------|-------------------|----------------|--------|
-| tick_duration_ns_mean | Avg server tick time | Existing histogram | – | < 2 ms (S2) |
+| tick_duration_ns_mean | Avg server tick time | Existing histogram | 287409 (S2* run) | < 2 ms (S2) |
 | tick_duration_ns_p99 | 99th percentile tick | Existing histogram | – | < 5 ms (S2) |
-| snapshot_full_bytes_mean | Mean full snapshot size | Existing counter | – | < 25 KB (target guess; refine) |
-| snapshot_delta_bytes_mean | Mean delta size | Existing counter | – | < 4 KB (S2) |
+| snapshot_full_bytes_mean | Mean full snapshot size | Existing counter | 701.09 (S2* run) | < 25 KB (target guess; refine) |
+| snapshot_delta_bytes_mean | Mean delta size | Existing counter | 453.69 (S2* run) | < 4 KB (S2) |
 | CPU_user_pct | User CPU % process | perf / pidstat | – | < 75% (S2) |
 | RSS_peak_MB | Peak resident memory | /proc/PID/statm sampling | – | Stable (< +5% over 30 min) |
 | allocations_per_tick | Dynamic allocations (instrumented) | Custom counter (profiling build) | – | Reduce 50% after phase 1 |
@@ -194,6 +194,8 @@ Global initiative reaches initial completion when Phases 0–3 are DONE and p99 
 
 ---
 Maintainers: Add yourselves here when contributing performance changes.
+
+*S2* run baseline reference (timestamp 20250826-172346; 20 synthetic clients, 90s). Pending additions: p99 tick, CPU_user_pct, RSS_peak_MB, off_cpu_wait_ns_p99 once captured with dedicated tooling.
 \n<!-- BASELINE_RUN_20250826-163238 -->
 Baseline capture 20250826-163238:
 - avg_tick_ns=0 (~0,000 ms)
@@ -218,3 +220,69 @@ Baseline capture 20250826-163439:
 - clients=6 duration=15s port=40000
 - cpu_profile=baseline_artifacts/20250826-163439/cpu/cpu_flame.svg (if generated)
 - offcpu_profile=baseline_artifacts/20250826-163439/offcpu/offcpu_flame.svg (if generated)
+\n<!-- BASELINE_RUN_20250826-170305 -->
+Baseline capture 20250826-170305:
+- avg_tick_ns=0 (~0,000 ms)
+- snapshot_full_bytes_total=0 (count=0)
+- snapshot_delta_bytes_total=0 (count=0)
+- clients=20 duration=70s port=40000
+- cpu_profile=baseline_artifacts/20250826-170305/cpu/cpu_flame.svg (if generated)
+- offcpu_profile=baseline_artifacts/20250826-170305/offcpu/offcpu_flame.svg (if generated)
+\n<!-- BASELINE_RUN_20250826-170703 -->
+Baseline capture 20250826-170703:
+- avg_tick_ns=0 (~0,000 ms)
+- snapshot_full_bytes_total=0 (count=0)
+- snapshot_delta_bytes_total=0 (count=0)
+- clients=20 duration=90s port=40000
+- cpu_profile=baseline_artifacts/20250826-170703/cpu/cpu_flame.svg (if generated)
+- offcpu_profile=baseline_artifacts/20250826-170703/offcpu/offcpu_flame.svg (if generated)
+\n<!-- BASELINE_RUN_20250826-171036 -->
+Baseline capture 20250826-171036:
+- avg_tick_ns=0 (~0,000 ms)
+- snapshot_full_bytes_total=4671 (count=10)
+- snapshot_delta_bytes_total=10707 (count=55)
+- clients=4 duration=10s port=40000
+- cpu_profile=baseline_artifacts/20250826-171036/cpu/cpu_flame.svg (if generated)
+- offcpu_profile=baseline_artifacts/20250826-171036/offcpu/offcpu_flame.svg (if generated)
+\n<!-- BASELINE_RUN_20250826-171109 -->
+Baseline capture 20250826-171109:
+- avg_tick_ns=73683 (~0,074 ms)
+- snapshot_full_bytes_total=3340 (count=8)
+- snapshot_delta_bytes_total=515 (count=45)
+- clients=4 duration=8s port=40000
+- cpu_profile=baseline_artifacts/20250826-171109/cpu/cpu_flame.svg (if generated)
+- offcpu_profile=baseline_artifacts/20250826-171109/offcpu/offcpu_flame.svg (if generated)
+\n<!-- BASELINE_RUN_20250826-171221 -->
+Baseline capture 20250826-171221:
+- avg_tick_ns=93461 (~0,093 ms)
+- snapshot_full_bytes_total=69674 (count=167)
+- snapshot_delta_bytes_total=7525 (count=843)
+- clients=20 duration=90s port=40000
+- cpu_profile=baseline_artifacts/20250826-171221/cpu/cpu_flame.svg (if generated)
+- offcpu_profile=baseline_artifacts/20250826-171221/offcpu/offcpu_flame.svg (if generated)
+\n<!-- BASELINE_RUN_20250826-171707 -->
+Baseline capture 20250826-171707:
+- avg_tick_ns=152601 (~0,153 ms)
+- snapshot_full_bytes_total=13242 (count=25)
+- snapshot_delta_bytes_total=40459 (count=134)
+- clients=8 duration=15s port=40000
+- cpu_profile=baseline_artifacts/20250826-171707/cpu/cpu_flame.svg (if generated)
+- offcpu_profile=baseline_artifacts/20250826-171707/offcpu/offcpu_flame.svg (if generated)
+\n<!-- BASELINE_RUN_20250826-172003 -->
+Baseline capture 20250826-172003:
+- avg_tick_ns=288591 (~0,289 ms)
+- snapshot_full_bytes_total=192328 (count=268)
+- snapshot_delta_bytes_total=709234 (count=1350)
+- clients=20 duration=90s port=40000
+- cpu_profile=baseline_artifacts/20250826-172003/cpu/cpu_flame.svg (if generated)
+- offcpu_profile=baseline_artifacts/20250826-172003/offcpu/offcpu_flame.svg (if generated)
+\n<!-- BASELINE_RUN_20250826-172346 -->
+Baseline capture 20250826-172346:
+- avg_tick_ns=287409 (~0,287 ms)
+- snapshot_full_bytes_total=187891 (count=268)
+- snapshot_delta_bytes_total=612481 (count=1350)
+- snapshot_full_mean_bytes=701,09
+- snapshot_delta_mean_bytes=453,69
+- clients=20 duration=90s port=40000
+- cpu_profile=baseline_artifacts/20250826-172346/cpu/cpu_flame.svg (if generated)
+- offcpu_profile=baseline_artifacts/20250826-172346/offcpu/offcpu_flame.svg (if generated)
