@@ -9,8 +9,14 @@
 
 #include <coro/coro.hpp>
 
+#include <algorithm>
+#include <chrono>
+#include <cmath>
 #include <iostream>
+#include <memory>
 #include <random>
+#include <string>
+#include <vector>
 
 namespace t2d::mm {
 
@@ -233,12 +239,21 @@ coro::task<void> run_matchmaker(std::shared_ptr<coro::io_scheduler> scheduler, M
                 for (auto &s : group)
                     if (s->is_bot)
                         ++bots;
-                t2d::metrics::runtime().active_matches.fetch_add(1, std::memory_order_relaxed);
-                t2d::metrics::runtime().bots_in_match.fetch_add(bots, std::memory_order_relaxed);
+                auto &rt_reset = t2d::metrics::runtime();
+                uint64_t prev_active = rt_reset.active_matches.fetch_add(1, std::memory_order_relaxed);
+                rt_reset.bots_in_match.fetch_add(bots, std::memory_order_relaxed);
+                if (prev_active == 0) {
+                    // Zero out wait histogram & counters (raw + derived) to start steady-state accumulation.
+                    rt_reset.wait_duration_ns_accum.store(0, std::memory_order_relaxed);
+                    rt_reset.wait_samples.store(0, std::memory_order_relaxed);
+                    for (int bi = 0; bi < t2d::metrics::RuntimeCounters::TICK_BUCKETS; ++bi) {
+                        rt_reset.wait_hist[bi].store(0, std::memory_order_relaxed);
+                    }
+                }
             }
         }
         // TODO: partial match start after timeout with bots (future)
-    }
-}
+    } // while (true)
+} // run_matchmaker
 
 } // namespace t2d::mm
