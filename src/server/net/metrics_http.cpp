@@ -66,6 +66,39 @@ static std::string build_metrics_body()
     oss << "t2d_rss_peak_bytes " << rt.rss_peak_bytes.load() << "\n";
     oss << "# TYPE t2d_allocs_per_tick_mean gauge\n";
     oss << "t2d_allocs_per_tick_mean " << allocs_per_tick_mean << "\n";
+    // Additional allocation detail
+    double alloc_bytes_mean = 0.0;
+    auto ab_samples = rt.allocations_bytes_per_tick_samples.load(std::memory_order_relaxed);
+    if (ab_samples > 0) {
+        alloc_bytes_mean =
+            (double)rt.allocations_bytes_per_tick_accum.load(std::memory_order_relaxed) / (double)ab_samples;
+    }
+    double alloc_tick_pct = 0.0;
+    auto ticks_with_alloc = rt.allocations_ticks_with_alloc.load(std::memory_order_relaxed);
+    if (rt.allocations_per_tick_samples.load(std::memory_order_relaxed) > 0) {
+        alloc_tick_pct =
+            100.0 * (double)ticks_with_alloc / (double)rt.allocations_per_tick_samples.load(std::memory_order_relaxed);
+    }
+    oss << "# TYPE t2d_alloc_bytes_per_tick_mean gauge\n";
+    oss << "t2d_alloc_bytes_per_tick_mean " << alloc_bytes_mean << "\n";
+    oss << "# TYPE t2d_alloc_tick_with_alloc_pct gauge\n";
+    oss << "t2d_alloc_tick_with_alloc_pct " << alloc_tick_pct << "\n";
+    // Deallocation stats
+    double frees_per_tick_mean = 0.0;
+    auto free_samples = rt.deallocations_per_tick_samples.load(std::memory_order_relaxed);
+    if (free_samples > 0) {
+        frees_per_tick_mean =
+            (double)rt.deallocations_per_tick_accum.load(std::memory_order_relaxed) / (double)free_samples;
+    }
+    double free_tick_pct = 0.0;
+    auto ticks_with_free = rt.deallocations_ticks_with_free.load(std::memory_order_relaxed);
+    if (free_samples > 0) {
+        free_tick_pct = 100.0 * (double)ticks_with_free / (double)free_samples;
+    }
+    oss << "# TYPE t2d_frees_per_tick_mean gauge\n";
+    oss << "t2d_frees_per_tick_mean " << frees_per_tick_mean << "\n";
+    oss << "# TYPE t2d_free_tick_with_free_pct gauge\n";
+    oss << "t2d_free_tick_with_free_pct " << free_tick_pct << "\n";
     // Tick duration histogram (nanoseconds). Buckets are geometric (x2) starting at 250k ns (0.25ms).
     // Expose in Prometheus histogram format: *_bucket, *_sum, *_count.
     oss << "# TYPE t2d_tick_duration_ns histogram\n";

@@ -40,8 +40,17 @@ struct RuntimeCounters
     std::atomic<uint64_t> rss_peak_bytes{0};
     // Allocation metrics (profiling build)
     std::atomic<uint64_t> allocations_total{0};
+    std::atomic<uint64_t> allocations_bytes_total{0};
     std::atomic<uint64_t> allocations_per_tick_accum{0};
     std::atomic<uint64_t> allocations_per_tick_samples{0};
+    std::atomic<uint64_t> allocations_bytes_per_tick_accum{0};
+    std::atomic<uint64_t> allocations_bytes_per_tick_samples{0};
+    std::atomic<uint64_t> allocations_ticks_with_alloc{0};
+    // Deallocation metrics
+    std::atomic<uint64_t> deallocations_total{0};
+    std::atomic<uint64_t> deallocations_per_tick_accum{0};
+    std::atomic<uint64_t> deallocations_per_tick_samples{0};
+    std::atomic<uint64_t> deallocations_ticks_with_free{0};
 };
 
 inline RuntimeCounters &runtime()

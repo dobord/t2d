@@ -394,6 +394,35 @@ int main(int argc, char **argv)
                 j << ",\"cpu_user_pct\":" << cpu_pct;
                 j << ",\"rss_peak_bytes\":" << rt.rss_peak_bytes.load(std::memory_order_relaxed);
                 j << ",\"allocs_per_tick_mean\":" << allocs_per_tick_mean;
+                // Derived metrics: bytes per tick mean & alloc frequency
+                double alloc_bytes_mean = 0.0;
+                auto ab_samples = rt.allocations_bytes_per_tick_samples.load(std::memory_order_relaxed);
+                if (ab_samples > 0) {
+                    alloc_bytes_mean = (double)rt.allocations_bytes_per_tick_accum.load(std::memory_order_relaxed)
+                        / (double)ab_samples;
+                }
+                double alloc_tick_pct = 0.0;
+                auto ticks_with_alloc = rt.allocations_ticks_with_alloc.load(std::memory_order_relaxed);
+                if (rt.allocations_per_tick_samples.load(std::memory_order_relaxed) > 0) {
+                    alloc_tick_pct = 100.0 * (double)ticks_with_alloc
+                        / (double)rt.allocations_per_tick_samples.load(std::memory_order_relaxed);
+                }
+                j << ",\"alloc_bytes_per_tick_mean\":" << alloc_bytes_mean;
+                j << ",\"alloc_tick_with_alloc_pct\":" << alloc_tick_pct;
+                // Deallocation stats
+                double frees_per_tick_mean = 0.0;
+                auto free_samples = rt.deallocations_per_tick_samples.load(std::memory_order_relaxed);
+                if (free_samples > 0) {
+                    frees_per_tick_mean =
+                        (double)rt.deallocations_per_tick_accum.load(std::memory_order_relaxed) / (double)free_samples;
+                }
+                double free_tick_pct = 0.0;
+                auto ticks_with_free = rt.deallocations_ticks_with_free.load(std::memory_order_relaxed);
+                if (free_samples > 0) {
+                    free_tick_pct = 100.0 * (double)ticks_with_free / (double)free_samples;
+                }
+                j << ",\"frees_per_tick_mean\":" << frees_per_tick_mean;
+                j << ",\"free_tick_with_free_pct\":" << free_tick_pct;
                 j << ",\"queue_depth\":" << rt.queue_depth.load();
                 j << ",\"active_matches\":" << rt.active_matches.load();
                 j << ",\"bots_in_match\":" << rt.bots_in_match.load();
@@ -432,6 +461,35 @@ int main(int argc, char **argv)
             j << ",\"cpu_user_pct\":" << cpu_pct;
             j << ",\"rss_peak_bytes\":" << rt.rss_peak_bytes.load(std::memory_order_relaxed);
             j << ",\"allocs_per_tick_mean\":" << allocs_per_tick_mean;
+            double alloc_bytes_mean = 0.0;
+            auto ab_samples = rt.allocations_bytes_per_tick_samples.load(std::memory_order_relaxed);
+            if (ab_samples > 0) {
+                alloc_bytes_mean =
+                    (double)rt.allocations_bytes_per_tick_accum.load(std::memory_order_relaxed) / (double)ab_samples;
+            }
+            double alloc_tick_pct = 0.0;
+            auto ticks_with_alloc = rt.allocations_ticks_with_alloc.load(std::memory_order_relaxed);
+            if (rt.allocations_per_tick_samples.load(std::memory_order_relaxed) > 0) {
+                alloc_tick_pct = 100.0 * (double)ticks_with_alloc
+                    / (double)rt.allocations_per_tick_samples.load(std::memory_order_relaxed);
+            }
+            j << ",\"alloc_bytes_per_tick_mean\":" << alloc_bytes_mean;
+            j << ",\"alloc_tick_with_alloc_pct\":" << alloc_tick_pct;
+            {
+                double frees_per_tick_mean = 0.0;
+                auto free_samples = rt.deallocations_per_tick_samples.load(std::memory_order_relaxed);
+                if (free_samples > 0) {
+                    frees_per_tick_mean =
+                        (double)rt.deallocations_per_tick_accum.load(std::memory_order_relaxed) / (double)free_samples;
+                }
+                double free_tick_pct = 0.0;
+                auto ticks_with_free = rt.deallocations_ticks_with_free.load(std::memory_order_relaxed);
+                if (free_samples > 0) {
+                    free_tick_pct = 100.0 * (double)ticks_with_free / (double)free_samples;
+                }
+                j << ",\"frees_per_tick_mean\":" << frees_per_tick_mean;
+                j << ",\"free_tick_with_free_pct\":" << free_tick_pct;
+            }
             j << ",\"samples\":" << samples;
             j << ",\"queue_depth\":" << rt.queue_depth.load();
             j << ",\"active_matches\":" << rt.active_matches.load();

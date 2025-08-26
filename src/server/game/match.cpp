@@ -208,6 +208,8 @@ coro::task<void> run_match(std::shared_ptr<coro::io_scheduler> scheduler, std::s
         // Snapshot allocation counter at tick start (profiling builds only)
 #if defined(T2D_ENABLE_PROFILING)
         uint64_t alloc_before = t2d::metrics::runtime().allocations_total.load(std::memory_order_relaxed);
+        uint64_t alloc_bytes_before = t2d::metrics::runtime().allocations_bytes_total.load(std::memory_order_relaxed);
+        uint64_t dealloc_before = t2d::metrics::runtime().deallocations_total.load(std::memory_order_relaxed);
 #endif
         next += tick_interval;
         ctx->server_tick++;
@@ -830,11 +832,31 @@ coro::task<void> run_match(std::shared_ptr<coro::io_scheduler> scheduler, std::s
         t2d::metrics::add_tick_duration(static_cast<uint64_t>(tick_ns));
 #if defined(T2D_ENABLE_PROFILING)
         uint64_t alloc_after = t2d::metrics::runtime().allocations_total.load(std::memory_order_relaxed);
+        uint64_t alloc_bytes_after = t2d::metrics::runtime().allocations_bytes_total.load(std::memory_order_relaxed);
+        uint64_t dealloc_after = t2d::metrics::runtime().deallocations_total.load(std::memory_order_relaxed);
         if (alloc_after >= alloc_before) {
             auto delta = alloc_after - alloc_before;
             auto &rt = t2d::metrics::runtime();
             rt.allocations_per_tick_accum.fetch_add(delta, std::memory_order_relaxed);
             rt.allocations_per_tick_samples.fetch_add(1, std::memory_order_relaxed);
+            if (delta > 0) {
+                rt.allocations_ticks_with_alloc.fetch_add(1, std::memory_order_relaxed);
+            }
+        }
+        if (alloc_bytes_after >= alloc_bytes_before) {
+            auto delta_b = alloc_bytes_after - alloc_bytes_before;
+            auto &rt = t2d::metrics::runtime();
+            rt.allocations_bytes_per_tick_accum.fetch_add(delta_b, std::memory_order_relaxed);
+            rt.allocations_bytes_per_tick_samples.fetch_add(1, std::memory_order_relaxed);
+        }
+        if (dealloc_after >= dealloc_before) {
+            auto delta_free = dealloc_after - dealloc_before;
+            auto &rt = t2d::metrics::runtime();
+            rt.deallocations_per_tick_accum.fetch_add(delta_free, std::memory_order_relaxed);
+            rt.deallocations_per_tick_samples.fetch_add(1, std::memory_order_relaxed);
+            if (delta_free > 0) {
+                rt.deallocations_ticks_with_free.fetch_add(1, std::memory_order_relaxed);
+            }
         }
 #endif
     }
