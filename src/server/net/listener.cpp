@@ -20,11 +20,11 @@
 
 namespace t2d::net {
 
-// Forward declarations of per-connection coroutine.
+// Forward declarations of per-connection coroutine (tick_rate used to derive read poll timeout).
 static coro::task<void> connection_loop(
-    std::shared_ptr<coro::io_scheduler> scheduler, std::shared_ptr<t2d::mm::Session> session);
+    std::shared_ptr<coro::io_scheduler> scheduler, std::shared_ptr<t2d::mm::Session> session, uint32_t tick_rate);
 
-coro::task<void> run_listener(std::shared_ptr<coro::io_scheduler> scheduler, uint16_t port)
+coro::task<void> run_listener(std::shared_ptr<coro::io_scheduler> scheduler, uint16_t port, uint32_t tick_rate)
 {
     co_await scheduler->schedule();
     t2d::log::info("[listener] Starting TCP listener on port {}", port);
@@ -35,7 +35,7 @@ coro::task<void> run_listener(std::shared_ptr<coro::io_scheduler> scheduler, uin
             auto client = server.accept();
             if (client.socket().is_valid()) {
                 auto session = t2d::mm::instance().add_connection(std::move(client));
-                scheduler->spawn(connection_loop(scheduler, session));
+                scheduler->spawn(connection_loop(scheduler, session, tick_rate));
             }
         } else if (status == coro::poll_status::error || status == coro::poll_status::closed) {
             t2d::log::error("[listener] Poll error/closed, exiting listener loop");
@@ -64,7 +64,7 @@ static coro::task<void> send_all(coro::net::tcp::client &client, std::span<const
 }
 
 static coro::task<void> connection_loop(
-    std::shared_ptr<coro::io_scheduler> scheduler, std::shared_ptr<t2d::mm::Session> session)
+    std::shared_ptr<coro::io_scheduler> scheduler, std::shared_ptr<t2d::mm::Session> session, uint32_t tick_rate)
 {
     co_await scheduler->schedule();
     t2d::log::info("[conn] New connection");
@@ -91,7 +91,17 @@ static coro::task<void> connection_loop(
         // Poll read with small timeout so loop progresses to flush snapshots
         if (!session->client)
             co_return; // bot session should never be here
-        auto pstat = co_await session->client->poll(coro::poll_op::read, std::chrono::milliseconds(50));
+        // Derive adaptive read poll timeout from tick_rate so outbound flush latency
+        // stays a fraction of simulation tick. Use half the tick interval, clamped.
+        uint32_t tick_interval_ms = tick_rate > 0 ? (1000u / tick_rate) : 33u; // default ~30Hz
+        if (tick_interval_ms == 0)
+            tick_interval_ms = 1; // guard divide rounding when tick_rate > 1000
+        uint32_t desired_ms = tick_interval_ms / 2u;
+        if (desired_ms < 5u)
+            desired_ms = 5u; // lower clamp to avoid busy looping
+        if (desired_ms > 50u)
+            desired_ms = 50u; // upper clamp to keep latency reasonable
+        auto pstat = co_await session->client->poll(coro::poll_op::read, std::chrono::milliseconds(desired_ms));
         if (pstat == coro::poll_status::timeout) {
             continue;
         }

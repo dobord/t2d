@@ -324,8 +324,8 @@ int main(int argc, char **argv)
 
     // io_scheduler requires options; construct explicitly
     auto scheduler = coro::default_executor::io_executor();
-    // Spawn TCP listener coroutine
-    scheduler->spawn(t2d::net::run_listener(scheduler, cfg.listen_port));
+    // Spawn TCP listener coroutine (pass tick_rate for adaptive connection poll timeouts)
+    scheduler->spawn(t2d::net::run_listener(scheduler, cfg.listen_port, cfg.tick_rate));
     // Launch matchmaker coroutine
     scheduler->spawn(t2d::mm::run_matchmaker(
         scheduler,
