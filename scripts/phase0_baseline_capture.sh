@@ -4,6 +4,9 @@
 # and append baseline row into docs/performance_plan.md if not present.
 set -euo pipefail
 
+# Force stable numeric locale (avoid commas in decimals like 0,270)
+export LC_NUMERIC=C
+
 DURATION=${DURATION:-60}
 CLIENTS=${CLIENTS:-12}
 PORT=${PORT:-40000}
@@ -78,28 +81,40 @@ echo "[phase0] Load script finished"
 wait ${CPU_PROF_PID} 2>/dev/null || true
 if [[ -n "${OFFCPU_PROF_PID}" ]]; then wait ${OFFCPU_PROF_PID} 2>/dev/null || true; fi
 
-# Extract metrics from server.log
+###############################################
+# Extract metrics from server.log (robust mode)
+###############################################
 SERVER_LOG=baseline_logs/server.log
-# Prefer final runtime flush if present, else periodic runtime sample
-if grep -q '"metric":"runtime_final"' ${SERVER_LOG}; then
-	AVG_TICK_NS=$(grep -E '"metric":"runtime_final"' ${SERVER_LOG} | tail -1 | sed -E 's/.*"avg_tick_ns":([0-9]+).*/\1/' || echo 0)
-	P99_TICK_NS=$(grep -E '"metric":"runtime_final"' ${SERVER_LOG} | tail -1 | sed -E 's/.*"p99_tick_ns":([0-9]+).*/\1/' || echo 0)
-	WAIT_P99_NS=$(grep -E '"metric":"runtime_final"' ${SERVER_LOG} | tail -1 | sed -E 's/.*"wait_p99_ns":([0-9]+).*/\1/' || echo 0)
-	CPU_USER_PCT=$(grep -E '"metric":"runtime_final"' ${SERVER_LOG} | tail -1 | sed -E 's/.*"cpu_user_pct":([0-9\.]+).*/\1/' || echo 0)
-	RSS_PEAK_BYTES=$(grep -E '"metric":"runtime_final"' ${SERVER_LOG} | tail -1 | sed -E 's/.*"rss_peak_bytes":([0-9]+).*/\1/' || echo 0)
-	ALLOCS_PER_TICK_MEAN=$(grep -E '"metric":"runtime_final"' ${SERVER_LOG} | tail -1 | sed -E 's/.*"allocs_per_tick_mean":([0-9\.]+).*/\1/' || echo 0)
+AVG_TICK_NS=0 P99_TICK_NS=0 WAIT_P99_NS=0 CPU_USER_PCT=0 RSS_PEAK_BYTES=0 ALLOCS_PER_TICK_MEAN=0
+FULL_BYTES=0 DELTA_BYTES=0 FULL_COUNT=0 DELTA_COUNT=0
+if [[ -f ${SERVER_LOG} ]]; then
+	# Temporarily disable -e because grep returning 1 (no matches) would abort script
+	set +e
+	if grep -q '"metric":"runtime_final"' "${SERVER_LOG}" 2>/dev/null; then
+		line=$(grep -E '"metric":"runtime_final"' "${SERVER_LOG}" | tail -1)
+	else
+		line=$(grep -E '"metric":"runtime"' "${SERVER_LOG}" | tail -1)
+	fi
+	if [[ -n "${line}" ]]; then
+		AVG_TICK_NS=$(echo "${line}" | sed -E 's/.*"avg_tick_ns":([0-9]+).*/\1/' || echo 0)
+		P99_TICK_NS=$(echo "${line}" | sed -E 's/.*"p99_tick_ns":([0-9]+).*/\1/' || echo 0)
+		WAIT_P99_NS=$(echo "${line}" | sed -E 's/.*"wait_p99_ns":([0-9]+).*/\1/' || echo 0)
+		CPU_USER_PCT=$(echo "${line}" | sed -E 's/.*"cpu_user_pct":([0-9\.]+).*/\1/' || echo 0)
+		RSS_PEAK_BYTES=$(echo "${line}" | sed -E 's/.*"rss_peak_bytes":([0-9]+).*/\1/' || echo 0)
+		ALLOCS_PER_TICK_MEAN=$(echo "${line}" | sed -E 's/.*"allocs_per_tick_mean":([0-9\.]+).*/\1/' || echo 0)
+	fi
+	# snapshot totals (may appear earlier, so separate grep)
+	st_line=$(grep -E '"metric":"snapshot_totals"' "${SERVER_LOG}" | tail -1)
+	if [[ -n "${st_line}" ]]; then
+		FULL_BYTES=$(echo "${st_line}" | sed -E 's/.*"full_bytes":([0-9]+).*/\1/' || echo 0)
+		DELTA_BYTES=$(echo "${st_line}" | sed -E 's/.*"delta_bytes":([0-9]+).*/\1/' || echo 0)
+		FULL_COUNT=$(echo "${st_line}" | sed -E 's/.*"full_count":([0-9]+).*/\1/' || echo 0)
+		DELTA_COUNT=$(echo "${st_line}" | sed -E 's/.*"delta_count":([0-9]+).*/\1/' || echo 0)
+	fi
+	set -e
 else
-	AVG_TICK_NS=$(grep -E '"metric":"runtime"' ${SERVER_LOG} | tail -1 | sed -E 's/.*"avg_tick_ns":([0-9]+).*/\1/' || echo 0)
-	P99_TICK_NS=$(grep -E '"metric":"runtime"' ${SERVER_LOG} | tail -1 | sed -E 's/.*"p99_tick_ns":([0-9]+).*/\1/' || echo 0)
-	WAIT_P99_NS=$(grep -E '"metric":"runtime"' ${SERVER_LOG} | tail -1 | sed -E 's/.*"wait_p99_ns":([0-9]+).*/\1/' || echo 0)
-	CPU_USER_PCT=$(grep -E '"metric":"runtime"' ${SERVER_LOG} | tail -1 | sed -E 's/.*"cpu_user_pct":([0-9\.]+).*/\1/' || echo 0)
-	RSS_PEAK_BYTES=$(grep -E '"metric":"runtime"' ${SERVER_LOG} | tail -1 | sed -E 's/.*"rss_peak_bytes":([0-9]+).*/\1/' || echo 0)
-	ALLOCS_PER_TICK_MEAN=$(grep -E '"metric":"runtime"' ${SERVER_LOG} | tail -1 | sed -E 's/.*"allocs_per_tick_mean":([0-9\.]+).*/\1/' || echo 0)
+	echo "[phase0][warn] server.log not found; metrics default to zero" >&2
 fi
-FULL_BYTES=$(grep -E '"metric":"snapshot_totals"' ${SERVER_LOG} | tail -1 | sed -E 's/.*"full_bytes":([0-9]+).*/\1/' || echo 0)
-DELTA_BYTES=$(grep -E '"metric":"snapshot_totals"' ${SERVER_LOG} | tail -1 | sed -E 's/.*"delta_bytes":([0-9]+).*/\1/' || echo 0)
-FULL_COUNT=$(grep -E '"metric":"snapshot_totals"' ${SERVER_LOG} | tail -1 | sed -E 's/.*"full_count":([0-9]+).*/\1/' || echo 0)
-DELTA_COUNT=$(grep -E '"metric":"snapshot_totals"' ${SERVER_LOG} | tail -1 | sed -E 's/.*"delta_count":([0-9]+).*/\1/' || echo 0)
 
 MEAN_TICK_MS=$(awk -v ns=${AVG_TICK_NS} 'BEGIN{ printf("%.3f", ns/1000000.0) }')
 P99_TICK_MS=$(awk -v ns=${P99_TICK_NS:-0} 'BEGIN{ if(ns>0) printf("%.3f", ns/1000000.0); else printf("0.000"); }')
@@ -124,7 +139,9 @@ if [[ -f "${FOLDED_FILE}" ]]; then
 		TOTAL_SAMPLES=$(awk '{s+=$1} END{print s}' "${RUN_DIR}/cpu/.top_syms")
 		TOP_CPU_SECTION=$({
 			echo "- top_cpu_symbols:"
-			awk -v t=${TOTAL_SAMPLES:-0} '{pct= (t>0? ($1*100.0)/t:0); printf "  * %s (%.2f%%, samples=%s)\n", $2, pct, $1}' "${RUN_DIR}/cpu/.top_syms"
+			set +o pipefail
+			awk -v t=${TOTAL_SAMPLES:-0} '{pct= (t>0? ($1*100.0)/t:0); printf "  * %s (%.2f%%, samples=%s)\n", $2, pct, $1}' "${RUN_DIR}/cpu/.top_syms" || true
+			set -o pipefail
 		})
 	fi
 fi
@@ -141,7 +158,9 @@ if [[ -f "${OFF_FOLDED_FILE}" ]]; then
 		TOTAL_SAMPLES_OFF=$(awk '{s+=$1} END{print s}' "${RUN_DIR}/offcpu/.top_syms")
 		TOP_OFFCPU_SECTION=$({
 			echo "- top_offcpu_symbols:"
-			awk -v t=${TOTAL_SAMPLES_OFF:-0} '{pct=(t>0? ($1*100.0)/t:0); printf "  * %s (%.2f%%, samples=%s)\n", $2, pct, $1}' "${RUN_DIR}/offcpu/.top_syms"
+			set +o pipefail
+			awk -v t=${TOTAL_SAMPLES_OFF:-0} '{pct=(t>0? ($1*100.0)/t:0); printf "  * %s (%.2f%%, samples=%s)\n", $2, pct, $1}' "${RUN_DIR}/offcpu/.top_syms" || true
+			set -o pipefail
 		})
 	fi
 fi
@@ -161,7 +180,9 @@ if [[ -f "${FOLDED_FILE}" ]]; then
 	if [[ -f "${RUN_DIR}/cpu/.symcounts" && ${TOTAL_SAMPLES:-0} -gt 0 ]]; then
 		TOP_CPU_SECTION=$({
 			echo "- top_cpu_symbols:"
-			sort -nr "${RUN_DIR}/cpu/.symcounts" | head -10 | awk -v t=${TOTAL_SAMPLES} '{pct=($1*100.0)/t; printf "  * %s (%.2f%%, samples=%s)\n", $2, pct, $1}'
+			set +o pipefail
+			sort -nr "${RUN_DIR}/cpu/.symcounts" | head -10 | awk -v t=${TOTAL_SAMPLES} '{pct=($1*100.0)/t; printf "  * %s (%.2f%%, samples=%s)\n", $2, pct, $1}' || true
+			set -o pipefail
 		})
 	fi
 fi
@@ -235,3 +256,5 @@ awk -v p99="${P99_TICK_NS}" \
 	}
 	print $0;
 }' "${PLAN_FILE}" >"${TMP_PLAN}" && mv "${TMP_PLAN}" "${PLAN_FILE}" || true
+
+exit 0

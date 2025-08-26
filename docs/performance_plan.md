@@ -35,14 +35,14 @@ Focus (phase 1): Authoritative server runtime (tick loop, networking, snapshot g
 | Metric | Description | Collection Method | Baseline (TBD) | Target |
 |--------|-------------|-------------------|----------------|--------|
 | tick_duration_ns_mean | Avg server tick time | Existing histogram | 287453 (S2 baseline 20250826-180618) | < 2 ms (S2) |
-| tick_duration_ns_p99 | 99th percentile tick | Existing histogram | 1000000 (recent 20250826-191906) | < 5 ms (S2) |
+| tick_duration_ns_p99 | 99th percentile tick | Existing histogram | 1000000 (recent 20250826-193928) | < 5 ms (S2) |
 | snapshot_full_bytes_mean | Mean full snapshot size | Existing counter | 667.03 (S2 baseline 20250826-180618) | < 25 KB (target guess; refine) |
 | snapshot_delta_bytes_mean | Mean delta size | Existing counter | 499.94 (S2 baseline 20250826-180618) | < 4 KB (S2) |
-| CPU_user_pct | User CPU % process | perf / pidstat | 2.11 (recent 20250826-191906) | < 75% (S2) |
-| RSS_peak_MB | Peak resident memory | /proc/PID/statm sampling | 9,00 (recent 20250826-191906) | Stable (< +5% over 30 min) |
+| CPU_user_pct | User CPU % process | perf / pidstat | 2.10 (recent 20250826-193928) | < 75% (S2) |
+| RSS_peak_MB | Peak resident memory | /proc/PID/statm sampling | 9.86 (recent 20250826-193928) | Stable (< +5% over 30 min) |
 | allocations_per_tick | Dynamic allocations (instrumented) | Custom counter (profiling build) | – | Reduce 50% after phase 1 |
 | network_tx_bytes_per_sec | Outgoing bytes/sec | Metrics / tcpdump sample | – | N/A (observe) |
-| off_cpu_wait_ns_p99 | Scheduler wait (blocking) | Off-CPU profile | 64000000 (recent 20250826-191906) | Minimize (< tick SLA) |
+| off_cpu_wait_ns_p99 | Scheduler wait (blocking) | Off-CPU profile | 64000000 (recent 20250826-193928) | Minimize (< tick SLA) |
 
 ### 1.5 Performance SLA (Provisional)
 - Normal gameplay (S2): p99 tick < 5 ms; mean tick < 2 ms.
@@ -542,3 +542,29 @@ Baseline capture 20250826-191906:
 - clients=20 duration=90s port=40000
 - cpu_profile=baseline_artifacts/20250826-191906/cpu/cpu_flame.svg (if generated)
 - offcpu_profile=baseline_artifacts/20250826-191906/offcpu/offcpu_flame.svg (if generated)
+\n<!-- BASELINE_RUN_20250826-193928 -->
+Baseline capture 20250826-193928:
+- avg_tick_ns=207353 (~0.207 ms)
+- p99_tick_ns=1000000 (~1.000 ms)
+- snapshot_full_bytes_total=91841 (count=119)
+- snapshot_delta_bytes_total=276562 (count=597)
+- snapshot_full_mean_bytes=771.77
+- snapshot_delta_mean_bytes=463.25
+- wait_p99_ns=64000000 (~64.000 ms)
+- cpu_user_pct=2.10
+- rss_peak_bytes=10338304 (~9.86 MB)
+- allocs_per_tick_mean=0.00
+- clients=20 duration=90s port=40000
+- cpu_profile=baseline_artifacts/20250826-193928/cpu/cpu_flame.svg (if generated)
+- offcpu_profile=baseline_artifacts/20250826-193928/offcpu/offcpu_flame.svg (if generated)
+- top_cpu_symbols:
+  * void (216.87%, samples=1800000000)
+  * t2d_server (100.00%, samples=830000000)
+  * start_thread (100.00%, samples=830000000)
+  * [libstdc++.so.6.0.33] (100.00%, samples=830000000)
+  * clone3 (100.00%, samples=830000000)
+  * entry_SYSCALL_64_after_hwframe (72.29%, samples=600000000)
+  * do_syscall_64 (72.29%, samples=600000000)
+  * x64_sys_call (71.99%, samples=597500000)
+  * std::thread::_State_impl<std::thread::_Invoker<std::tuple<coro::thread_pool::make_shared (58.13%, samples=482500000)
+  * std::thread::_Invoker<std::tuple<coro::thread_pool::make_shared (58.13%, samples=482500000)
