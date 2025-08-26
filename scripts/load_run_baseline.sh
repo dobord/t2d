@@ -63,7 +63,8 @@ pushd "${BUILD_DIR}" >/dev/null
 
 # Launch server
 LOG_SERVER="../${LOG_DIR}/server.log"
-"${SERVER_BIN}" "${CFG}" >"${LOG_SERVER}" 2>&1 &
+ABS_CFG_PATH=$(realpath "${CFG}")
+"${SERVER_BIN}" "${ABS_CFG_PATH}" >"${LOG_SERVER}" 2>&1 &
 SERVER_PID=$!
 echo ${SERVER_PID} >../${LOG_DIR}/server.pid
 sleep 1
