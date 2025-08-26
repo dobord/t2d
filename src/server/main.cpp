@@ -49,36 +49,37 @@ static coro::task<void> heartbeat_monitor(std::shared_ptr<coro::io_scheduler> sc
 namespace t2d {
 struct ServerConfig
 {
-    uint32_t max_players_per_match{16};
+    // Defaults aligned with server_test.yaml (test-optimized profile)
+    uint32_t max_players_per_match{4};
     uint32_t max_parallel_matches{4};
-    uint32_t queue_soft_limit{256};
-    uint32_t fill_timeout_seconds{180};
+    uint32_t queue_soft_limit{64};
+    uint32_t fill_timeout_seconds{2};
     uint32_t tick_rate{30};
     uint32_t snapshot_interval_ticks{5};
     uint32_t full_snapshot_interval_ticks{30};
-    uint16_t listen_port{40000};
-    uint32_t heartbeat_timeout_seconds{30};
-    uint32_t matchmaker_poll_ms{200};
-    std::string log_level{"info"};
+    uint16_t listen_port{40001};
+    uint32_t heartbeat_timeout_seconds{15};
+    uint32_t matchmaker_poll_ms{100};
+    std::string log_level{"debug"};
     bool log_json{false};
     uint16_t metrics_port{0}; // 0 disables
-    std::string auth_mode{"disabled"};
-    std::string auth_stub_prefix{"user_"};
-    uint32_t bot_fire_interval_ticks{60}; // bot AI fires every N ticks (default 2s at 30Hz)
-    float movement_speed{2.0f}; // units per second
-    uint32_t projectile_damage{25};
-    float reload_interval_sec{3.0f};
-    float projectile_speed{5.0f};
-    float projectile_density{0.01f};
-    float fire_cooldown_sec{1.0f}; // seconds between player shots (tank cannon); higher = slower ROF
-    float hull_density{1.0f};
-    float turret_density{0.5f};
+    std::string auth_mode{"stub"};
+    std::string auth_stub_prefix{"test_user_"};
+    uint32_t bot_fire_interval_ticks{5};
+    float movement_speed{2.5f};
+    uint32_t projectile_damage{50};
+    float reload_interval_sec{1.5f};
+    float projectile_speed{10.0f};
+    float projectile_density{0.02f};
+    float fire_cooldown_sec{0.25f};
+    float hull_density{5.0f};
+    float turret_density{2.5f};
     bool disable_bot_fire{false};
-    bool disable_bot_ai{false}; // when true, bots receive zeroed inputs (no movement/aim/fire)
-    bool test_mode{false}; // enables aggressive clamps & boosts for rapid automated tests
+    bool disable_bot_ai{false};
+    bool test_mode{true};
     // Map dimensions (world playable area). Walls will be created at perimeter.
-    float map_width{300.f};
-    float map_height{200.f};
+    float map_width{80.f};
+    float map_height{80.f};
 };
 
 static ServerConfig load_config(const std::string &path)

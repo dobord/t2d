@@ -6,6 +6,7 @@
 #include "server/matchmaking/matchmaker.hpp"
 #include "server/matchmaking/session_manager.hpp"
 #include "server/net/listener.hpp"
+#include "test_match_config_loader.hpp"
 
 #include <coro/coro.hpp>
 #include <coro/default_executor.hpp>
@@ -88,13 +89,17 @@ static coro::task<void> flow(std::shared_ptr<coro::io_scheduler> sched, uint16_t
     co_return;
 }
 
-int main()
+int main(int argc, char **argv)
 {
     auto sched = coro::default_executor::io_executor();
     uint16_t port = 41061;
+    t2d::mm::MatchConfig mc{2, 1, 30};
+    if (argc > 1) {
+        t2d::test::apply_match_config_overrides(mc, argv[1]);
+    }
     sched->spawn(t2d::net::run_listener(sched, port));
-    // small timeout so bots spawn; ensure enough ticks for multiple shots (bot fires every ~2s)
-    sched->spawn(t2d::mm::run_matchmaker(sched, t2d::mm::MatchConfig{2, 1, 30}));
+    // small timeout so bots spawn; ensure enough ticks for multiple shots (file can override)
+    sched->spawn(t2d::mm::run_matchmaker(sched, mc));
     coro::sync_wait(flow(sched, port));
     return 0;
 }

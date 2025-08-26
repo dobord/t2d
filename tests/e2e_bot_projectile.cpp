@@ -6,6 +6,7 @@
 #include "server/matchmaking/matchmaker.hpp"
 #include "server/matchmaking/session_manager.hpp"
 #include "server/net/listener.hpp"
+#include "test_match_config_loader.hpp"
 
 #include <coro/coro.hpp>
 #include <coro/default_executor.hpp>
@@ -89,14 +90,16 @@ static coro::task<void> flow(std::shared_ptr<coro::io_scheduler> sched, uint16_t
     co_return;
 }
 
-int main()
+int main(int argc, char **argv)
 {
     auto sched = coro::default_executor::io_executor();
     uint16_t port = 41040;
+    t2d::mm::MatchConfig mc{4, 1, 30, 200, 1, 1};
+    if (argc > 1) {
+        t2d::test::apply_match_config_overrides(mc, argv[1]);
+    }
     sched->spawn(t2d::net::run_listener(sched, port));
-    // quick fill: 4 players target, 1s timeout. Force snapshot + full snapshot every tick (interval=1)
-    // so the projectile fired on tick 1 appears in a full snapshot (test only inspects full snapshots).
-    sched->spawn(t2d::mm::run_matchmaker(sched, t2d::mm::MatchConfig{4, 1, 30, 200, 1, 1}));
+    sched->spawn(t2d::mm::run_matchmaker(sched, mc));
     coro::sync_wait(flow(sched, port));
     return 0;
 }
