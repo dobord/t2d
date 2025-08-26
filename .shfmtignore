@@ -1,0 +1,22 @@
+#############################################
+# Exclusions for shfmt (first-party only)   #
+# Patterns use .gitignore-style matching.   #
+# Prevent accidental formatting of vendored #
+# or generated content.                     #
+#############################################
+
+# Third-party dependencies
+third_party/**
+
+# Generated / build artifacts (multiple build profiles)
+build/**
+build-*/**
+buildqt/**
+buildqt-*/**
+
+# Proto / generated CMake cache dirs inside nested builds (defensive)
+**/CMakeFiles/**
+**/cmake_install.cmake
+
+# Any nested third_party just in case
+**/third_party/**

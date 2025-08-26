@@ -154,7 +154,7 @@ First‑party sources (C/C++, QML, CMake) are auto‑formatted via a layered set
 |-----------------|---------|-------|
 | `t2d_format` | clang-format on C/C++ (excludes `third_party/`) | Always safe to run |
 | `format_qml` | Runs `qmlformat` on QML files | Created only if Qt's `qmlformat` located |
-| `format_sh` | Runs `shfmt` on shell scripts (`*.sh` in root & `scripts/`) | Created only if `shfmt` present |
+| `format_sh` | Runs `shfmt` on shell scripts (`*.sh` in root & `scripts/`) | Respects `.shfmtignore` (excludes `third_party/`, build dirs); created only if `shfmt` present |
 | `format_proto` | Runs `buf format -w` on protobuf module | Created only if `buf` present |
 | `format_cmake` (if present) | Formats CMakeLists / *.cmake | Requires `cmake-format` |
 | `format_all` | Aggregates the above found targets | Only present when at least one underlying target exists |
@@ -173,26 +173,34 @@ Environment flags affecting the hook:
 | `T2D_QML_FORMAT_REQUIRED=1` | Fail commit if QML changed but `qmlformat` not found |
 | `T2D_FORMAT_BLOCK=1` or git config `t2d.formatBlock=true` | Abort commit after formatting (user must re-stage) |
 
-### Dev Loop Script (`scripts/run_dev_loop.sh`)
+### Dev Loop Script
+`scripts/run_dev_loop.sh` orchestrates continuous rebuild, restart and focus on rapid iteration.
 Automated local iteration helper (server + Qt client auto-restart).
+
+Features:
+* Mandatory formatting before each incremental build
+* Auto-reconfigure when `qt_local.cmake` changes or when `qmlformat` becomes available after first build
+* Clean shutdown & restart of server and Qt client when either exits
+* Optional single-run mode (`LOOP=0`)
 
 Environment variables / CLI flags (all can be set as env vars or via flags shown):
 
-| Var / Flag | Default | Values | Effect |
-|------------|---------|--------|--------|
-| `PORT` / `-p <num>` | 40000 | int | Server listen & client connect port |
-| `BUILD_DIR` / `-d <dir>` | build | path | Build directory containing artifacts |
-| `BUILD_TYPE` / `-t <type>` / `-r` | Debug | Debug/Release/RelWithDebInfo/etc. | CMake build type ( `-r` forces Release ) |
-| `CMAKE_ARGS` / `--cmake-args "..."` | (empty) | string | Extra CMake configure args (repeat flag to append) |
-| `LOOP` / `--once` / `--loop <0|1>` | 1 | 0/1 | Auto-restart loop (0 = single run) |
-| `NO_BUILD` / `--no-build` | 0 | 0/1 | Skip build step (assumes binaries present) |
-| `VERBOSE` / `-v` | 0 | 0/1 | Enables bash trace + sets default LOG_LEVEL=DEBUG |
-| `LOG_LEVEL` / `--log-level <lvl>` | INFO | TRACE/DEBUG/INFO/WARN/ERROR | Script log filtering + seeds `T2D_LOG_LEVEL` (lowercased) if that env unset |
-| `QML_LOG_LEVEL` / `--qml-log-level <lvl>` | (inherits LOG_LEVEL) | trace/debug/info/warn/error | Passed to Qt client `--qml-log-level` |
-| `NO_BOT_FIRE` / `--no-bot-fire` | 0 | 0/1 | Disables bot firing (server flag) |
-| `NO_BOT_AI` / `--no-bot-ai` | 0 | 0/1 | Disables all bot movement/aim/fire (server flag) |
+Key environment variables / flags:
+| Var / Flag | Default | Values | Description |
+|------------|---------|--------|-------------|
+| `PORT` / `-p` | 40000 | int | Server/client TCP port |
+| `BUILD_DIR` / `-d` | build | path | Shared build directory |
+| `BUILD_TYPE` / `-t` / `-r` | Debug | CMake types | CMake build type (`-r` = Release shortcut) |
+| `CMAKE_ARGS` / `--cmake-args` | (empty) | string | Extra CMake configure args (repeat to append) |
+| `LOOP` / `--once` / `--loop` | 1 | 0/1 | Auto-restart loop (0 single run) |
+| `NO_BUILD` / `--no-build` | 0 | 0/1 | Skip build phase |
+| `VERBOSE` / `-v` | 0 | 0/1 | Enable bash trace + default LOG_LEVEL=DEBUG |
+| `LOG_LEVEL` / `--log-level` | INFO | TRACE/DEBUG/INFO/WARN/ERROR | Script log filter + seeds `T2D_LOG_LEVEL` if unset |
+| `QML_LOG_LEVEL` / `--qml-log-level` | (inherits LOG_LEVEL) | trace..error | QML logging level passed to client |
+| `NO_BOT_FIRE` / `--no-bot-fire` | 0 | 0/1 | Disable bot firing (server) |
+| `NO_BOT_AI` / `--no-bot-ai` | 0 | 0/1 | Disable all bot AI (server) |
 
-Script log levels (LOG_LEVEL) are independent from C++ runtime levels but propagate: the script exports `T2D_LOG_LEVEL` (in lowercase) for server & client if not already set externally. TRACE is the most verbose.
+Script log levels only affect the script’s own output; runtime of server/client uses exported `T2D_LOG_LEVEL` (lowercased) and QML-specific flags. Millisecond timestamps used for alignment with C++ logs.
 
 Generated/consumed runtime environment for server/client inside the loop:
 

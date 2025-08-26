@@ -52,6 +52,9 @@ Thumbs.db
 /build-server/
 /build-qml-check/
 
+# Local profiling build dir
+/build-prof/
+
 # CTest artifacts created if tests accidentally run from source root
 /Testing/
 

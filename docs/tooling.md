@@ -10,7 +10,7 @@ This document centralizes developer tooling, formatting, logging, and local loop
 | `t2d_format` | C/C++ | `clang-format` | Manual (CMake target) or dev loop pre-build |
 | `format_qml` | QML | `qmlformat` | Present only if tool discovered |
 | `format_cmake` | CMake | `cmake-format` | Optional (installed locally / CI) |
-| `format_sh` | Shell (`*.sh`) | `shfmt` | Optional (when installed) |
+| `format_sh` | Shell (`*.sh`) | `shfmt` | Optional (when installed); respects `.shfmtignore` (excludes `third_party/`, build dirs) |
 | `format_proto` | Protobuf (`proto/`) | `buf format` | Optional (when installed) |
 | `format_all` | Aggregate | Invokes available targets above | Preferred entrypoint |
 | Pre-commit hook | Staged & modified tracked C/C++/QML | Direct tool invocation | Automatically on `git commit` |
