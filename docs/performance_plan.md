@@ -35,14 +35,14 @@ Focus (phase 1): Authoritative server runtime (tick loop, networking, snapshot g
 | Metric | Description | Collection Method | Baseline (TBD) | Target |
 |--------|-------------|-------------------|----------------|--------|
 | tick_duration_ns_mean | Avg server tick time | Existing histogram | 287453 (S2 baseline 20250826-180618) | < 2 ms (S2) |
-| tick_duration_ns_p99 | 99th percentile tick | Existing histogram | 2000000 (recent 20250826-183305) | < 5 ms (S2) |
+| tick_duration_ns_p99 | 99th percentile tick | Existing histogram | 500000 (recent 20250826-185117) | < 5 ms (S2) |
 | snapshot_full_bytes_mean | Mean full snapshot size | Existing counter | 667.03 (S2 baseline 20250826-180618) | < 25 KB (target guess; refine) |
 | snapshot_delta_bytes_mean | Mean delta size | Existing counter | 499.94 (S2 baseline 20250826-180618) | < 4 KB (S2) |
-| CPU_user_pct | User CPU % process | perf / pidstat | – | < 75% (S2) |
-| RSS_peak_MB | Peak resident memory | /proc/PID/statm sampling | – | Stable (< +5% over 30 min) |
+| CPU_user_pct | User CPU % process | perf / pidstat | 0.43 (recent 20250826-185117) | < 75% (S2) |
+| RSS_peak_MB | Peak resident memory | /proc/PID/statm sampling | 7,36 (recent 20250826-185117) | Stable (< +5% over 30 min) |
 | allocations_per_tick | Dynamic allocations (instrumented) | Custom counter (profiling build) | – | Reduce 50% after phase 1 |
 | network_tx_bytes_per_sec | Outgoing bytes/sec | Metrics / tcpdump sample | – | N/A (observe) |
-| off_cpu_wait_ns_p99 | Scheduler wait (blocking) | Off-CPU profile | – | Minimize (< tick SLA) |
+| off_cpu_wait_ns_p99 | Scheduler wait (blocking) | Off-CPU profile | 64000000 (recent 20250826-185117) | Minimize (< tick SLA) |
 
 ### 1.5 Performance SLA (Provisional)
 - Normal gameplay (S2): p99 tick < 5 ms; mean tick < 2 ms.
@@ -497,3 +497,18 @@ Baseline capture 20250826-183305:
 - clients=2 duration=6s port=40000
 - cpu_profile=baseline_artifacts/20250826-183305/cpu/cpu_flame.svg (if generated)
 - offcpu_profile=baseline_artifacts/20250826-183305/offcpu/offcpu_flame.svg (if generated)
+\n<!-- BASELINE_RUN_20250826-185117 -->
+Baseline capture 20250826-185117:
+- avg_tick_ns=100311 (~0,100 ms)
+- p99_tick_ns=500000 (~0,500 ms)
+- snapshot_full_bytes_total=834 (count=2)
+- snapshot_delta_bytes_total=1325 (count=10)
+- snapshot_full_mean_bytes=417,00
+- snapshot_delta_mean_bytes=132,50
+- wait_p99_ns=64000000 (~64,000 ms)
+- cpu_user_pct=0.43
+- rss_peak_bytes=7716864 (~7,36 MB)
+- allocs_per_tick_mean=0.00
+- clients=2 duration=6s port=40000
+- cpu_profile=baseline_artifacts/20250826-185117/cpu/cpu_flame.svg (if generated)
+- offcpu_profile=baseline_artifacts/20250826-185117/offcpu/offcpu_flame.svg (if generated)

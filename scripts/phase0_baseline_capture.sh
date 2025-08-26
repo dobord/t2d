@@ -204,13 +204,25 @@ RSS peak bytes: ${RSS_PEAK_BYTES} (~${RSS_PEAK_MB} MB)
 Allocs per tick mean: ${ALLOCS_PER_TICK_MEAN}
 EOF
 
-# Update table row for tick_duration_ns_p99 (Baseline column) if we have a value.
-if [[ -n "${P99_TICK_NS}" && ${P99_TICK_NS} -gt 0 ]]; then
-	TMP_PLAN=$(mktemp)
-	awk -v val="${P99_TICK_NS}" -v ts="${TIMESTAMP}" 'BEGIN{FS=OFS="|"} {
-		if($2 ~ /tick_duration_ns_p99/){
-			$5 = " " val " (recent " ts ") ";
-		}
-		print $0;
-	}' "${PLAN_FILE}" >"${TMP_PLAN}" && mv "${TMP_PLAN}" "${PLAN_FILE}" || true
-fi
+# Update baseline table cells for collected metrics (only overwrite when we have non-zero values where applicable).
+TMP_PLAN=$(mktemp)
+awk -v p99="${P99_TICK_NS}" \
+	-v ts="${TIMESTAMP}" \
+	-v cpu="${CPU_USER_PCT}" \
+	-v rssmb="${RSS_PEAK_MB}" \
+	-v allocm="${ALLOCS_PER_TICK_MEAN}" \
+	-v waitp="${WAIT_P99_NS}" 'BEGIN{FS=OFS="|"} {
+	# Helper: trim leading/trailing spaces for reliable numeric test (awk auto-converts on compare)
+	if($2 ~ /tick_duration_ns_p99/ && p99+0 > 0){
+		$5 = " " p99 " (recent " ts ") ";
+	} else if($2 ~ /CPU_user_pct/ && cpu+0 > 0){
+		$5 = " " cpu " (recent " ts ") ";
+	} else if($2 ~ /RSS_peak_MB/ && rssmb+0 > 0){
+		$5 = " " rssmb " (recent " ts ") ";
+	} else if($2 ~ /allocations_per_tick/ && allocm+0 > 0){
+		$5 = " " allocm " (recent " ts ") ";
+	} else if($2 ~ /off_cpu_wait_ns_p99/ && waitp+0 > 0){
+		$5 = " " waitp " (recent " ts ") ";
+	}
+	print $0;
+}' "${PLAN_FILE}" >"${TMP_PLAN}" && mv "${TMP_PLAN}" "${PLAN_FILE}" || true
