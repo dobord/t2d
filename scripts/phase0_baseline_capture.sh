@@ -146,8 +146,17 @@ if [[ -f "${OFF_FOLDED_FILE}" ]]; then
 	fi
 fi
 if [[ -f "${FOLDED_FILE}" ]]; then
-	# Build inclusive sample counts per function
-	TOP_TMP=$(awk -F';' '{n=split($0, parts, ";"); split(parts[n], lf, " "); cnt=lf[length(lf)]; if(cnt=="") cnt=0; cnt+=0; for(i=1;i<=n;i++){ split(parts[i], f, " "); fn=f[1]; samples[fn]+=cnt;} total+=cnt;} END {for (f in samples) printf "%s %s\n", samples[f], f > "/dev/stderr"; print total > "/dev/stdout"}' "${FOLDED_FILE}" 2>"${RUN_DIR}/cpu/.symcounts") || true
+	# Build inclusive sample counts per function (robust to mawk); avoid reusing array name as loop var.
+	TOP_TMP=$(awk -F';' '{
+		n=split($0, parts, ";");
+		split(parts[n], lastfields, " ");
+		cnt=lastfields[length(lastfields)];
+		if(cnt=="" || cnt ~ /[^0-9]/){cnt=0}; cnt+=0;
+		for(i=1;i<=n;i++){
+			split(parts[i], toks, " "); fn=toks[1]; if(fn!="") samples[fn]+=cnt;
+		}
+		total+=cnt;
+	} END { for (fnm in samples) printf "%s %s\n", samples[fnm], fnm > "/dev/stderr"; print total > "/dev/stdout" }' "${FOLDED_FILE}" 2>"${RUN_DIR}/cpu/.symcounts") || true
 	TOTAL_SAMPLES=$(echo "${TOP_TMP}" | tail -n1)
 	if [[ -f "${RUN_DIR}/cpu/.symcounts" && ${TOTAL_SAMPLES:-0} -gt 0 ]]; then
 		TOP_CPU_SECTION=$({
