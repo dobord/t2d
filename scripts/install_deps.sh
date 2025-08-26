@@ -1,9 +1,10 @@
 #!/usr/bin/env bash
+# SPDX-License-Identifier: Apache-2.0
 set -euo pipefail
 # Install build dependencies for t2d server (Ubuntu/Debian prototype)
 
 sudo apt-get update
 sudo apt-get install -y --no-install-recommends \
-  build-essential cmake ninja-build protobuf-compiler libprotobuf-dev git ca-certificates
+	build-essential cmake ninja-build protobuf-compiler libprotobuf-dev git ca-certificates
 
 echo "[install_deps] Done."

@@ -8,8 +8,8 @@ OUT_CPP_DIR="$ROOT/android/proto/cpp"
 OUT_JAVA_DIR="$ROOT/android/app/src/main/java"
 
 if ! command -v protoc >/dev/null 2>&1; then
-  echo "protoc not found in PATH" >&2
-  exit 1
+	echo "protoc not found in PATH" >&2
+	exit 1
 fi
 
 mkdir -p "$OUT_CPP_DIR"

@@ -13,7 +13,7 @@ message AuthRequest {
 message AuthResponse {
   bool success = 1;
   string session_id = 2; // present if success
-  string reason = 3;     // error message if failed
+  string reason = 3; // error message if failed
 }
 
 message QueueJoinRequest {
@@ -38,16 +38,16 @@ message MatchStart {
   uint32 tick_rate = 2;
   uint32 seed = 3; // RNG seed for deterministic elements
   uint32 initial_player_count = 4; // number of players (including human) at match formation
-  bool disable_bot_fire = 5;       // propagate server config impacting duration caps
-  uint32 my_entity_id = 6;          // authoritative entity id for this client
+  bool disable_bot_fire = 5; // propagate server config impacting duration caps
+  uint32 my_entity_id = 6; // authoritative entity id for this client
 }
 
 // Player input (authoritative server model)
 message InputCommand {
   string session_id = 1;
   uint32 client_tick = 2;
-  float move_dir = 3;  // -1..1 forward/back
-  float turn_dir = 4;  // -1..1 rotate hull
+  float move_dir = 3; // -1..1 forward/back
+  float turn_dir = 4; // -1..1 rotate hull
   float turret_turn = 5; // -1..1 rotate turret
   bool fire = 6;
   bool brake = 7; // hold to apply braking force
@@ -101,14 +101,14 @@ message StateSnapshot {
 // For prototype we send only changed tank/projectile states; deletions omitted.
 message DeltaSnapshot {
   uint32 server_tick = 1; // current tick of this delta
-  uint32 base_tick = 2;   // last full snapshot tick (or 0 baseline)
-  repeated TankState tanks = 3;        // changed/new tanks
+  uint32 base_tick = 2; // last full snapshot tick (or 0 baseline)
+  repeated TankState tanks = 3; // changed/new tanks
   repeated ProjectileState projectiles = 4; // new projectiles (no per-tick motion updates yet omitted for bandwidth)
-  repeated uint32 removed_tanks = 5;        // entity_ids removed since base
-  repeated uint32 removed_projectiles = 6;  // projectile ids removed since base
+  repeated uint32 removed_tanks = 5; // entity_ids removed since base
+  repeated uint32 removed_projectiles = 6; // projectile ids removed since base
   // Crate deltas: crates are heavier objects that move less; send only when changed significantly.
-  repeated CrateState crates = 7;           // changed/new crates (position/angle)
-  repeated uint32 removed_crates = 8;       // crates removed (future feature: destruction)
+  repeated CrateState crates = 7; // changed/new crates (position/angle)
+  repeated uint32 removed_crates = 8; // crates removed (future feature: destruction)
 }
 
 message DamageEvent {
@@ -142,7 +142,7 @@ message HeartbeatResponse {
   string session_id = 1;
   uint64 client_time_ms = 2; // echoed back
   uint64 server_time_ms = 3; // server receive time
-  uint64 delta_ms = 4;       // server_time_ms - client_time_ms
+  uint64 delta_ms = 4; // server_time_ms - client_time_ms
 }
 
 // Container for server -> client stream (oneof for extensibility)
@@ -155,9 +155,9 @@ message ServerMessage {
     DamageEvent damage = 5;
     KillFeedUpdate kill_feed = 6;
     TankDestroyed destroyed = 7;
-  HeartbeatResponse heartbeat_resp = 8;
-  DeltaSnapshot delta_snapshot = 9;
-  MatchEnd match_end = 10;
+    HeartbeatResponse heartbeat_resp = 8;
+    DeltaSnapshot delta_snapshot = 9;
+    MatchEnd match_end = 10;
   }
 }
 
