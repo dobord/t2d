@@ -17,21 +17,44 @@ PLAN_FILE=docs/performance_plan.md
 
 mkdir -p "${RUN_DIR}" || true
 
-echo "[phase0] Starting load (clients=${CLIENTS} dur=${DURATION}s)"
-./scripts/load_run_baseline.sh --clients ${CLIENTS} --duration ${DURATION} --port ${PORT}
+echo "[phase0] Starting load (clients=${CLIENTS} dur=${DURATION}s) in background"
+LOAD_LOG=${RUN_DIR}/phase0_load.log
+./scripts/load_run_baseline.sh --clients ${CLIENTS} --duration ${DURATION} --port ${PORT} >"${LOAD_LOG}" 2>&1 &
+LOAD_PID=$!
 
-SERVER_PID=$(cat baseline_logs/server.pid 2>/dev/null || echo "")
-if [[ -z "${SERVER_PID}" ]]; then
-	echo "[phase0] Missing server PID" >&2
+# Wait until server.pid appears
+echo "[phase0] Waiting for server.pid..."
+for i in {1..20}; do
+	if [[ -f baseline_logs/server.pid ]]; then break; fi
+	sleep 0.5
+done
+if [[ ! -f baseline_logs/server.pid ]]; then
+	echo "[phase0] server.pid not found; abort" >&2
+	kill -INT ${LOAD_PID} 2>/dev/null || true
 	exit 1
 fi
+SERVER_PID=$(cat baseline_logs/server.pid)
+echo "[phase0] Detected server PID=${SERVER_PID}"
 
-# CPU profile
-echo "[phase0] CPU profiling PID=${SERVER_PID} (${CPU_PROF_DUR}s)"
-PID=${SERVER_PID} DUR=${CPU_PROF_DUR} OUT_DIR=${RUN_DIR}/cpu ./scripts/profile_cpu.sh || true
-# Off-CPU profile
-echo "[phase0] Off-CPU profiling PID=${SERVER_PID} (${OFFCPU_PROF_DUR}s)"
-PID=${SERVER_PID} DUR=${OFFCPU_PROF_DUR} OUT_DIR=${RUN_DIR}/offcpu ./scripts/profile_offcpu.sh || true
+echo "[phase0] Launching CPU perf attach (${CPU_PROF_DUR}s)"
+PID=${SERVER_PID} DUR=${CPU_PROF_DUR} OUT_DIR=${RUN_DIR}/cpu ./scripts/profile_cpu.sh >/dev/null 2>&1 &
+CPU_PROF_PID=$!
+
+if [[ ${OFFCPU_PROF_DUR} -gt 0 ]]; then
+	echo "[phase0] Launching Off-CPU perf attach (${OFFCPU_PROF_DUR}s)"
+	PID=${SERVER_PID} DUR=${OFFCPU_PROF_DUR} OUT_DIR=${RUN_DIR}/offcpu ./scripts/profile_offcpu.sh >/dev/null 2>&1 &
+	OFFCPU_PROF_PID=$!
+else
+	OFFCPU_PROF_PID=""
+fi
+
+# Wait for load to finish
+wait ${LOAD_PID} || true
+echo "[phase0] Load script finished"
+
+# Wait profiling tasks (they auto-timeout)
+wait ${CPU_PROF_PID} 2>/dev/null || true
+if [[ -n "${OFFCPU_PROF_PID}" ]]; then wait ${OFFCPU_PROF_PID} 2>/dev/null || true; fi
 
 # Extract metrics from server.log
 SERVER_LOG=baseline_logs/server.log
