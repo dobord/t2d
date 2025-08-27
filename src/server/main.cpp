@@ -30,6 +30,9 @@ static coro::task<void> heartbeat_monitor(std::shared_ptr<coro::io_scheduler> sc
         auto now = clock::now();
         auto sessions = t2d::mm::instance().snapshot_all_sessions();
         for (auto &s : sessions) {
+            // Ignore bots for heartbeat timeouts to allow persistent automated matches.
+            if (s->is_bot)
+                continue;
             if (s->last_heartbeat.time_since_epoch().count() == 0)
                 continue;
             auto diff = std::chrono::duration_cast<std::chrono::seconds>(now - s->last_heartbeat).count();
