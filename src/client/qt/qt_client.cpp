@@ -25,6 +25,7 @@
 #include <QtGui/QGuiApplication>
 #include <QtQml/QQmlApplicationEngine>
 #include <QtQml/QQmlContext>
+#include <QtQuick/QQuickWindow>
 
 using namespace std::chrono_literals;
 
@@ -388,7 +389,15 @@ int main(int argc, char **argv)
         t2d::log::error("Failed to load QML scene");
         return 1;
     }
-    // Kick off internal timing driver (UI thread)
+    // Attempt to enable vsync pacing (replaces QTimer fractional pacing). Falls back automatically if window cast
+    // fails.
+    if (!engine.rootObjects().isEmpty()) {
+        if (auto *w = qobject_cast<QQuickWindow *>(engine.rootObjects().first())) {
+            // Enable vsync pacing first; start() will early-return due to usingVsync_ flag.
+            QMetaObject::invokeMethod(&timing, [&, w]() { timing.enableVsyncPacing(w); });
+        }
+    }
+    // Kick off internal timing driver (if vsync enabled, start() is a no-op except setting period).
     QMetaObject::invokeMethod(&timing, "start", Qt::QueuedConnection);
     // Connect map dimension changes to QML root (rootItem inside Window) so boundary draws automatically.
     QObject *rootObj = engine.rootObjects().first();

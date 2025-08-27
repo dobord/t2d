@@ -3,6 +3,7 @@
 #include "game.pb.h"
 
 #include <mutex>
+#include <unordered_map>
 #include <vector>
 
 #include <QtCore/QAbstractListModel>
@@ -99,41 +100,52 @@ public:
         std::scoped_lock lk(m_);
         beginResetModel();
         rows_.swap(newRows);
+        index_.clear();
+        index_.reserve(rows_.size());
+        for (int i = 0; i < (int)rows_.size(); ++i)
+            index_.emplace(rows_[i].id, i);
         endResetModel();
     }
 
     void applyDelta(const t2d::DeltaSnapshot &d)
     {
         std::scoped_lock lk(m_);
-        // removals
+        std::vector<int> removeIdx;
+        removeIdx.reserve(d.removed_crates_size());
         for (auto rid : d.removed_crates()) {
-            for (size_t i = 0; i < rows_.size(); ++i) {
-                if (rows_[i].id == rid) {
-                    beginRemoveRows({}, (int)i, (int)i);
-                    rows_.erase(rows_.begin() + i);
-                    endRemoveRows();
-                    break;
-                }
-            }
+            auto it = index_.find(rid);
+            if (it != index_.end())
+                removeIdx.push_back(it->second);
         }
-        // updates / additions
-        for (auto &c : d.crates()) {
-            bool found = false;
-            for (size_t i = 0; i < rows_.size(); ++i) {
-                if (rows_[i].id == c.crate_id()) {
-                    rows_[i].x = c.x();
-                    rows_[i].y = c.y();
-                    rows_[i].angle = c.angle();
-                    auto ix = index((int)i);
-                    emit dataChanged(ix, ix);
-                    found = true;
-                    break;
-                }
+        if (!removeIdx.empty()) {
+            std::sort(removeIdx.begin(), removeIdx.end());
+            removeIdx.erase(std::unique(removeIdx.begin(), removeIdx.end()), removeIdx.end());
+            for (auto it = removeIdx.rbegin(); it != removeIdx.rend(); ++it) {
+                int r = *it;
+                beginRemoveRows({}, r, r);
+                rows_.erase(rows_.begin() + r);
+                endRemoveRows();
             }
-            if (!found) {
+            index_.clear();
+            index_.reserve(rows_.size());
+            for (int i = 0; i < (int)rows_.size(); ++i)
+                index_.emplace(rows_[i].id, i);
+        }
+        for (auto &c : d.crates()) {
+            auto it = index_.find(c.crate_id());
+            if (it != index_.end()) {
+                int i = it->second;
+                auto &row = rows_[i];
+                row.x = c.x();
+                row.y = c.y();
+                row.angle = c.angle();
+                auto ix = index(i);
+                emit dataChanged(ix, ix);
+            } else {
                 beginInsertRows({}, (int)rows_.size(), (int)rows_.size());
                 rows_.push_back({c.crate_id(), c.x(), c.y(), c.angle()});
                 endInsertRows();
+                index_.emplace(c.crate_id(), (int)rows_.size() - 1);
             }
         }
     }
@@ -141,4 +153,5 @@ public:
 private:
     mutable std::mutex m_;
     std::vector<QtCrateRow> rows_;
+    std::unordered_map<uint32_t, int> index_;
 };

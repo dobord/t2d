@@ -20,6 +20,11 @@ Window {
         objectName: "rootItem"
         anchors.fill: parent
         focus: true
+        // FPS tracking
+        property bool showFps: true
+        property int _fpsFrameCount: 0
+        property double _fpsLastMs: 0
+        property double fpsValue: 0.0
         property bool followCamera: true // default on: camera follows own tank
         property bool showGrid: true
         // Map dimensions (static per match, received from snapshot). When zero, unknown/not yet received.
@@ -313,6 +318,9 @@ Window {
             case Qt.Key_Minus:
                 userZoom *= 0.9;
                 userZoom = Math.max(userZoom, 0.1);
+                break;
+            case Qt.Key_F:
+                rootItem.showFps = !rootItem.showFps; // toggle FPS overlay
                 break;
             default:
                 return;
@@ -657,6 +665,16 @@ Window {
                     scene.requestPaint();
                     rootItem.joystick_update();
                     rootItem.updateMouseAim();
+                    // FPS accumulation (simple 1s rolling window)
+                    rootItem._fpsFrameCount += 1;
+                    var now = Date.now();
+                    if (rootItem._fpsLastMs === 0)
+                        rootItem._fpsLastMs = now;
+                    else if (now - rootItem._fpsLastMs >= 1000) {
+                        rootItem.fpsValue = rootItem._fpsFrameCount * 1000.0 / (now - rootItem._fpsLastMs);
+                        rootItem._fpsFrameCount = 0;
+                        rootItem._fpsLastMs = now;
+                    }
                 }
             }
             MouseArea {
@@ -930,6 +948,89 @@ Window {
             }
         }
 
+        // FPS overlay
+        Text {
+            id: fpsLabel
+            visible: rootItem.showFps
+            z: 15
+            anchors.top: tankPanel.bottom
+            anchors.left: tankPanel.left
+            anchors.topMargin: 6
+            text: "FPS: " + rootItem.fpsValue.toFixed(1)
+            color: "#c8e4f0"
+            font.pixelSize: 14
+            Rectangle {
+                anchors.fill: parent
+                anchors.margins: -4
+                radius: 4
+                color: "#0d161dcc"
+                border.color: "#2e4450"
+                z: -1
+            }
+        }
+
+        // Frame timing stats overlay (appears under FPS when enabled)
+        Item {
+            id: frameStatsBox
+            visible: rootItem.showFps
+            z: 15
+            anchors.top: fpsLabel.bottom
+            anchors.left: fpsLabel.left
+            anchors.topMargin: 4
+            property string _lastText: ""
+            Timer {
+                interval: 250
+                running: frameStatsBox.visible
+                repeat: true
+                onTriggered: {
+                    statsLast.text = "Last: " + timingState.lastFrameMs.toFixed(2) + " ms";
+                    statsMax.text = "Max: " + timingState.maxFrameMs.toFixed(2) + " ms";
+                    statsLong.text = "Long: " + timingState.longFrameCount;
+                }
+            }
+            Row {
+                id: frameStatsRow
+                spacing: 8
+                Text {
+                    id: statsLast
+                    color: "#afc9d6"
+                    font.pixelSize: 12
+                    text: "Last: --"
+                }
+                Text {
+                    id: statsMax
+                    color: "#afc9d6"
+                    font.pixelSize: 12
+                    text: "Max: --"
+                }
+                Text {
+                    id: statsLong
+                    color: "#afc9d6"
+                    font.pixelSize: 12
+                    text: "Long: --"
+                }
+                Button {
+                    id: resetStatsBtn
+                    text: "Reset"
+                    font.pixelSize: 11
+                    padding: 4
+                    onClicked: timingState.resetFrameStats()
+                }
+            }
+            Rectangle {
+                id: frameStatsBg
+                z: -1
+                color: "#0d161dcc"
+                border.color: "#2e4450"
+                radius: 4
+                anchors.top: frameStatsRow.top
+                anchors.bottom: frameStatsRow.bottom
+                anchors.left: frameStatsRow.left
+                anchors.right: frameStatsRow.right
+                anchors.margins: -4
+            }
+        }
+
         // Joystick composite control (two sticks + fire/brake buttons)
         Joystick {
             id: joystick
@@ -993,10 +1094,9 @@ Window {
                     Text {
                         id: resultText
                         Layout.alignment: Qt.AlignHCenter
+                        font.pixelSize: 28
                         text: timingState.matchOutcome === 1 ? "Victory" : (timingState.matchOutcome === -1 ? "Defeat" : "Draw")
                         color: timingState.matchOutcome === 1 ? "#6dff6d" : (timingState.matchOutcome === -1 ? "#ff6464" : "#e0e0e0")
-                        font.pixelSize: 38
-                        font.bold: true
                     }
                     Text {
                         Layout.alignment: Qt.AlignHCenter
@@ -1010,22 +1110,22 @@ Window {
                         Button {
                             id: lobbyNowBtn
                             text: "Return to Lobby"
-                            font.pixelSize: 16
-                            onClicked: timingState.requestRequeueNow()
+                            onClicked: timingState.returnToLobbyNow()
                         }
                     }
                 }
             }
         }
 
-        // Lobby status panel (shown when not in active match and not in matchOver countdown)
+        // Lobby status panel (shown when not in active match end screen)
         Rectangle {
             id: lobbyPanel
-            z: 8
-            visible: !timingState.matchActive && !timingState.matchOver
+            // Hide lobby status while an active match is running; show only in lobby (pre-match) or post-return.
+            visible: lobbyState && !timingState.matchActive
             anchors.horizontalCenter: parent.horizontalCenter
             anchors.top: parent.top
             anchors.topMargin: 54
+            width: Math.min(parent.width * 0.6, 480)
             color: "#1b262ecc"
             radius: 8
             border.color: "#35505c"
