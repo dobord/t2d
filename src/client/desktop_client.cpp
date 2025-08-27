@@ -103,14 +103,17 @@ coro::task<void> send_frame(coro::net::tcp::client &client, const t2d::ClientMes
     }
 }
 
-coro::task<bool> read_one(coro::net::tcp::client &client, t2d::ServerMessage &out)
+coro::task<bool> read_one(
+    coro::net::tcp::client &client, t2d::ServerMessage &out, std::chrono::milliseconds /*time_left*/)
 {
     static t2d::netutil::FrameParseState state;
-    co_await client.poll(coro::poll_op::read);
+    // time_left is currently unused; we perform a single non-blocking recv attempt.
     std::string tmp(2048, '\0');
-    auto [st, span] = client.recv(tmp);
+    auto [st, span] = client.recv(tmp); // non-blocking attempt
     if (st == coro::net::recv_status::closed)
         co_return false;
+    if (st == coro::net::recv_status::would_block)
+        co_return false; // no data this iteration
     if (st != coro::net::recv_status::ok)
         co_return false;
     state.buffer.insert(state.buffer.end(), span.begin(), span.end());
@@ -144,12 +147,21 @@ coro::task<void> run_client(std::shared_ptr<coro::io_scheduler> sched, std::stri
     q.mutable_queue_join();
     co_await send_frame(cli, q);
     bool in_match = false;
-    uint64_t loop_iter = 0;
+    uint64_t loop_iter = 0; // still used for synthetic movement phase progression
     std::string session_id;
     uint32_t last_full_tick = 0;
+    // Time-based scheduling state
+    constexpr auto heartbeat_interval = std::chrono::milliseconds(1000);
+    constexpr auto input_interval = std::chrono::milliseconds(100); // previously every 5 * 20ms
+    std::chrono::milliseconds iteration_budget{20}; // will be updated after match_start using server tick_rate
+    auto last_heartbeat = std::chrono::steady_clock::now();
+    auto last_input = std::chrono::steady_clock::now();
+    uint32_t client_tick_counter = 0;
     while (!g_shutdown.load()) {
-        // Periodic heartbeat every ~1s (assuming ~20ms yield below => ~50 iterations)
-        if ((loop_iter % 50) == 0) {
+        auto iter_start = std::chrono::steady_clock::now();
+        // Heartbeat based on elapsed time
+        if (iter_start - last_heartbeat >= heartbeat_interval) {
+            last_heartbeat = iter_start;
             t2d::ClientMessage hb;
             auto *h = hb.mutable_heartbeat();
             h->set_session_id(session_id);
@@ -158,21 +170,34 @@ coro::task<void> run_client(std::shared_ptr<coro::io_scheduler> sched, std::stri
                                .count());
             co_await send_frame(cli, hb);
         }
-        // Send input while in match (simple circular motion + fire pulse)
-        if (in_match && (loop_iter % 5) == 0) { // 100ms intervals
+        // Input (movement + fire pulse) every input_interval while in a match
+        if (in_match && (iter_start - last_input >= input_interval)) {
+            last_input = iter_start;
             t2d::ClientMessage in;
             auto *ic = in.mutable_input();
             ic->set_session_id(session_id);
-            ic->set_client_tick((uint32_t)loop_iter);
+            ic->set_client_tick(client_tick_counter++);
             float phase = static_cast<float>(loop_iter % 360) * 3.14159f / 180.0f;
-            ic->set_move_dir(std::sin(phase)); // oscillate forward/back
-            ic->set_turn_dir(std::cos(phase)); // rotate hull
+            ic->set_move_dir(std::sin(phase));
+            ic->set_turn_dir(std::cos(phase));
             ic->set_turret_turn(std::sin(phase * 0.5f));
-            ic->set_fire((loop_iter % 150) == 0); // fire occasionally
+            // Fire every 30 input messages ~3s (matches old 150 * 20ms)
+            ic->set_fire((client_tick_counter % 30) == 0);
             co_await send_frame(cli, in);
         }
+        // Remaining time budget for this iteration passed to read_one
+        auto after_sends = std::chrono::steady_clock::now();
+        auto elapsed = after_sends - iter_start;
+        auto time_left = (elapsed >= iteration_budget)
+            ? std::chrono::milliseconds(0)
+            : std::chrono::duration_cast<std::chrono::milliseconds>(iteration_budget - elapsed);
         t2d::ServerMessage sm;
-        if (co_await read_one(cli, sm)) {
+        bool got = co_await read_one(cli, sm, time_left);
+        if (!got && time_left.count() > 0) {
+            // Sleep out the remaining budget to keep ~20ms cadence without busy spinning.
+            co_await sched->yield_for(time_left);
+        }
+        if (got) {
             if (sm.has_auth_response()) {
                 t2d::log::info(
                     "auth success={} session={}", sm.auth_response().success(), sm.auth_response().session_id());
@@ -188,11 +213,18 @@ coro::task<void> run_client(std::shared_ptr<coro::io_scheduler> sched, std::stri
                     sm.queue_status().timeout_seconds_left());
             } else if (sm.has_match_start()) {
                 in_match = true;
+                auto tick_rate = sm.match_start().tick_rate();
+                if (tick_rate > 0 && tick_rate <= 1000) { // basic sanity
+                    iteration_budget = std::chrono::milliseconds(1000 / tick_rate);
+                } else {
+                    iteration_budget = std::chrono::milliseconds(20); // fallback
+                }
                 t2d::log::info(
-                    "match start id={} tick_rate={} seed={}",
+                    "match start id={} tick_rate={} seed={} iteration_budget_ms={}",
                     sm.match_start().match_id(),
-                    sm.match_start().tick_rate(),
-                    sm.match_start().seed());
+                    tick_rate,
+                    sm.match_start().seed(),
+                    iteration_budget.count());
             } else if (sm.has_snapshot()) {
                 last_full_tick = sm.snapshot().server_tick();
                 log_full_snapshot(sm.snapshot());
@@ -218,7 +250,6 @@ coro::task<void> run_client(std::shared_ptr<coro::io_scheduler> sched, std::stri
         }
         // No local world summary (raw snapshots already logged)
         ++loop_iter;
-        co_await sched->yield_for(20ms);
     }
     t2d::log::info("client shutdown");
 }

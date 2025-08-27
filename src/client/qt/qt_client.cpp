@@ -17,6 +17,9 @@
 #include <atomic>
 #include <chrono>
 #include <csignal>
+#include <cstdlib>
+#include <iomanip>
+#include <sstream>
 #include <thread>
 
 #include <QtGui/QGuiApplication>
@@ -57,8 +60,11 @@ coro::task<void> send_frame(coro::net::tcp::client &client, const t2d::ClientMes
     }
 }
 
-// Attempts to extract one message; returns 1=message parsed, 0=need more data (no message yet), -1=connection closed
-coro::task<int> read_one(coro::net::tcp::client &client, t2d::ServerMessage &out)
+// Attempts to extract one message within the provided time budget; returns
+//  1 = message parsed
+//  0 = need more data (no message yet)
+// -1 = connection closed or fatal parse
+coro::task<int> read_one(coro::net::tcp::client &client, t2d::ServerMessage &out, std::chrono::milliseconds time_left)
 {
     static t2d::netutil::FrameParseState state; // per-process (single connection prototype)
     // Try extract without new read first
@@ -70,8 +76,12 @@ coro::task<int> read_one(coro::net::tcp::client &client, t2d::ServerMessage &out
             co_return -1;
         }
     }
-    // Perform a NON-BLOCKING-ish poll with tiny timeout so outer loop can progress to send heartbeats & inputs.
-    auto pstat = co_await client.poll(coro::poll_op::read, std::chrono::milliseconds(1));
+    if (time_left.count() <= 0) {
+        co_return 0; // no budget to poll
+    }
+    // Poll respecting remaining budget (cap a little so extremely long budgets do not block loop).
+    auto poll_budget = (time_left > std::chrono::milliseconds(10)) ? std::chrono::milliseconds(10) : time_left;
+    auto pstat = co_await client.poll(coro::poll_op::read, poll_budget);
     if (pstat == coro::poll_status::timeout) {
         co_return 0; // no data ready right now
     }
@@ -133,13 +143,38 @@ coro::task<void> run_network(
     bool in_match = false;
     uint32_t myEntityId = 0; // authoritative from MatchStart
     // lobbyState now tracked via LobbyState object in QML
-    uint64_t tickRate = 20; // default
+    uint64_t tickRate = 20; // default (Hz)
     uint64_t hardCapTicks = 0;
     uint64_t matchStartServerTick = 0;
-    uint64_t loop_iter = 0;
+    uint64_t loop_iter = 0; // still used for diagnostics
+    // Time-based scheduling (mirrors desktop client refactor)
+    constexpr auto heartbeat_interval = std::chrono::milliseconds(1000);
+    std::chrono::milliseconds iteration_budget{20}; // will be updated after match_start according to tickRate
+    std::chrono::milliseconds input_interval = iteration_budget / 2; // input at twice server tick rate by default
+    auto last_heartbeat = std::chrono::steady_clock::now();
+    auto last_input = std::chrono::steady_clock::now();
+    uint32_t client_tick_counter = 0;
+    // Profiling (enable via env T2D_PROFILE=1). Aggregates over 5 second windows.
+    const bool profiling_enabled = (std::getenv("T2D_PROFILE") != nullptr);
+
+    struct ProfAgg
+    {
+        std::chrono::steady_clock::time_point window_start{};
+        uint64_t loops = 0;
+        uint64_t msgs = 0;
+        uint64_t heartbeats = 0;
+        uint64_t inputs = 0;
+        double loop_time_acc_ms = 0.0;
+    } prof;
+
+    if (profiling_enabled) {
+        prof.window_start = std::chrono::steady_clock::now();
+    }
     while (!g_shutdown.load()) {
         auto iter_start = std::chrono::steady_clock::now();
-        if ((loop_iter % 50) == 0) {
+        // Heartbeat by elapsed time
+        if (iter_start - last_heartbeat >= heartbeat_interval) {
+            last_heartbeat = iter_start;
             t2d::ClientMessage hb;
             auto *h = hb.mutable_heartbeat();
             h->set_session_id(session_id);
@@ -147,34 +182,48 @@ coro::task<void> run_network(
                                std::chrono::steady_clock::now().time_since_epoch())
                                .count());
             co_await send_frame(cli, hb);
-            t2d::log::debug("heartbeat sent loop_iter={} in_match={} myEntityId={}", loop_iter, in_match, myEntityId);
+            if (profiling_enabled)
+                ++prof.heartbeats;
+            t2d::log::debug(
+                "heartbeat sent in_match={} myEntityId={} ctick={}", in_match, myEntityId, client_tick_counter);
         }
-        if (in_match && (loop_iter % 5) == 0) {
+        // Input send based on elapsed time
+        if (in_match && (iter_start - last_input >= input_interval)) {
+            last_input = iter_start;
             t2d::ClientMessage in;
             auto *ic = in.mutable_input();
             ic->set_session_id(session_id);
-            ic->set_client_tick((uint32_t)loop_iter);
+            ic->set_client_tick(client_tick_counter++);
             ic->set_move_dir(input->move());
             ic->set_turn_dir(input->turn());
             ic->set_turret_turn(input->turretTurn());
             ic->set_fire(input->fire());
             ic->set_brake(input->brake());
-            // Diagnostics: revert to debug (no longer needed at info level).
             t2d::log::debug(
                 "send_input ctick={} move={} turn={} turret={} fire={} brake={}",
-                loop_iter,
+                client_tick_counter - 1,
                 input->move(),
                 input->turn(),
                 input->turretTurn(),
                 input->fire(),
                 input->brake());
             co_await send_frame(cli, in);
+            if (profiling_enabled)
+                ++prof.inputs;
         }
-        // Drain currently available complete frames without stalling long.
-        for (int drain = 0; drain < 64; ++drain) { // hard cap per outer iteration
+        // Remaining time budget after outbound sends
+        auto after_sends = std::chrono::steady_clock::now();
+        auto elapsed = after_sends - iter_start;
+        auto time_left = (elapsed >= iteration_budget)
+            ? std::chrono::milliseconds(0)
+            : std::chrono::duration_cast<std::chrono::milliseconds>(iteration_budget - elapsed);
+        // Single receive attempt bounded by remaining budget
+        if (time_left.count() > 0) {
             t2d::ServerMessage sm;
-            int r = co_await read_one(cli, sm);
+            int r = co_await read_one(cli, sm, time_left);
             if (r == 1) {
+                if (profiling_enabled)
+                    ++prof.msgs;
                 if (sm.has_auth_response()) {
                     session_id = sm.auth_response().session_id();
                 } else if (sm.has_match_start()) {
@@ -183,17 +232,22 @@ coro::task<void> run_network(
                     tickRate = sm.match_start().tick_rate();
                     if (tickRate > 0) {
                         timing->setTickIntervalMs((int)(1000 / tickRate));
+                        iteration_budget = std::chrono::milliseconds(1000 / tickRate);
+                    } else {
+                        iteration_budget = std::chrono::milliseconds(20);
                     }
+                    input_interval = iteration_budget / 2; // keep inputs at 2x tick cadence
                     myEntityId = sm.match_start().my_entity_id();
                     timing->setMyEntityId(myEntityId);
                     t2d::log::info(
                         "match_start received match_id={} my_entity_id={} tick_rate={} initial_players={} "
-                        "disable_bot_fire={}",
+                        "disable_bot_fire={} iteration_budget_ms={}",
                         sm.match_start().match_id(),
                         myEntityId,
                         tickRate,
                         sm.match_start().initial_player_count(),
-                        sm.match_start().disable_bot_fire());
+                        sm.match_start().disable_bot_fire(),
+                        iteration_budget.count());
                     uint32_t ipc = sm.match_start().initial_player_count();
                     bool dbf = sm.match_start().disable_bot_fire();
                     uint64_t secs = (ipc <= 1) ? 120ull : (dbf ? 300ull : 60ull);
@@ -207,7 +261,6 @@ coro::task<void> run_network(
                     crateModel->applyFull(sm.snapshot());
                     timing->markServerTick();
                     timing->setServerTick(sm.snapshot().server_tick());
-                    // myEntityId already known; no heuristic needed now.
                 } else if (sm.has_delta_snapshot()) {
                     tankModel->applyDelta(sm.delta_snapshot());
                     projModel->applyDelta(sm.delta_snapshot());
@@ -227,17 +280,46 @@ coro::task<void> run_network(
                     if (lobby)
                         lobby->updateFromQueue(sm.queue_status());
                 }
-                // continue draining until read_one returns 0 or cap reached
-                continue;
-            }
-            if (r == -1) {
-                // Connection closed or fatal parse; break loop (no further frames)
+            } else if (r == -1) {
+                // Connection closed or fatal parse -> exit loop
                 break;
+            } else { // r == 0
+                // Optionally sleep away remaining budget cooperatively
+                auto after_recv = std::chrono::steady_clock::now();
+                auto used = after_recv - iter_start;
+                auto leftover = (used >= iteration_budget)
+                    ? std::chrono::milliseconds(0)
+                    : std::chrono::duration_cast<std::chrono::milliseconds>(iteration_budget - used);
+                if (leftover.count() > 0)
+                    co_await sched->yield_for(leftover);
             }
-            // r == 0: no complete frame currently
-            break;
         }
-        ++loop_iter;
+        ++loop_iter; // diagnostic counter (no longer drives timing)
+        if (profiling_enabled) {
+            auto iter_end = std::chrono::steady_clock::now();
+            double loop_ms = std::chrono::duration<double, std::milli>(iter_end - iter_start).count();
+            prof.loop_time_acc_ms += loop_ms;
+            ++prof.loops;
+            // msgs counted inside drain loop when r==1
+            // Emit every ~5s
+            auto win_elapsed = iter_end - prof.window_start;
+            if (win_elapsed >= std::chrono::seconds(5)) {
+                double avg_loop = prof.loops ? (prof.loop_time_acc_ms / prof.loops) : 0.0;
+                std::ostringstream _avg_loop_ss;
+                _avg_loop_ss.setf(std::ios::fixed, std::ios::floatfield);
+                _avg_loop_ss << std::setprecision(3) << avg_loop;
+                t2d::log::info(
+                    "prof window=5s loops={} avg_loop_ms={} msgs={} inputs={} heartbeats={}",
+                    prof.loops,
+                    _avg_loop_ss.str(),
+                    prof.msgs,
+                    prof.inputs,
+                    prof.heartbeats);
+                prof.window_start = iter_end;
+                prof.loops = prof.msgs = prof.inputs = prof.heartbeats = 0;
+                prof.loop_time_acc_ms = 0.0;
+            }
+        }
         timing->tickFrame();
         if (timing->consumeRequeueRequest()) {
             // Reset state for next match
@@ -250,23 +332,8 @@ coro::task<void> run_network(
             co_await send_frame(cli, qj);
             t2d::log::info("requeue requested");
         }
-        // Adaptive pacing: wait only remaining time until next expected server tick
-        uint64_t interval_ns = tickRate > 0 ? (1000000000ull / tickRate) : 50000000ull; // fallback 20 Hz
-        auto elapsed_ns = (uint64_t)std::chrono::duration_cast<std::chrono::nanoseconds>(
-                              std::chrono::steady_clock::now() - iter_start)
-                              .count();
-        if (elapsed_ns < interval_ns) {
-            auto remain_ns = interval_ns - elapsed_ns;
-            // Clamp to avoid extremely tiny sleeps that may spin; allow 0 -> simple yield
-            if (remain_ns < 500000ull) { // <0.5ms
-                co_await sched->yield();
-            } else {
-                co_await sched->yield_for(std::chrono::nanoseconds(remain_ns));
-            }
-        } else {
-            // Behind schedule; just yield cooperatively without extra sleep
-            co_await sched->yield();
-        }
+        // End of loop: if we still drifted and performed little work, yield cooperatively
+        co_await sched->yield();
     }
     t2d::log::info("qt_client network loop exit");
 }

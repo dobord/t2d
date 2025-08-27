@@ -361,6 +361,15 @@ Window {
 
         Canvas {
             id: scene
+            property bool profileEnabled: false
+            property double _lastPaintStartMs: 0
+            Component.onCompleted: {
+                // Enable with --qml-log-level=DEBUG plus env T2D_QML_PROFILE=1 (approximated by presence of argument)
+                for (var i = 0; i < Qt.application.arguments.length; ++i) {
+                    if (Qt.application.arguments[i].indexOf('--qml-profile') === 0)
+                        profileEnabled = true;
+                }
+            }
             anchors {
                 left: parent.left
                 right: parent.right
@@ -373,6 +382,15 @@ Window {
                 bottomMargin: 8
             }
             onPaint: {
+                if (profileEnabled) {
+                    var now = Date.now();
+                    if (scene._lastPaintStartMs !== 0) {
+                        var frameMs = now - scene._lastPaintStartMs;
+                        if (rootItem._shouldLog('DEBUG'))
+                            rootItem.logD('frame paint_ms=' + frameMs);
+                    }
+                    scene._lastPaintStartMs = now;
+                }
                 const ctx = getContext('2d');
                 ctx.reset();
                 ctx.fillStyle = '#162028';
