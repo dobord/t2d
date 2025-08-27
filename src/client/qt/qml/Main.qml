@@ -410,14 +410,13 @@ Window {
                 if (rootItem.mapWidth > 0 && rootItem.mapHeight > 0) {
                     const hw = rootItem.mapWidth * 0.5;
                     const hh = rootItem.mapHeight * 0.5;
-                    ctx.save();
                     ctx.strokeStyle = '#4a7688';
                     ctx.lineWidth = 0.15; // in world units
                     ctx.setLineDash([hw * 0.02, hw * 0.02]); // subtle dash relative to size
                     ctx.beginPath();
                     ctx.rect(-hw, -hh, rootItem.mapWidth, rootItem.mapHeight);
                     ctx.stroke();
-                    ctx.restore();
+                    ctx.setLineDash([]); // reset dash pattern
                 }
                 // Grid (anchored in world space; accounts for camera / follow transform & zoom)
                 if (rootItem.showGrid) {
@@ -446,8 +445,6 @@ Window {
                     // Avoid excessive lines when zoomed far out: skip if projected spacing < 3px
                     const pixelSpacing = gridSpacing * scale;
                     if (pixelSpacing >= 3) {
-                        ctx.save();
-                        ctx.beginPath();
                         // Horizontal (vertical lines): iterate world X positions starting at startGX.
                         // Use pre-declared counters to avoid qmlformat merging tokens (workaround for formatting issue).
                         let gx = startGX;
@@ -474,7 +471,6 @@ Window {
                             ctx.stroke();
                             gy += gridSpacing;
                         }
-                        ctx.restore();
                     }
                 }
                 function drawRoundedRect(ctx, x, y, w, h, r, fill, stroke, lw) {
