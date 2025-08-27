@@ -651,12 +651,9 @@ Window {
                 }
                 ctx.restore(); // pop world transform (no outside mask)
             }
-            Timer {
-                interval: 8
-                running: true
-                repeat: true
-                onTriggered: {
-                    timingState.tickFrame(); // unified timing update (alpha + countdowns)
+            Connections {
+                target: timingState
+                function onFrameTick() {
                     scene.requestPaint();
                     rootItem.joystick_update();
                     rootItem.updateMouseAim();

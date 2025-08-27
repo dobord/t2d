@@ -388,6 +388,8 @@ int main(int argc, char **argv)
         t2d::log::error("Failed to load QML scene");
         return 1;
     }
+    // Kick off internal timing driver (UI thread)
+    QMetaObject::invokeMethod(&timing, "start", Qt::QueuedConnection);
     // Connect map dimension changes to QML root (rootItem inside Window) so boundary draws automatically.
     QObject *rootObj = engine.rootObjects().first();
     if (rootObj) {

@@ -3,6 +3,7 @@
 #include <chrono>
 
 #include <QtCore/QObject>
+#include <QtCore/QTimer>
 
 class TimingState : public QObject
 {
@@ -17,6 +18,34 @@ class TimingState : public QObject
 
 public:
     explicit TimingState(QObject *parent = nullptr) : QObject(parent) {}
+
+    // Start internal driving timer (call once after constructing on UI thread)
+    Q_INVOKABLE void start()
+    {
+        if (frameTimer_)
+            return;
+        frameTimer_ = new QTimer(this);
+        frameTimer_->setTimerType(Qt::PreciseTimer);
+        frameTimer_->setSingleShot(true);
+        connect(
+            frameTimer_,
+            &QTimer::timeout,
+            this,
+            [this]()
+            {
+                this->tickFrame();
+                // Adaptive: aim ~120 FPS cap. If tick interval smoothed is larger, we still tick frequently for
+                // input/aim.
+                int nextMs = 8; // base
+                {
+                    std::scoped_lock lk(m_);
+                    // If smoothed tick interval is much larger than base (e.g., low server rate), keep render rate
+                    // high. Optionally could lower when idle; leave fixed for now.
+                }
+                frameTimer_->start(nextMs);
+            });
+        frameTimer_->start(8);
+    }
 
     void setTickIntervalMs(int ms)
     {
@@ -75,6 +104,7 @@ public:
                 emit autoReturnSecondsChanged();
             }
         }
+        emit frameTick();
     }
 
     float alpha() const { return alpha_; }
@@ -184,6 +214,7 @@ signals:
 signals:
     void alphaChanged();
     void myEntityIdChanged();
+    void frameTick();
 
 private:
     mutable std::mutex m_;
@@ -208,6 +239,7 @@ private:
     std::chrono::steady_clock::time_point lastServerTickUpdate_ = std::chrono::steady_clock::now();
     bool matchActive_{false};
     uint32_t myEntityId_{0};
+    QTimer *frameTimer_{nullptr};
 
     void updateRemaining()
     {
