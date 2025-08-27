@@ -112,6 +112,35 @@ public:
         return a0 + diff * alpha;
     }
 
+    // Radian versions to reduce per-frame JS math in QML (deg->rad conversion moved to C++):
+    Q_INVOKABLE float interpHullAngleRad(int row, float alpha) const
+    {
+        constexpr float kDegToRad = 3.14159265358979323846f / 180.f;
+        std::scoped_lock lk(m_);
+        if (row < 0 || (size_t)row >= rows_.size())
+            return 0.f;
+        const auto &r = rows_[row];
+        float a0 = r.prev_hull_angle;
+        float a1 = r.hull_angle;
+        float diff = std::fmod(a1 - a0 + 540.f, 360.f) - 180.f;
+        float deg = a0 + diff * alpha;
+        return deg * kDegToRad;
+    }
+
+    Q_INVOKABLE float interpTurretAngleRad(int row, float alpha) const
+    {
+        constexpr float kDegToRad = 3.14159265358979323846f / 180.f;
+        std::scoped_lock lk(m_);
+        if (row < 0 || (size_t)row >= rows_.size())
+            return 0.f;
+        const auto &r = rows_[row];
+        float a0 = r.prev_turret_angle;
+        float a1 = r.turret_angle;
+        float diff = std::fmod(a1 - a0 + 540.f, 360.f) - 180.f;
+        float deg = a0 + diff * alpha;
+        return deg * kDegToRad;
+    }
+
     int rowCount(const QModelIndex &parent = QModelIndex()) const override
     {
         if (parent.isValid())

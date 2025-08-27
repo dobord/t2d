@@ -558,7 +558,7 @@ Window {
                         const cr = crateModel.get(c);
                         const wx = cr.x;
                         const wy = cr.y;
-                        const ang = cr.angle * Math.PI / 180.0;
+                        const ang = crateModel.angleRad(c);
                         ctx.save();
                         ctx.translate(wx, wy);
                         ctx.rotate(ang);
@@ -608,8 +608,8 @@ Window {
                 for (let i = 0; i < entityModel.count(); ++i) {
                     const wx = entityModel.interpX(i, a);
                     const wy = entityModel.interpY(i, a);
-                    const hullRad = entityModel.interpHullAngle(i, a) * Math.PI / 180.0;
-                    const turretRad = entityModel.interpTurretAngle(i, a) * Math.PI / 180.0;
+                    const hullRad = entityModel.interpHullAngleRad(i, a);
+                    const turretRad = entityModel.interpTurretAngleRad(i, a);
                     drawTank(ctx, wx, wy, hullRad, turretRad, i === ownIndex);
                 }
                 // Ammo boxes (simple square with plus sign)
@@ -652,7 +652,7 @@ Window {
                 ctx.restore(); // pop world transform (no outside mask)
             }
             Timer {
-                interval: 16
+                interval: 8
                 running: true
                 repeat: true
                 onTriggered: {

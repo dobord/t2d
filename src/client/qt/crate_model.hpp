@@ -53,6 +53,16 @@ public:
         return m;
     }
 
+    // Direct radian accessor (no interpolation needed for crates currently)
+    Q_INVOKABLE float angleRad(int row) const
+    {
+        constexpr float kDegToRad = 3.14159265358979323846f / 180.f;
+        std::scoped_lock lk(m_);
+        if (row < 0 || (size_t)row >= rows_.size())
+            return 0.f;
+        return rows_[row].angle * kDegToRad;
+    }
+
     QVariant data(const QModelIndex &idx, int role) const override
     {
         if (!idx.isValid())
