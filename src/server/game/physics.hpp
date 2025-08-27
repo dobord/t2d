@@ -29,10 +29,11 @@ struct World
 // Simple category bits for collision filtering (prototype)
 enum Category : uint32_t
 {
-    CAT_TANK = 0x0001,
-    CAT_PROJECTILE = 0x0002,
-    CAT_CRATE = 0x0004,
-    CAT_AMMO_BOX = 0x0008
+    CAT_BODY = 0x0001,
+    CAT_HEAD = 0x0002,
+    CAT_PROJECTILE = 0x0004,
+    CAT_CRATE = 0x0008,
+    CAT_AMMO_BOX = 0x0010
 };
 
 struct TankWithTurret
@@ -90,7 +91,7 @@ inline b2BodyId create_projectile(World &w, float x, float y, float vx, float vy
     sd.density = density; // configurable projectile density
     sd.enableContactEvents = true;
     sd.filter.categoryBits = CAT_PROJECTILE;
-    sd.filter.maskBits = CAT_TANK | CAT_CRATE; // collide with tanks and crates (walls share CAT_TANK)
+    sd.filter.maskBits = CAT_BODY | CAT_CRATE; // collide with tanks and crates (walls share CAT_BODY)
     b2Polygon box = b2MakeBox(0.225f, 0.075f); // width 0.45, height 0.15
     b2CreatePolygonShape(body, &sd, &box);
     b2Vec2 vel{vx, vy};
@@ -112,8 +113,8 @@ inline b2BodyId create_crate(World &w, float x, float y, float halfExtent)
     sd.material.friction = 0.8f;
     sd.material.restitution = 0.1f;
     sd.filter.categoryBits = CAT_CRATE;
-    // Crates collide with tanks (includes walls categorized as CAT_TANK), other crates, and projectiles
-    sd.filter.maskBits = CAT_TANK | CAT_PROJECTILE | CAT_CRATE;
+    // Crates collide with tanks (includes walls categorized as CAT_BODY), other crates, and projectiles
+    sd.filter.maskBits = CAT_BODY | CAT_PROJECTILE | CAT_CRATE;
     sd.enableContactEvents = false;
     b2Polygon box = b2MakeBox(halfExtent, halfExtent);
     b2CreatePolygonShape(body, &sd, &box);
@@ -131,7 +132,7 @@ inline b2BodyId create_ammo_box(World &w, float x, float y, float radius)
     sd.density = 0.0f;
     sd.isSensor = true; // sensor so we manually handle pickup
     sd.filter.categoryBits = CAT_AMMO_BOX;
-    sd.filter.maskBits = CAT_TANK; // only tanks trigger
+    sd.filter.maskBits = CAT_BODY; // only tanks trigger
     sd.enableContactEvents = true; // we will scan contacts to detect pickup
     b2Circle circle{{0.0f, 0.0f}, radius};
     b2CreateCircleShape(body, &sd, &circle);

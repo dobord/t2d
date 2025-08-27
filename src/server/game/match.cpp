@@ -148,8 +148,8 @@ coro::task<void> run_match(std::shared_ptr<coro::io_scheduler> scheduler, std::s
         b2ShapeDef sd = b2DefaultShapeDef();
         sd.density = 0.0f;
         // Treat walls as generic static colliders belonging to tank category but also colliding with crates
-        sd.filter.categoryBits = t2d::phys::CAT_TANK;
-        sd.filter.maskBits = t2d::phys::CAT_PROJECTILE | t2d::phys::CAT_TANK | t2d::phys::CAT_CRATE;
+        sd.filter.categoryBits = t2d::phys::CAT_BODY;
+        sd.filter.maskBits = t2d::phys::CAT_PROJECTILE | t2d::phys::CAT_BODY | t2d::phys::CAT_CRATE;
         sd.enableContactEvents = false; // walls don't need events
         b2Polygon poly = b2MakeBox(hx, hy);
         b2CreatePolygonShape(body, &sd, &poly);

@@ -32,9 +32,9 @@ TankWithTurret create_tank_with_turret(
     t.hull = b2CreateBody(world.id, &bd);
     b2ShapeDef sd = b2DefaultShapeDef();
     sd.density = hull_density;
-    sd.filter.categoryBits = CAT_TANK;
+    sd.filter.categoryBits = CAT_BODY;
     // Tanks should collide with other tanks, projectiles, and crates
-    sd.filter.maskBits = CAT_TANK | CAT_PROJECTILE | CAT_CRATE;
+    sd.filter.maskBits = CAT_BODY | CAT_PROJECTILE | CAT_CRATE;
     sd.enableContactEvents = true;
     b2Polygon hull_box = b2MakeBox(2.79f, 2.12f);
     b2CreatePolygonShape(t.hull, &sd, &hull_box);
@@ -54,9 +54,9 @@ TankWithTurret create_tank_with_turret(
     t.turret = b2CreateBody(world.id, &td);
     b2ShapeDef tsd = b2DefaultShapeDef();
     tsd.density = turret_density;
-    tsd.filter.categoryBits = CAT_TANK;
+    tsd.filter.categoryBits = CAT_HEAD;
     // Turret same collision set
-    tsd.filter.maskBits = CAT_TANK | CAT_PROJECTILE | CAT_CRATE;
+    tsd.filter.maskBits = CAT_HEAD | CAT_PROJECTILE | CAT_CRATE;
     tsd.enableContactEvents = true;
     b2Polygon turret_box = b2MakeBox(1.25f, 1.0f);
     b2CreatePolygonShape(t.turret, &tsd, &turret_box);
@@ -97,11 +97,7 @@ void apply_tracked_drive(const TankDriveInput &in, TankWithTurret &tank, float s
     float v = std::sqrt(v_lin.x * v_lin.x + v_lin.y * v_lin.y);
     BodyFrame frame = get_body_frame(tank.hull);
     float mass = b2Body_GetMass(tank.hull);
-    // Option 1 (configurable density effect): decouple drive force from mass so heavier tanks accelerate slower.
-    // We apply a fixed baseline drive force (derived from a reference mass) while resistive forces still scale with
-    // mass.
-    constexpr float reference_mass = 10.0f; // tuned baseline mass giving previous feel
-    float base_drive_force = reference_mass * g; // used for propulsion & braking
+    float base_drive_force = mass * g; // used for propulsion & braking
     float mg = mass * g; // used for drag, lateral resistance & rotational damping
     bool is_brake = in.brake;
     bool is_drive = std::fabs(in.drive_forward) > 0.0001f && !is_brake;
@@ -173,10 +169,12 @@ void update_turret_aim(const TurretAimInput &aim, TankWithTurret &tank)
     b2Transform t_tur = b2Body_GetTransform(tank.turret);
     float turret_angle = std::atan2(t_tur.q.s, t_tur.q.c);
     float diff = target - turret_angle;
-    while (diff > M_PI)
-        diff -= 2.f * M_PI;
-    while (diff < -M_PI)
-        diff += 2.f * M_PI;
+    // Normalize to [-pi, pi] using fmod to avoid potential long loops (though rare here).
+    const float two_pi = 2.f * (float)M_PI;
+    diff = std::fmod(diff + (float)M_PI, two_pi);
+    if (diff < 0.f)
+        diff += two_pi;
+    diff -= (float)M_PI;
     float abs_diff = std::fabs(diff);
     float speed = 0.f;
     const float fast_threshold = 5.f * float(M_PI / 180.0);
