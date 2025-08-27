@@ -163,28 +163,44 @@ void apply_tracked_drive(const TankDriveInput &in, TankWithTurret &tank, float s
 
 void update_turret_aim(const TurretAimInput &aim, TankWithTurret &tank)
 {
-    if (!aim.target_angle_world || !b2Joint_IsValid(tank.turret_joint))
+    if (!aim.target_angle_world || !b2Joint_IsValid(tank.turret_joint)) {
         return;
+    }
+
     float target = *aim.target_angle_world;
+    // Current turret world angle
     b2Transform t_tur = b2Body_GetTransform(tank.turret);
-    float turret_angle = std::atan2(t_tur.q.s, t_tur.q.c);
-    float diff = target - turret_angle;
-    // Normalize to [-pi, pi] using fmod to avoid potential long loops (though rare here).
+    float current = std::atan2(t_tur.q.s, t_tur.q.c);
+    // Shortest arc difference in radians (-pi, pi]
+    float diff = target - current;
     const float two_pi = 2.f * (float)M_PI;
     diff = std::fmod(diff + (float)M_PI, two_pi);
     if (diff < 0.f)
         diff += two_pi;
     diff -= (float)M_PI;
-    float abs_diff = std::fabs(diff);
+
+    // Parameters (radians)
+    constexpr float kMaxSpeedDeg = 120.f; // desired max turret speed deg/s
+    constexpr float kMaxSpeedRad = kMaxSpeedDeg * (float)M_PI / 180.f;
+    constexpr float kFullSpeedThresholdDeg = 5.f; // above this error => full speed
+    constexpr float kFullSpeedThresholdRad = kFullSpeedThresholdDeg * (float)M_PI / 180.f;
+    constexpr float kDeadzoneDeg = 0.15f; // snap when very close (~0.15 deg)
+    constexpr float kDeadzoneRad = kDeadzoneDeg * (float)M_PI / 180.f;
+
+    float absDiff = std::fabs(diff);
     float speed = 0.f;
-    const float fast_threshold = 5.f * float(M_PI / 180.0);
-    const float precise_threshold = 0.01f * float(M_PI / 180.0);
-    if (abs_diff > fast_threshold)
-        speed = (diff > 0 ? 1.f : -1.f) * 90.f * float(M_PI / 180.0);
-    else if (abs_diff > precise_threshold)
-        speed = (diff > 0 ? 1.f : -1.f) * 20.f * float(M_PI / 180.0) * (abs_diff / fast_threshold);
-    else
-        speed = 0.f;
+    if (absDiff <= kDeadzoneRad) {
+        speed = 0.f; // close enough
+    } else {
+        // Linear ramp 0..1 over [deadzone, fullSpeedThreshold]
+        float span = kFullSpeedThresholdRad - kDeadzoneRad;
+        float norm = span > 1e-6f ? (absDiff - kDeadzoneRad) / span : 1.f;
+        if (norm > 1.f)
+            norm = 1.f;
+        if (norm < 0.f)
+            norm = 0.f;
+        speed = (diff > 0.f ? 1.f : -1.f) * kMaxSpeedRad * norm;
+    }
     b2RevoluteJoint_SetMotorSpeed(tank.turret_joint, speed);
 }
 
