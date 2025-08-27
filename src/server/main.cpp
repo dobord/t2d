@@ -423,6 +423,11 @@ int main(int argc, char **argv)
                 j << ",\"avg_tick_ns\":" << avg_ns;
                 j << ",\"p99_tick_ns\":" << p99_ns;
                 j << ",\"wait_p99_ns\":" << wait_p99_ns;
+                // Mean wait between ticks (scheduler idle) derived from accumulated sum
+                uint64_t wait_samples = rt.wait_samples.load(std::memory_order_relaxed);
+                uint64_t wait_mean_ns =
+                    wait_samples ? (rt.wait_duration_ns_accum.load(std::memory_order_relaxed) / wait_samples) : 0;
+                j << ",\"wait_mean_ns\":" << wait_mean_ns;
                 j << ",\"cpu_user_pct\":" << cpu_pct;
                 j << ",\"rss_peak_bytes\":" << rt.rss_peak_bytes.load(std::memory_order_relaxed);
                 j << ",\"allocs_per_tick_mean\":" << allocs_per_tick_mean;
@@ -490,6 +495,11 @@ int main(int argc, char **argv)
             j << ",\"avg_tick_ns\":" << avg_ns;
             j << ",\"p99_tick_ns\":" << p99_ns;
             j << ",\"wait_p99_ns\":" << wait_p99_ns;
+            uint64_t wait_samples_final = rt.wait_samples.load(std::memory_order_relaxed);
+            uint64_t wait_mean_ns_final = wait_samples_final
+                ? (rt.wait_duration_ns_accum.load(std::memory_order_relaxed) / wait_samples_final)
+                : 0;
+            j << ",\"wait_mean_ns\":" << wait_mean_ns_final;
             j << ",\"cpu_user_pct\":" << cpu_pct;
             j << ",\"rss_peak_bytes\":" << rt.rss_peak_bytes.load(std::memory_order_relaxed);
             j << ",\"allocs_per_tick_mean\":" << allocs_per_tick_mean;

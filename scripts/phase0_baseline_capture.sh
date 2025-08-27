@@ -133,7 +133,7 @@ if [[ -n "${OFFCPU_PROF_PID}" ]]; then wait ${OFFCPU_PROF_PID} 2>/dev/null || tr
 # Extract metrics from server.log (robust mode)
 ###############################################
 SERVER_LOG=baseline_logs/server.log
-AVG_TICK_NS=0 P99_TICK_NS=0 WAIT_P99_NS=0 CPU_USER_PCT=0 RSS_PEAK_BYTES=0 ALLOCS_PER_TICK_MEAN=0 ALLOCS_PER_TICK_P95=0 SCRATCH_REUSE_PCT=0 PROJ_POOL_HIT_PCT=0 PROJ_POOL_MISSES=0 LOG_LINES_PER_TICK_MEAN=0
+AVG_TICK_NS=0 P99_TICK_NS=0 WAIT_P99_NS=0 WAIT_MEAN_NS=0 CPU_USER_PCT=0 RSS_PEAK_BYTES=0 ALLOCS_PER_TICK_MEAN=0 ALLOCS_PER_TICK_P95=0 SCRATCH_REUSE_PCT=0 PROJ_POOL_HIT_PCT=0 PROJ_POOL_MISSES=0 LOG_LINES_PER_TICK_MEAN=0
 FULL_BYTES=0 DELTA_BYTES=0 FULL_COUNT=0 DELTA_COUNT=0
 if [[ -f ${SERVER_LOG} ]]; then
 	# Temporarily disable -e because grep returning 1 (no matches) would abort script
@@ -147,6 +147,7 @@ if [[ -f ${SERVER_LOG} ]]; then
 		AVG_TICK_NS=$(echo "${line}" | sed -E 's/.*"avg_tick_ns":([0-9]+).*/\1/' || echo 0)
 		P99_TICK_NS=$(echo "${line}" | sed -E 's/.*"p99_tick_ns":([0-9]+).*/\1/' || echo 0)
 		WAIT_P99_NS=$(echo "${line}" | sed -E 's/.*"wait_p99_ns":([0-9]+).*/\1/' || echo 0)
+		WAIT_MEAN_NS=$(echo "${line}" | sed -E 's/.*"wait_mean_ns":([0-9]+).*/\1/' || echo 0)
 		CPU_USER_PCT=$(echo "${line}" | sed -E 's/.*"cpu_user_pct":([0-9\.]+).*/\1/' || echo 0)
 		RSS_PEAK_BYTES=$(echo "${line}" | sed -E 's/.*"rss_peak_bytes":([0-9]+).*/\1/' || echo 0)
 		ALLOCS_PER_TICK_MEAN=$(echo "${line}" | sed -E 's/.*"allocs_per_tick_mean":([0-9\.]+).*/\1/' || echo 0)
@@ -179,6 +180,7 @@ fi
 MEAN_TICK_MS=$(awk -v ns=${AVG_TICK_NS} 'BEGIN{ printf("%.3f", ns/1000000.0) }')
 P99_TICK_MS=$(awk -v ns=${P99_TICK_NS:-0} 'BEGIN{ if(ns>0) printf("%.3f", ns/1000000.0); else printf("0.000"); }')
 WAIT_P99_MS=$(awk -v ns=${WAIT_P99_NS:-0} 'BEGIN{ if(ns>0) printf("%.3f", ns/1000000.0); else printf("0.000"); }')
+WAIT_MEAN_MS=$(awk -v ns=${WAIT_MEAN_NS:-0} 'BEGIN{ if(ns>0) printf("%.3f", ns/1000000.0); else printf("0.000"); }')
 RSS_PEAK_MB=$(awk -v b=${RSS_PEAK_BYTES:-0} 'BEGIN{ printf("%.2f", b/1024/1024); }')
 MEAN_FULL_BYTES=$(awk -v b=${FULL_BYTES} -v c=${FULL_COUNT} 'BEGIN{ if(c>0) printf("%.2f", b/c); else print 0 }')
 MEAN_DELTA_BYTES=$(awk -v b=${DELTA_BYTES} -v c=${DELTA_COUNT} 'BEGIN{ if(c>0) printf("%.2f", b/c); else print 0 }')
@@ -255,6 +257,7 @@ if ! grep -q "${MARKER}" "${PLAN_FILE}"; then
 		echo "- snapshot_full_mean_bytes=${MEAN_FULL_BYTES}"
 		echo "- snapshot_delta_mean_bytes=${MEAN_DELTA_BYTES}"
 		echo "- wait_p99_ns=${WAIT_P99_NS} (~${WAIT_P99_MS} ms)"
+		echo "- wait_mean_ns=${WAIT_MEAN_NS} (~${WAIT_MEAN_MS} ms)"
 		echo "- cpu_user_pct=${CPU_USER_PCT}"
 		echo "- rss_peak_bytes=${RSS_PEAK_BYTES} (~${RSS_PEAK_MB} MB)"
 		echo "- allocs_per_tick_mean=${ALLOCS_PER_TICK_MEAN}"
@@ -288,6 +291,8 @@ Mean full snapshot bytes: ${MEAN_FULL_BYTES}
 Mean delta snapshot bytes: ${MEAN_DELTA_BYTES}
 Wait p99 (ns): ${WAIT_P99_NS}
 Wait p99 (ms): ${WAIT_P99_MS}
+Wait mean (ns): ${WAIT_MEAN_NS}
+Wait mean (ms): ${WAIT_MEAN_MS}
 CPU user pct: ${CPU_USER_PCT}
 Snapshot scratch reuse pct: ${SCRATCH_REUSE_PCT}
 Projectile pool hit pct: ${PROJ_POOL_HIT_PCT}
