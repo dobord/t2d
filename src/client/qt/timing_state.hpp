@@ -15,9 +15,25 @@ class TimingState : public QObject
     Q_PROPERTY(int autoReturnSeconds READ autoReturnSeconds NOTIFY autoReturnSecondsChanged)
     Q_PROPERTY(bool matchActive READ matchActive NOTIFY matchActiveChanged)
     Q_PROPERTY(uint myEntityId READ myEntityId NOTIFY myEntityIdChanged)
+    Q_PROPERTY(int targetFrameHz READ targetFrameHz WRITE setTargetFrameHz NOTIFY targetFrameHzChanged)
 
 public:
     explicit TimingState(QObject *parent = nullptr) : QObject(parent) {}
+
+    int targetFrameHz() const { return frameHz_; }
+
+    void setTargetFrameHz(int hz)
+    {
+        if (hz < 10)
+            hz = 10;
+        if (hz > 1000)
+            hz = 1000;
+        if (frameHz_ == hz)
+            return;
+        frameHz_ = hz;
+        recomputeFrameInterval();
+        emit targetFrameHzChanged();
+    }
 
     // Start internal driving timer (call once after constructing on UI thread)
     Q_INVOKABLE void start()
@@ -34,17 +50,10 @@ public:
             [this]()
             {
                 this->tickFrame();
-                // Adaptive: aim ~120 FPS cap. If tick interval smoothed is larger, we still tick frequently for
-                // input/aim.
-                int nextMs = 8; // base
-                {
-                    std::scoped_lock lk(m_);
-                    // If smoothed tick interval is much larger than base (e.g., low server rate), keep render rate
-                    // high. Optionally could lower when idle; leave fixed for now.
-                }
-                frameTimer_->start(nextMs);
+                frameTimer_->start(frameIntervalMs_);
             });
-        frameTimer_->start(8);
+        recomputeFrameInterval();
+        frameTimer_->start(frameIntervalMs_);
     }
 
     void setTickIntervalMs(int ms)
@@ -215,6 +224,7 @@ signals:
     void alphaChanged();
     void myEntityIdChanged();
     void frameTick();
+    void targetFrameHzChanged();
 
 private:
     mutable std::mutex m_;
@@ -240,6 +250,8 @@ private:
     bool matchActive_{false};
     uint32_t myEntityId_{0};
     QTimer *frameTimer_{nullptr};
+    int frameHz_{144};
+    int frameIntervalMs_{7}; // 1000/144 ~= 6.94ms -> rounded to 7ms
 
     void updateRemaining()
     {
@@ -300,5 +312,14 @@ private:
             alpha_ = a;
             emit alphaChanged();
         }
+    }
+
+    void recomputeFrameInterval()
+    {
+        double exact = 1000.0 / (double)frameHz_;
+        int ms = (int)std::llround(exact);
+        if (ms < 1)
+            ms = 1;
+        frameIntervalMs_ = ms;
     }
 };
