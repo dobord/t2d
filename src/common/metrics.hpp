@@ -2,6 +2,7 @@
 // metrics.hpp
 // Prototype metrics counters (atomics, no dynamic allocation). Profiling-only helpers wrapped by T2D_PROFILING_ENABLED.
 #pragma once
+#include <algorithm>
 #include <atomic>
 #include <cstdint>
 
@@ -31,7 +32,29 @@ struct RuntimeCounters
     std::atomic<uint64_t> tick_hist[TICK_BUCKETS]{}; // bucket 0:<250k,1:<500k,...
     std::atomic<uint64_t> wait_duration_ns_accum{0};
     std::atomic<uint64_t> wait_samples{0};
-    std::atomic<uint64_t> wait_hist[TICK_BUCKETS]{};
+    // Fine-grained wait histogram: 1ms linear buckets up to 50ms, then wider exponential-style buckets.
+    // Boundaries expressed in nanoseconds (exclusive upper bounds).
+    static constexpr uint64_t ms = 1'000'000ULL;
+    static constexpr uint64_t wait_boundaries_ns_linear[50] = {
+        1 * ms,  2 * ms,  3 * ms,  4 * ms,  5 * ms,  6 * ms,  7 * ms,  8 * ms,  9 * ms,  10 * ms,
+        11 * ms, 12 * ms, 13 * ms, 14 * ms, 15 * ms, 16 * ms, 17 * ms, 18 * ms, 19 * ms, 20 * ms,
+        21 * ms, 22 * ms, 23 * ms, 24 * ms, 25 * ms, 26 * ms, 27 * ms, 28 * ms, 29 * ms, 30 * ms,
+        31 * ms, 32 * ms, 33 * ms, 34 * ms, 35 * ms, 36 * ms, 37 * ms, 38 * ms, 39 * ms, 40 * ms,
+        41 * ms, 42 * ms, 43 * ms, 44 * ms, 45 * ms, 46 * ms, 47 * ms, 48 * ms, 49 * ms, 50 * ms};
+    // Additional wider buckets after 50ms (approx powers / blended): 75,100,150,200,300,400,600,800,1200 ms
+    static constexpr uint64_t wait_boundaries_ns_extra[9] = {
+        75 * ms, 100 * ms, 150 * ms, 200 * ms, 300 * ms, 400 * ms, 600 * ms, 800 * ms, 1200 * ms};
+    static constexpr int WAIT_LINEAR_COUNT = 50;
+    static constexpr int WAIT_EXTRA_COUNT = 9;
+    static constexpr int WAIT_BOUNDARIES = WAIT_LINEAR_COUNT + WAIT_EXTRA_COUNT; // number of boundary entries
+    static constexpr int WAIT_BUCKETS = WAIT_BOUNDARIES + 1; // + overflow bucket
+    std::atomic<uint64_t> wait_hist[WAIT_BUCKETS]{};
+#if T2D_PROFILING_ENABLED
+    // Ring buffer of last N wait durations (ns) for exact percentile computation in profiling builds.
+    static constexpr size_t WAIT_RING_SIZE = 4096;
+    std::atomic<uint64_t> wait_ring[WAIT_RING_SIZE]{}; // single writer, unsynchronized readers acceptable
+    std::atomic<uint64_t> wait_ring_count{0};
+#endif
     // Realtime queue / game object gauges
     std::atomic<uint64_t> queue_depth{0};
     std::atomic<uint64_t> active_matches{0};
@@ -118,15 +141,28 @@ inline void add_wait_duration(uint64_t ns)
     auto &rt = runtime();
     rt.wait_duration_ns_accum.fetch_add(ns, std::memory_order_relaxed);
     rt.wait_samples.fetch_add(1, std::memory_order_relaxed);
-    constexpr uint64_t base = 250000;
-    for (int i = 0; i < RuntimeCounters::TICK_BUCKETS; ++i) {
-        uint64_t bound = base << i;
-        if (ns < bound) {
+#if T2D_PROFILING_ENABLED
+    // Record into ring buffer (only simple relaxed ops; single writer assumption in match loop).
+    uint64_t pos = rt.wait_ring_count.fetch_add(1, std::memory_order_relaxed);
+    rt.wait_ring[pos % RuntimeCounters::WAIT_RING_SIZE].store(ns, std::memory_order_relaxed);
+#endif
+    // Histogram update.
+    // First scan linear segment (1..50ms)
+    for (int i = 0; i < RuntimeCounters::WAIT_LINEAR_COUNT; ++i) {
+        if (ns < RuntimeCounters::wait_boundaries_ns_linear[i]) {
             rt.wait_hist[i].fetch_add(1, std::memory_order_relaxed);
             return;
         }
     }
-    rt.wait_hist[RuntimeCounters::TICK_BUCKETS - 1].fetch_add(1, std::memory_order_relaxed);
+    // Then extra buckets
+    for (int j = 0; j < RuntimeCounters::WAIT_EXTRA_COUNT; ++j) {
+        if (ns < RuntimeCounters::wait_boundaries_ns_extra[j]) {
+            rt.wait_hist[RuntimeCounters::WAIT_LINEAR_COUNT + j].fetch_add(1, std::memory_order_relaxed);
+            return;
+        }
+    }
+    // Overflow
+    rt.wait_hist[RuntimeCounters::WAIT_BOUNDARIES].fetch_add(1, std::memory_order_relaxed);
 }
 
 inline uint64_t approx_wait_p99()
@@ -135,16 +171,43 @@ inline uint64_t approx_wait_p99()
     uint64_t total = rt.wait_samples.load(std::memory_order_relaxed);
     if (total == 0)
         return 0;
+#if T2D_PROFILING_ENABLED
+    // Exact p99 from ring buffer (on available samples) for profiling builds.
+    uint64_t recorded = rt.wait_ring_count.load(std::memory_order_relaxed);
+    if (recorded > 0) {
+        uint64_t count = std::min<uint64_t>(recorded, RuntimeCounters::WAIT_RING_SIZE);
+        // Copy snapshot
+        uint64_t buf[RuntimeCounters::WAIT_RING_SIZE];
+        for (uint64_t i = 0; i < count; ++i) {
+            buf[i] = rt.wait_ring[i].load(std::memory_order_relaxed);
+        }
+        uint64_t idx = (count * 99 + 99 - 1) / 100; // 1-based
+        if (idx == 0)
+            idx = 1;
+        uint64_t nth = idx - 1;
+        std::nth_element(buf, buf + nth, buf + count);
+        return buf[nth];
+    }
+#endif
+    // Fallback to histogram upper bound approach.
     uint64_t target = (total * 99 + 99 - 1) / 100;
-    constexpr uint64_t base = 250000;
     uint64_t cumulative = 0;
-    for (int i = 0; i < RuntimeCounters::TICK_BUCKETS; ++i) {
+    // Linear buckets
+    for (int i = 0; i < RuntimeCounters::WAIT_LINEAR_COUNT; ++i) {
         cumulative += rt.wait_hist[i].load(std::memory_order_relaxed);
         if (cumulative >= target) {
-            return (base << i);
+            return RuntimeCounters::wait_boundaries_ns_linear[i];
         }
     }
-    return (base << (RuntimeCounters::TICK_BUCKETS - 1));
+    // Extra buckets
+    for (int j = 0; j < RuntimeCounters::WAIT_EXTRA_COUNT; ++j) {
+        cumulative += rt.wait_hist[RuntimeCounters::WAIT_LINEAR_COUNT + j].load(std::memory_order_relaxed);
+        if (cumulative >= target) {
+            return RuntimeCounters::wait_boundaries_ns_extra[j];
+        }
+    }
+    // Overflow: return largest boundary (last extra) as cap.
+    return RuntimeCounters::wait_boundaries_ns_extra[RuntimeCounters::WAIT_EXTRA_COUNT - 1];
 }
 
 // ---- Profiling-only helpers ----

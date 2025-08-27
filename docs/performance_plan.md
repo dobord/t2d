@@ -42,7 +42,7 @@ Focus (phase 1): Authoritative server runtime (tick loop, networking, snapshot g
 | RSS_peak_MB | Peak resident memory | /proc/PID/statm sampling | 7.25 (recent 20250827-024349) | Stable (< +5% over 30 min) |
 | allocations_per_tick | Dynamic allocations (instrumented) | Custom counter (profiling build) | – | Reduce 50% after phase 1 |
 | network_tx_bytes_per_sec | Outgoing bytes/sec | Metrics / tcpdump sample | – | N/A (observe) |
-| off_cpu_wait_ns_p99 | Scheduler wait (blocking) | Off-CPU profile | 64000000 (recent 20250827-024349) | Minimize (< tick SLA) |
+| off_cpu_wait_ns_p99 | Scheduler idle wait between ticks (ns) | Runtime sampling (1ms buckets to 50ms + ring exact p99 in profiling) | 64000000 (recent 20250827-024349) | Keep near target tick interval; investigate if >> interval |
 
 ### 1.5 Performance SLA (Provisional)
 - Normal gameplay (S2): p99 tick < 5 ms; mean tick < 2 ms.

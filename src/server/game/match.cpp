@@ -193,7 +193,8 @@ coro::task<void> run_match(std::shared_ptr<coro::io_scheduler> scheduler, std::s
         }
     }
     using clock = std::chrono::steady_clock;
-    auto tick_interval = std::chrono::milliseconds(1000 / ctx->tick_rate);
+    // Precise tick interval in nanoseconds to avoid integer millisecond truncation (e.g. 33.333ms at 30Hz).
+    auto tick_interval = std::chrono::nanoseconds((1'000'000'000ull + ctx->tick_rate / 2) / ctx->tick_rate);
     auto next = clock::now();
     while (true) {
         auto now = clock::now();
