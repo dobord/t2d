@@ -320,7 +320,7 @@ coro::task<void> run_network(
                 prof.loop_time_acc_ms = 0.0;
             }
         }
-        timing->tickFrame();
+        // Timing frame progression now driven exclusively on UI thread (QML Timer) to avoid races.
         if (timing->consumeRequeueRequest()) {
             // Reset state for next match
             in_match = false;

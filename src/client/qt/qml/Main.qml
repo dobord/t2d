@@ -656,10 +656,10 @@ Window {
                 running: true
                 repeat: true
                 onTriggered: {
-                    timingState.update();
+                    timingState.tickFrame(); // unified timing update (alpha + countdowns)
                     scene.requestPaint();
                     rootItem.joystick_update();
-                    rootItem.updateMouseAim(); // keep mouse aim tracking while tank/camera move
+                    rootItem.updateMouseAim();
                 }
             }
             MouseArea {

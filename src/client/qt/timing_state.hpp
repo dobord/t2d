@@ -18,23 +18,62 @@ class TimingState : public QObject
 public:
     explicit TimingState(QObject *parent = nullptr) : QObject(parent) {}
 
-    void setTickIntervalMs(int ms) { tickIntervalMs_ = ms; }
-
-    void markServerTick() { lastTick_ = std::chrono::steady_clock::now(); }
-
-    Q_INVOKABLE void update()
+    void setTickIntervalMs(int ms)
     {
-        if (tickIntervalMs_ <= 0)
-            return;
+        std::scoped_lock lk(m_);
+        tickIntervalMs_ = ms;
+        smoothedTickIntervalMs_ = (float)ms;
+    }
+
+    // Called from network thread when a new authoritative tick (snapshot/delta) arrives.
+    void markServerTick()
+    {
         auto now = std::chrono::steady_clock::now();
-        float a = std::chrono::duration<float, std::milli>(now - lastTick_).count() / (float)tickIntervalMs_;
-        if (a > 1.f)
-            a = 1.f;
-        if (a < 0.f)
-            a = 0.f;
-        if (a != alpha_) {
-            alpha_ = a;
-            emit alphaChanged();
+        std::scoped_lock lk(m_);
+        prevTick_ = lastTick_;
+        lastTick_ = now;
+        if (havePrevTick_) {
+            float dt_ms = std::chrono::duration<float, std::milli>(lastTick_ - prevTick_).count();
+            // Basic sanity bounds (ignore absurd spikes / zeros)
+            if (dt_ms > 1.f && dt_ms < 1000.f) {
+                // Exponential moving average smoothing of observed intervals
+                constexpr float kBlend = 0.10f;
+                if (smoothedTickIntervalMs_ <= 0.f)
+                    smoothedTickIntervalMs_ = dt_ms;
+                else
+                    smoothedTickIntervalMs_ = smoothedTickIntervalMs_ + kBlend * (dt_ms - smoothedTickIntervalMs_);
+            }
+        }
+        havePrevTick_ = true;
+    }
+
+    // Single-thread (UI) frame tick; updates alpha & timers. Must NOT be called concurrently with markServerTick.
+    Q_INVOKABLE void tickFrame()
+    {
+        updateAlpha();
+        // Countdown & auto requeue logic (same as old tickFrame())
+        if (matchOver_ && autoReturnSeconds_ > 0) {
+            auto now = std::chrono::steady_clock::now();
+            if (std::chrono::duration_cast<std::chrono::seconds>(now - lastAutoReturnDecrement_).count() >= 1) {
+                lastAutoReturnDecrement_ = now;
+                --autoReturnSeconds_;
+                emit autoReturnSecondsChanged();
+            }
+        }
+        if (matchOver_ && autoReturnSeconds_ == 0 && !autoRequeueTriggered_) {
+            requeueRequested_ = true;
+            autoRequeueTriggered_ = true;
+        }
+        if (!matchOver_ && serverTickSeen_ && fallbackTicks_ > 0 && remainingHardCapSeconds_ == 0) {
+            auto now = std::chrono::steady_clock::now();
+            if (std::chrono::duration_cast<std::chrono::seconds>(now - lastServerTickUpdate_).count() > 1) {
+                matchOutcome_ = 0; // draw
+                matchOver_ = true;
+                autoReturnSeconds_ = 10;
+                lastAutoReturnDecrement_ = now;
+                emit matchOverChanged();
+                emit autoReturnSecondsChanged();
+            }
         }
     }
 
@@ -87,36 +126,8 @@ public:
         emit autoReturnSecondsChanged();
     }
 
-    void tickFrame()
-    {
-        update();
-        if (matchOver_ && autoReturnSeconds_ > 0) {
-            auto now = std::chrono::steady_clock::now();
-            if (std::chrono::duration_cast<std::chrono::seconds>(now - lastAutoReturnDecrement_).count() >= 1) {
-                lastAutoReturnDecrement_ = now;
-                --autoReturnSeconds_;
-                emit autoReturnSecondsChanged();
-            }
-        }
-        if (matchOver_ && autoReturnSeconds_ == 0 && !autoRequeueTriggered_) {
-            requeueRequested_ = true;
-            autoRequeueTriggered_ = true;
-        }
-        // Fallback: if hard cap elapsed (remainingHardCapSeconds_ == 0) and we did not receive MatchEnd after >1s,
-        // treat as draw.
-        if (!matchOver_ && serverTickSeen_ && fallbackTicks_ > 0 && remainingHardCapSeconds_ == 0) {
-            auto now = std::chrono::steady_clock::now();
-            // Use lastServerTickUpdate_ (track when serverTickSeen_) to avoid early trigger before any snapshot
-            if (std::chrono::duration_cast<std::chrono::seconds>(now - lastServerTickUpdate_).count() > 1) {
-                matchOutcome_ = 0; // draw
-                matchOver_ = true;
-                autoReturnSeconds_ = 10;
-                lastAutoReturnDecrement_ = now;
-                emit matchOverChanged();
-                emit autoReturnSecondsChanged();
-            }
-        }
-    }
+    // (Legacy compatibility) kept to avoid build errors if still referenced; calls tickFrame().
+    void update() { tickFrame(); }
 
     int remainingHardCapSeconds() const { return remainingHardCapSeconds_; }
 
@@ -175,9 +186,13 @@ signals:
     void myEntityIdChanged();
 
 private:
+    mutable std::mutex m_;
     int tickIntervalMs_{50};
+    float smoothedTickIntervalMs_{50.f};
     std::chrono::steady_clock::time_point lastTick_ = std::chrono::steady_clock::now();
-    float alpha_{};
+    std::chrono::steady_clock::time_point prevTick_ = std::chrono::steady_clock::now();
+    bool havePrevTick_{false};
+    float alpha_{}; // displayed interpolation alpha (smoothed / soft-clamped)
     uint64_t matchStartServerTick_{};
     uint64_t tickRate_{20};
     uint64_t fallbackTicks_{0};
@@ -212,6 +227,46 @@ private:
         if (secs != remainingHardCapSeconds_) {
             remainingHardCapSeconds_ = secs;
             emit remainingHardCapSecondsChanged();
+        }
+    }
+
+    void updateAlpha()
+    {
+        int localTickIntervalMs;
+        float localSmoothed;
+        std::chrono::steady_clock::time_point localLast;
+        std::chrono::steady_clock::time_point localPrev;
+        bool localHavePrev;
+        {
+            std::scoped_lock lk(m_);
+            localTickIntervalMs = tickIntervalMs_;
+            localSmoothed = smoothedTickIntervalMs_;
+            localLast = lastTick_;
+            localPrev = prevTick_;
+            localHavePrev = havePrevTick_;
+        }
+        if (localTickIntervalMs <= 0)
+            return;
+        // Choose origin: one-tick delay for jitter buffer if we have previous tick.
+        auto origin = (localHavePrev ? localPrev : localLast);
+        auto now = std::chrono::steady_clock::now();
+        float interval = (localSmoothed > 1.f ? localSmoothed : (float)localTickIntervalMs);
+        float raw = std::chrono::duration<float, std::milli>(now - origin).count() / interval;
+        // Soft overshoot compression: do not hard stop at 1; compress >1 region.
+        float a;
+        if (raw <= 1.f)
+            a = raw;
+        else {
+            float overshoot = raw - 1.f; // allow up to ~0.15 visually
+            a = 1.f + overshoot * 0.2f;
+            if (a > 1.15f)
+                a = 1.15f;
+        }
+        if (a < 0.f)
+            a = 0.f;
+        if (std::abs(a - alpha_) > 1e-6f) {
+            alpha_ = a;
+            emit alphaChanged();
         }
     }
 };
