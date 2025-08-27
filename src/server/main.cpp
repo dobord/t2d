@@ -267,6 +267,7 @@ int main(int argc, char **argv)
     bool cli_port_override = false;
     uint16_t port_override = 0;
     int duration_override_sec = 0; // 0 means run until signal
+    bool auto_test_match = false; // enqueue bots immediately to form a match
     // Simple arg parsing: first non-flag = config path; recognize --no-bot-fire / --no-bot-ai
     for (int i = 1; i < argc; ++i) {
         std::string a = argv[i];
@@ -287,6 +288,8 @@ int main(int argc, char **argv)
             } catch (...) {
                 t2d::log::warn("Invalid --duration value '{}', ignoring", argv[i]);
             }
+        } else if (a == "--auto-test-match") {
+            auto_test_match = true;
         } else if (!a.empty() && a[0] != '-') {
             config_path = a;
         }
@@ -384,6 +387,13 @@ int main(int argc, char **argv)
     // Initialize auth provider (lifetime static); store pointer for listener usage
     static auto auth_provider_storage = t2d::auth::make_provider(cfg.auth_mode, cfg.auth_stub_prefix);
     t2d::auth::set_provider(auth_provider_storage.get());
+
+    if (auto_test_match) {
+        // Pre-fill matchmaking queue with bots so first poll creates a match quickly.
+        auto &mgr = t2d::mm::instance();
+        auto created = mgr.create_bots(cfg.max_players_per_match);
+        t2d::log::info("Auto test match enabled: queued {} bots to trigger immediate match", created.size());
+    }
 
     // Main thread just sleeps; real implementation will add signal handling & graceful shutdown.
     auto run_start = std::chrono::steady_clock::now();
