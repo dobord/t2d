@@ -264,6 +264,9 @@ int main(int argc, char **argv)
     std::string config_path = "config/server.yaml";
     bool cli_disable_bot_fire = false;
     bool cli_disable_bot_ai = false;
+    bool cli_port_override = false;
+    uint16_t port_override = 0;
+    int duration_override_sec = 0; // 0 means run until signal
     // Simple arg parsing: first non-flag = config path; recognize --no-bot-fire / --no-bot-ai
     for (int i = 1; i < argc; ++i) {
         std::string a = argv[i];
@@ -271,6 +274,19 @@ int main(int argc, char **argv)
             cli_disable_bot_fire = true;
         } else if (a == "--no-bot-ai") {
             cli_disable_bot_ai = true;
+        } else if (a == "--port" && i + 1 < argc) {
+            try {
+                port_override = static_cast<uint16_t>(std::stoi(argv[++i]));
+                cli_port_override = true;
+            } catch (...) {
+                t2d::log::warn("Invalid --port value '{}', ignoring", argv[i]);
+            }
+        } else if (a == "--duration" && i + 1 < argc) {
+            try {
+                duration_override_sec = std::stoi(argv[++i]);
+            } catch (...) {
+                t2d::log::warn("Invalid --duration value '{}', ignoring", argv[i]);
+            }
         } else if (!a.empty() && a[0] != '-') {
             config_path = a;
         }
@@ -313,6 +329,13 @@ int main(int argc, char **argv)
         T2D_BUILD_DIRTY,
         T2D_BUILD_DATE);
     t2d::log::info("Profiling macro T2D_PROFILING_ENABLED={}", T2D_PROFILING_ENABLED);
+    if (cli_port_override) {
+        cfg.listen_port = port_override;
+        t2d::log::info("CLI override: listen_port set to {}", cfg.listen_port);
+    }
+    if (duration_override_sec > 0) {
+        t2d::log::info("CLI override: auto-shutdown after {} seconds", duration_override_sec);
+    }
     t2d::log::info("Tick rate: {} Hz", cfg.tick_rate);
     t2d::log::info("Listening on port: {}", cfg.listen_port);
     t2d::log::info("Auth mode: {}", cfg.auth_mode);
@@ -363,10 +386,18 @@ int main(int argc, char **argv)
     t2d::auth::set_provider(auth_provider_storage.get());
 
     // Main thread just sleeps; real implementation will add signal handling & graceful shutdown.
+    auto run_start = std::chrono::steady_clock::now();
     while (!t2d::g_shutdown.load()) {
         static auto last_metrics = std::chrono::steady_clock::now();
         std::this_thread::sleep_for(std::chrono::seconds(1));
         auto now = std::chrono::steady_clock::now();
+        if (duration_override_sec > 0) {
+            auto elapsed = std::chrono::duration_cast<std::chrono::seconds>(now - run_start).count();
+            if (elapsed >= duration_override_sec) {
+                t2d::log::info("Duration reached ({}s >= {}s); initiating shutdown", elapsed, duration_override_sec);
+                t2d::g_shutdown.store(true);
+            }
+        }
         if (now - last_metrics >= std::chrono::seconds(60)) {
             last_metrics = now;
             auto &rt = t2d::metrics::runtime();
