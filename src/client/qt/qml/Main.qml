@@ -504,7 +504,7 @@ Window {
                     }
                 }
                 const SPRITE_FRONT_OFFSET = Math.PI / 2; // Protocol: 0° = +X (right). Sprite points up, so rotate +90° to align sprite front with +X.
-                function drawTank(ctx, wx, wy, hullRad, turretRad, isOwn) {
+                function drawTank(ctx, wx, wy, hullRad, turretRad, isOwn, isDead) {
                     // Convert protocol angle (0°=+X) to sprite angle (0 sprite up) via SPRITE_FRONT_OFFSET.
                     const W = 480, H = 640;
                     const scalePix = 6.4 / H;
@@ -513,18 +513,18 @@ Window {
                     ctx.rotate(hullRad + SPRITE_FRONT_OFFSET);
                     ctx.scale(scalePix, scalePix);
                     ctx.translate(-W / 2, -H / 2);
-                    ctx.fillStyle = '#424141';
+                    ctx.fillStyle = isDead ? '#2a2a2a' : '#424141';
                     ctx.fillRect(0, 0, 140, H);
                     ctx.fillRect(342, 0, 140, H);
-                    ctx.fillStyle = isOwn ? '#5c6e5c' : '#6f6e6e';
-                    ctx.strokeStyle = '#2e2e2e';
+                    ctx.fillStyle = isDead ? (isOwn ? '#2f3a2f' : '#323232') : (isOwn ? '#5c6e5c' : '#6f6e6e');
+                    ctx.strokeStyle = isDead ? '#1e1e1e' : '#2e2e2e';
                     ctx.lineWidth = 2;
                     ctx.beginPath();
                     ctx.rect(28, 41, 424, 558);
                     ctx.fill();
                     ctx.stroke();
                     // Rear brake lights: brighten & glow when local player braking
-                    const brakeOn = isOwn && inputState.brake;
+                    const brakeOn = isOwn && inputState.brake && !isDead;
                     if (brakeOn) {
                         ctx.save();
                         ctx.fillStyle = '#ff2727';
@@ -534,7 +534,7 @@ Window {
                         ctx.fillRect(358, 576, 80, 23);
                         ctx.restore();
                     } else {
-                        ctx.fillStyle = '#5c1010'; // dim when not braking
+                        ctx.fillStyle = isDead ? '#1c1c1c' : '#5c1010'; // dim when not braking or dead
                         ctx.fillRect(46, 576, 80, 23);
                         ctx.fillRect(358, 576, 80, 23);
                     }
@@ -544,20 +544,39 @@ Window {
                     ctx.translate(W / 2, H / 2);
                     ctx.rotate(turretRad - hullRad); // both already protocol-space; relative rotation unaffected by offset
                     ctx.translate(-W / 2, -H / 2);
-                    drawRoundedRect(ctx, 140, 195, 200, 250, 32, '#bfbfbf', '#363434', 8);
+                    drawRoundedRect(ctx, 140, 195, 200, 250, 32, isDead ? '#5e5e5e' : '#bfbfbf', isDead ? '#2a2828' : '#363434', 8);
                     ctx.lineWidth = 8;
-                    ctx.fillStyle = '#bfbfbf';
-                    ctx.strokeStyle = '#363434';
+                    ctx.fillStyle = isDead ? '#5e5e5e' : '#bfbfbf';
+                    ctx.strokeStyle = isDead ? '#2a2828' : '#363434';
                     ctx.beginPath();
                     ctx.rect((W - 30) / 2, -80, 30, 320);
                     ctx.fill();
                     ctx.stroke();
                     ctx.restore();
                     const hpY = 31;
-                    ctx.fillStyle = '#202828';
-                    ctx.fillRect(28, hpY, 424, 6);
-                    ctx.fillStyle = isOwn ? '#6cff5d' : '#3fa7ff';
-                    ctx.fillRect(28, hpY, 424, 6);
+                    if (!isDead) {
+                        ctx.fillStyle = '#202828';
+                        ctx.fillRect(28, hpY, 424, 6);
+                        ctx.fillStyle = isOwn ? '#6cff5d' : '#3fa7ff';
+                        ctx.fillRect(28, hpY, 424, 6);
+                    } else {
+                        // Dead: burnt overlay bar
+                        ctx.fillStyle = '#1a1d1d';
+                        ctx.fillRect(28, hpY, 424, 6);
+                        ctx.fillStyle = '#302f2f';
+                        ctx.fillRect(28, hpY, 424, 6);
+                    }
+                    if (isDead) {
+                        // Subtle scorch mark overlay
+                        ctx.save();
+                        ctx.globalCompositeOperation = 'lighter';
+                        const grad = ctx.createRadialGradient(W / 2, H / 2, 60, W / 2, H / 2, 260);
+                        grad.addColorStop(0, 'rgba(80,80,80,0.35)');
+                        grad.addColorStop(1, 'rgba(10,10,10,0)');
+                        ctx.fillStyle = grad;
+                        ctx.fillRect(0, 0, W, H);
+                        ctx.restore();
+                    }
                     ctx.restore();
                 }
                 // Crates (simple brown squares with rotation)
@@ -618,7 +637,8 @@ Window {
                     const wy = entityModel.interpY(i, a);
                     const hullRad = entityModel.interpHullAngleRad(i, a);
                     const turretRad = entityModel.interpTurretAngleRad(i, a);
-                    drawTank(ctx, wx, wy, hullRad, turretRad, i === ownIndex);
+                    const dead = entityModel.isDead(i);
+                    drawTank(ctx, wx, wy, hullRad, turretRad, i === ownIndex, dead);
                 }
                 // Ammo boxes (simple square with plus sign)
                 if (typeof ammoBoxModel !== 'undefined') {

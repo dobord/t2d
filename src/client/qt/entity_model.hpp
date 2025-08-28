@@ -50,7 +50,8 @@ public:
         HullAngleRole,
         TurretAngleRole,
         HPRole,
-        AmmoRole
+        AmmoRole,
+        DeadRole
     };
 
     explicit EntityModel(QObject *parent = nullptr) : QAbstractListModel(parent) {}
@@ -168,6 +169,8 @@ public:
                 return r.hp;
             case AmmoRole:
                 return r.ammo;
+            case DeadRole:
+                return r.hp <= 0.f;
         }
         return {};
     }
@@ -183,7 +186,16 @@ public:
             {HullAngleRole, "hullAngle"},
             {TurretAngleRole, "turretAngle"},
             {HPRole, "hp"},
-            {AmmoRole, "ammo"}};
+            {AmmoRole, "ammo"},
+            {DeadRole, "dead"}};
+    }
+
+    Q_INVOKABLE bool isDead(int row) const
+    {
+        std::scoped_lock lk(m_);
+        if (row < 0 || (size_t)row >= rows_.size())
+            return false;
+        return rows_[row].hp <= 0.f;
     }
 
     void applyFull(const t2d::StateSnapshot &snap)
