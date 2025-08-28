@@ -172,6 +172,15 @@ void apply_tracked_drive(const TankDriveInput &in, TankWithTurret &tank, float s
 
 void update_turret_aim(const TurretAimInput &aim, TankWithTurret &tank)
 {
+    // If turret subsystem is disabled by damage, enforce motor off and skip aiming logic
+    if (tank.turret_disabled) {
+        if (b2Joint_IsValid(tank.turret_joint)) {
+            b2RevoluteJoint_EnableMotor(tank.turret_joint, false);
+            b2RevoluteJoint_SetMotorSpeed(tank.turret_joint, 0.f);
+        }
+        return;
+    }
+
     if (!aim.target_angle_world || !b2Joint_IsValid(tank.turret_joint)) {
         return;
     }

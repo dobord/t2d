@@ -143,18 +143,25 @@ static void process_contacts(
                 hull_fwd.y);
             // Side classification for tracks: compare contact normal to left/right directions (perpendicular)
             b2Vec2 hull_right{hull_fwd.y, -hull_fwd.x};
-            float dot_right = n.x * hull_right.x + n.y * hull_right.y;
+            float dot_right = n.x * hull_right.x + n.y * hull_right.y; // +1 ~ right side, -1 ~ left side
             bool side = std::fabs(dot_right) > 0.5f && !frontal;
             if (side) {
-                bool right_side = dot_right < 0.f; // normal pointing roughly toward +right means hit on left side
-                if (right_side) {
+                bool hit_right_side = dot_right > 0.f; // positive projection => right side impact
+                t2d::log::debug(
+                    "[damage] side hit tank={} dot_right={} right_side={} left_broken={} right_broken={}",
+                    tank.entity_id,
+                    dot_right,
+                    hit_right_side,
+                    tank.left_track_broken,
+                    tank.right_track_broken);
+                if (hit_right_side) {
                     if (!tank.right_track_broken) {
                         ++tank.right_track_hits;
                         if (tank.right_track_hits >= ctx.track_break_hits) {
                             tank.right_track_broken = true;
                         }
                     }
-                } else {
+                } else { // left side
                     if (!tank.left_track_broken) {
                         ++tank.left_track_hits;
                         if (tank.left_track_hits >= ctx.track_break_hits) {
@@ -545,20 +552,19 @@ coro::task<void> run_match(std::shared_ptr<coro::io_scheduler> scheduler, std::s
             }
             t2d::phys::apply_tracked_drive(drive, adv, dt);
 
-            // Turret aim: accumulate turret angle (convert from degrees to target world angle incrementally)
-            if (std::fabs(input.turret_turn) > 0.0001f) {
-                if (adv.turret_disabled) {
-                    // Ignore turret input when disabled
-                } else {
-                    // current turret world angle
-                    b2Transform xt = b2Body_GetTransform(adv.turret);
-                    float current = std::atan2(xt.q.s, xt.q.c);
-                    float desired =
+            // Turret aim: always call update_turret_aim (it internally enforces disabled turret state)
+            {
+                b2Transform xt = b2Body_GetTransform(adv.turret);
+                float current = std::atan2(xt.q.s, xt.q.c);
+                float desired = current;
+                if (std::fabs(input.turret_turn) > 0.0001f) {
+                    desired =
                         current + input.turret_turn * t2d::game::turret_turn_speed_deg() * dt * float(M_PI / 180.0);
-                    t2d::phys::TurretAimInput aim{};
-                    aim.target_angle_world = desired;
-                    t2d::phys::update_turret_aim(aim, adv);
                 }
+                t2d::phys::TurretAimInput aim{};
+                aim.target_angle_world = desired; // when disabled, update_turret_aim will early return & enforce motor
+                                                  // off
+                t2d::phys::update_turret_aim(aim, adv);
             }
             if (input.fire && adv.ammo > 0) {
                 float forward_offset = 4.4f; // increased to avoid barrel overlap
