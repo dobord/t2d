@@ -64,57 +64,58 @@ static void process_contacts(
         auto &proj = *pit;
         if (tank.entity_id == proj.owner)
             continue;
-        // Penetration requirement: normal component of projectile velocity INTO the target
-        // must be >= 40% of initial muzzle speed. We adjust sign based on which body is the projectile.
-        // Box2D manifold normal points from shapeA to shapeB. If projectile is shapeB, flip sign.
-        b2BodyId proj_body = a_is_proj ? a : b;
-        b2Vec2 vcur = b2Body_GetLinearVelocity(proj_body);
+        // Penetration requirement: use PRE-STEP (pre-collision) projectile velocity.
+        // We captured projectile.prev_vx/vy before the physics step; contact events fire after the step.
+        // Decision uses normal component of pre-step velocity INTO the impacted target >= 60% of initial speed.
+        // See docs/projectile_penetration.md for full rationale and diagnostics fields.
         b2Vec2 n = ev.manifold.normal; // unit normal from shapeA to shapeB
-        float vdotn = vcur.x * n.x + vcur.y * n.y;
-        float speed_mag = std::sqrt(vcur.x * vcur.x + vcur.y * vcur.y);
-        float into_speed = (a_is_proj ? vdotn : -vdotn); // speed component into the impacted body
-        // Additional diagnostic: compute direction from projectile center to tank center and project velocity on it.
+        // Pre-step velocity (stored earlier this tick)
+        float vpre_x = proj.prev_vx;
+        float vpre_y = proj.prev_vy;
+        float vdotn_pre = vpre_x * n.x + vpre_y * n.y;
+        float speed_pre = std::sqrt(vpre_x * vpre_x + vpre_y * vpre_y);
+        float into_speed_pre = (a_is_proj ? vdotn_pre : -vdotn_pre);
+        // Direction toward tank center (diagnostic) using pre-step projectile position if available
         b2BodyId tank_body_dbg = a_is_proj ? b : a;
-        b2Vec2 ppos = b2Body_GetPosition(proj_body);
         b2Vec2 tpos = b2Body_GetPosition(tank_body_dbg);
-        b2Vec2 to_tank{tpos.x - ppos.x, tpos.y - ppos.y};
+        b2Vec2 to_tank{tpos.x - proj.prev_x, tpos.y - proj.prev_y};
         float to_len = std::sqrt(to_tank.x * to_tank.x + to_tank.y * to_tank.y);
-        float center_into = 0.f;
+        float center_into_pre = 0.f;
         if (to_len > 1e-6f) {
             to_tank.x /= to_len;
             to_tank.y /= to_len;
-            center_into = vcur.x * to_tank.x + vcur.y * to_tank.y; // should be >0 if moving toward tank center
+            center_into_pre = vpre_x * to_tank.x + vpre_y * to_tank.y;
         }
-        float required = 0.4f * proj.initial_speed;
-        if (into_speed + 1e-6f < required) {
-            // Not enough normal (penetrating) speed: skip damage & projectile destruction
+        float required = 0.6f * proj.initial_speed; // threshold updated from 0.4 to 0.6
+        if (into_speed_pre + 1e-6f < required) {
+            // Not enough pre-step normal speed: no penetration
             t2d::log::trace(
-                "[proj_penetration] proj={} tank={} into_speed={} center_into={} speed={} required={} initial={} "
-                "vdotn={} n=({}, {}) a_is_proj={} result=NO",
+                "[proj_penetration] proj={} tank={} into_pre={} center_into_pre={} speed_pre={} required={} initial={} "
+                "vdotn_pre={} n=({}, {}) a_is_proj={} result=NO",
                 proj.id,
                 tank.entity_id,
-                into_speed,
-                center_into,
-                speed_mag,
+                into_speed_pre,
+                center_into_pre,
+                speed_pre,
                 required,
                 proj.initial_speed,
-                vdotn,
+                vdotn_pre,
                 n.x,
                 n.y,
                 a_is_proj);
             continue;
         }
         t2d::log::trace(
-            "[proj_penetration] proj={} tank={} into_speed={} center_into={} speed={} required={} initial={} vdotn={} "
-            "n=({}, {}) a_is_proj={} result=YES",
+            "[proj_penetration] proj={} tank={} into_pre={} center_into_pre={} speed_pre={} required={} initial={} "
+            "vdotn_pre={} n=({}, {}) a_is_proj={} result=YES",
             proj.id,
             tank.entity_id,
-            into_speed,
-            center_into,
-            speed_mag,
+            into_speed_pre,
+            center_into_pre,
+            speed_pre,
             required,
             proj.initial_speed,
-            vdotn,
+            vdotn_pre,
             n.x,
             n.y,
             a_is_proj);
@@ -511,6 +512,11 @@ coro::task<void> run_match(std::shared_ptr<coro::io_scheduler> scheduler, std::s
                     slot.y = pos.y;
                     slot.vx = dir.x * ctx->projectile_speed;
                     slot.vy = dir.y * ctx->projectile_speed;
+                    // Initialize pre-step snapshot fields to spawn state (important when reusing pooled slot)
+                    slot.prev_x = slot.x;
+                    slot.prev_y = slot.y;
+                    slot.prev_vx = slot.vx;
+                    slot.prev_vy = slot.vy;
                     slot.owner = adv.entity_id;
                     slot.initial_speed = ctx->projectile_speed;
                     slot.age = 0.f;
@@ -563,7 +569,26 @@ coro::task<void> run_match(std::shared_ptr<coro::io_scheduler> scheduler, std::s
             if (adv.fire_cooldown_cur > 0.f)
                 adv.fire_cooldown_cur = std::max(0.f, adv.fire_cooldown_cur - dt);
         }
-        // Physics step (tanks + projectiles + crates) then process contacts before any projectile body destruction
+        // Capture pre-step projectile state (position + velocity) for penetration logic before physics integration
+        for (auto &p : ctx->projectiles) {
+            auto itb = projectile_bodies.find(p.id);
+            if (itb != projectile_bodies.end() && b2Body_IsValid(itb->second)) {
+                b2BodyId bid = itb->second;
+                b2Vec2 vpre = b2Body_GetLinearVelocity(bid);
+                b2Vec2 ppre = b2Body_GetPosition(bid);
+                p.prev_x = ppre.x;
+                p.prev_y = ppre.y;
+                p.prev_vx = vpre.x;
+                p.prev_vy = vpre.y;
+            } else {
+                // Fallback: use stored kinematic values
+                p.prev_x = p.x;
+                p.prev_y = p.y;
+                p.prev_vx = p.vx;
+                p.prev_vy = p.vy;
+            }
+        }
+        // Physics step (tanks + projectiles + crates) then process contacts (which will use pre-step projectile data)
         t2d::phys::step(phys_world, dt);
         // Post-first-step velocity trace: log velocity after first physics integration step (age==0 before increment)
         for (auto &p : ctx->projectiles) {

@@ -66,6 +66,11 @@ struct MatchContext
         float y;
         float vx;
         float vy;
+        // Pre-step (previous tick integration state) position & velocity captured before physics step
+        float prev_x{0.f};
+        float prev_y{0.f};
+        float prev_vx{0.f};
+        float prev_vy{0.f};
         uint32_t owner;
         float initial_speed{0.f};
         float age{0.f}; // seconds since spawn

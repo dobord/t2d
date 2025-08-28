@@ -177,6 +177,12 @@ set(BOX2D_DOCS
     OFF
     CACHE BOOL "box2d docs disabled" FORCE)
 
+# Ensure third_party projects do not auto-create conflicting 'format' targets we might call accidentally.
+# Explicitly disable yaml-cpp internal formatting target.
+set(YAML_CPP_FORMAT_SOURCE
+    OFF
+    CACHE BOOL "Disable yaml-cpp internal clang-format target" FORCE)
+
 add_subdirectory(third_party/yaml-cpp)
 add_subdirectory(third_party/libcoro)
 add_subdirectory(third_party/box2d)
