@@ -81,6 +81,19 @@ static void process_contacts(
             if (before > 0 && tank.hp == 0) {
                 if (!ctx.persist_destroyed_tanks) {
                     ctx.removed_tanks_since_full.push_back(tank.entity_id);
+                    // Destroy physics bodies immediately so they no longer collide / cost simulation time
+                    if (b2Body_IsValid(tank.hull)) {
+                        t2d::phys::destroy_body(tank.hull);
+                        tank.hull = b2_nullBodyId;
+                    }
+                    if (b2Body_IsValid(tank.turret)) {
+                        t2d::phys::destroy_body(tank.turret);
+                        tank.turret = b2_nullBodyId;
+                    }
+                    if (b2Joint_IsValid(tank.turret_joint)) {
+                        b2DestroyJoint(tank.turret_joint);
+                        tank.turret_joint = b2_nullJointId;
+                    }
                 } else {
                     // Disable turret motor so corpse stops rotating
                     if (b2Joint_IsValid(tank.turret_joint)) {
@@ -245,6 +258,18 @@ coro::task<void> run_match(std::shared_ptr<coro::io_scheduler> scheduler, std::s
                             tank.hp = 0;
                             if (!ctx->persist_destroyed_tanks) {
                                 ctx->removed_tanks_since_full.push_back(tank.entity_id);
+                                if (b2Body_IsValid(tank.hull)) {
+                                    t2d::phys::destroy_body(tank.hull);
+                                    tank.hull = b2_nullBodyId;
+                                }
+                                if (b2Body_IsValid(tank.turret)) {
+                                    t2d::phys::destroy_body(tank.turret);
+                                    tank.turret = b2_nullBodyId;
+                                }
+                                if (b2Joint_IsValid(tank.turret_joint)) {
+                                    b2DestroyJoint(tank.turret_joint);
+                                    tank.turret_joint = b2_nullJointId;
+                                }
                             } else if (b2Joint_IsValid(tank.turret_joint)) {
                                 b2RevoluteJoint_EnableMotor(tank.turret_joint, false);
                                 b2RevoluteJoint_SetMotorSpeed(tank.turret_joint, 0.f);
