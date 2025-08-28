@@ -128,9 +128,14 @@ static void process_contacts(
             // If the projectile was shapeA (a_is_proj == true) then the hull is shapeB and n points inward.
             // Flip in that case so classification is consistent.
             b2Vec2 n_out = a_is_proj ? b2Vec2{-n.x, -n.y} : n;
-            // Vector from projectile pre-position to impact body center (approx direction of travel into tank)
-            b2Vec2 impact_dir = {hull_fwd.x, hull_fwd.y}; // default forward
-            // Classify frontal vs side: dot with hull forward.
+            // Relative projectile position (post-step) to hull center to classify side; more stable than contact
+            // normal on complex hull shapes.
+            b2BodyId proj_body_id = a_is_proj ? a : b;
+            b2Vec2 proj_pos = b2Body_GetPosition(proj_body_id);
+            b2Vec2 rel{proj_pos.x - hull_xf.p.x, proj_pos.y - hull_xf.p.y};
+            b2Vec2 hull_right{hull_fwd.y, -hull_fwd.x}; // must match get_body_frame
+            float lateral = rel.x * hull_right.x + rel.y * hull_right.y;
+            float forward_off = rel.x * hull_fwd.x + rel.y * hull_fwd.y;
             float dot_forward = n_out.x * hull_fwd.x + n_out.y * hull_fwd.y;
             // Previous heuristic expected normal opposite hull forward (dot < -0.5), but Box2D contact normal here
             // points outward from the hull (aligned with hull forward on frontal impacts). This prevented frontal hits
@@ -145,27 +150,24 @@ static void process_contacts(
                 n_out.y,
                 hull_fwd.x,
                 hull_fwd.y);
-            // Side classification for tracks: compare contact normal to left/right directions (perpendicular).
-            // We keep the original geometric right vector (fwd.y, -fwd.x).
-            // Empirically: a projectile impacting the tank's RIGHT side produced contact normal aligning with this
-            // vector (dot_right > 0). LEFT side impacts give dot_right < 0. That mapping was correct; the observed
-            // issue (left hit breaking right track) stemmed from track hit attribution elsewhere, not vector sign.
-            // Add extra debug to confirm mapping in live play.
-            b2Vec2 hull_right{hull_fwd.y, -hull_fwd.x};
-            float dot_right = n_out.x * hull_right.x + n_out.y * hull_right.y; // +1 ~ right side, -1 ~ left side
-            bool side = std::fabs(dot_right) > 0.5f && !frontal;
+            // Side classification: use lateral offset magnitude beyond threshold; ignore near-center hits.
+            constexpr float kSideLateralThresh = 0.5f; // half a meter lateral
+            bool side = std::fabs(lateral) > kSideLateralThresh && !frontal;
             if (side) {
-                bool hit_right_side = dot_right > 0.f; // positive => RIGHT
+                bool hit_right_side = lateral > 0.f; // positive lateral => RIGHT
                 t2d::log::debug(
-                    "[damage] side hit tank={} dot_right={} right_side={} n=({}, {}) hull_right=({}, {}) "
-                    "left_broken={} right_broken={}",
+                    "[damage] side hit tank={} lateral={} forward_off={} right_side={} n=({}, {}) hull_right=({}, {}) "
+                    "rel=({}, {}) left_broken={} right_broken={}",
                     tank.entity_id,
-                    dot_right,
+                    lateral,
+                    forward_off,
                     hit_right_side,
                     n_out.x,
                     n_out.y,
                     hull_right.x,
                     hull_right.y,
+                    rel.x,
+                    rel.y,
                     tank.left_track_broken,
                     tank.right_track_broken);
                 if (hit_right_side) {
