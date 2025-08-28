@@ -727,8 +727,9 @@ Window {
                     const vLeft = vForward - omega * TRACK_LATERAL_OFFSET_WORLD;
                     const vRight = vForward + omega * TRACK_LATERAL_OFFSET_WORLD;
                     // Convert incremental displacement to pixel offset for pattern
-                    rootItem._treadOffL[i] += (vLeft * dtTracks / WORLD_LENGTH_PER_TEXTURE_REPEAT) * (640); // scale then wrap
-                    rootItem._treadOffR[i] += (vRight * dtTracks / WORLD_LENGTH_PER_TEXTURE_REPEAT) * (640);
+                    // Invert sign so visual tread appears to move backward relative to forward hull motion
+                    rootItem._treadOffL[i] -= (vLeft * dtTracks / WORLD_LENGTH_PER_TEXTURE_REPEAT) * (640); // scale then wrap
+                    rootItem._treadOffR[i] -= (vRight * dtTracks / WORLD_LENGTH_PER_TEXTURE_REPEAT) * (640);
                     // Wrap to keep numbers bounded
                     if (rootItem._treadOffL[i] > 100000 || rootItem._treadOffL[i] < -100000)
                         rootItem._treadOffL[i] = rootItem._treadOffL[i] % 100000;
