@@ -14,7 +14,7 @@ projectile_damage: 25         # damage per projectile hit
 reload_interval_sec: 3.0      # seconds to grant +1 ammo (per tank) up to max
 fire_cooldown_sec: 1.0        # seconds between player shots (reduced rate of fire)
 projectile_speed: 50.0        # projectile linear speed units/s (3x previous 5.0)
-projectile_density: 10.0      # physics density for projectile (10x previous 0.01)
+projectile_density: 20.0      # physics density for projectile (10x previous 0.01)
 projectile_max_lifetime_sec: 5.0  # max lifetime of projectile after firing before auto removal
 hull_density: 1.0             # physics density for tank hull (overall mass)
 turret_density: 0.5           # physics density for turret body (affects inertia & rotation feel)
