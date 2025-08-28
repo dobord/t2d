@@ -228,4 +228,79 @@ uint32_t fire_projectile_if_ready(
     return pid;
 }
 
+b2BodyId create_projectile(World &w, float x, float y, float vx, float vy, float density)
+{
+    b2BodyDef bd = b2DefaultBodyDef();
+    bd.type = b2_dynamicBody;
+    bd.position = {x, y};
+    bd.isBullet = true;
+    b2BodyId body = b2CreateBody(w.id, &bd);
+    b2ShapeDef sd = b2DefaultShapeDef();
+    sd.density = density;
+    sd.enableContactEvents = true;
+    sd.filter.categoryBits = CAT_PROJECTILE;
+    sd.filter.maskBits = CAT_BODY | CAT_CRATE;
+    b2Polygon box = b2MakeBox(0.225f, 0.075f);
+    b2CreatePolygonShape(body, &sd, &box);
+    b2Vec2 vel{vx, vy};
+    b2Body_SetLinearVelocity(body, vel);
+    w.projectile_bodies.push_back(body);
+    return body;
+}
+
+b2BodyId create_crate(World &w, float x, float y, float halfExtent)
+{
+    b2BodyDef bd = b2DefaultBodyDef();
+    bd.type = b2_dynamicBody;
+    bd.position = {x, y};
+    bd.angularDamping = 2.0f;
+    b2BodyId body = b2CreateBody(w.id, &bd);
+    b2ShapeDef sd = b2DefaultShapeDef();
+    sd.density = 0.5f;
+    sd.material.friction = 0.8f;
+    sd.material.restitution = 0.1f;
+    sd.filter.categoryBits = CAT_CRATE;
+    sd.filter.maskBits = CAT_BODY | CAT_PROJECTILE | CAT_CRATE;
+    sd.enableContactEvents = false;
+    b2Polygon box = b2MakeBox(halfExtent, halfExtent);
+    b2CreatePolygonShape(body, &sd, &box);
+    w.crate_bodies.push_back(body);
+    return body;
+}
+
+b2BodyId create_ammo_box(World &w, float x, float y, float radius)
+{
+    b2BodyDef bd = b2DefaultBodyDef();
+    bd.type = b2_staticBody;
+    bd.position = {x, y};
+    b2BodyId body = b2CreateBody(w.id, &bd);
+    b2ShapeDef sd = b2DefaultShapeDef();
+    sd.density = 0.0f;
+    sd.isSensor = true;
+    sd.filter.categoryBits = CAT_AMMO_BOX;
+    sd.filter.maskBits = CAT_BODY;
+    sd.enableContactEvents = true;
+    b2Circle circle{{0.0f, 0.0f}, radius};
+    b2CreateCircleShape(body, &sd, &circle);
+    w.ammo_box_bodies.push_back(body);
+    return body;
+}
+
+b2Vec2 get_body_position(b2BodyId id)
+{
+    return b2Body_GetPosition(id);
+}
+
+void step(World &w, float dt)
+{
+    b2World_Step(w.id, dt, 4);
+}
+
+void destroy_body(b2BodyId id)
+{
+    if (b2Body_IsValid(id)) {
+        b2DestroyBody(id);
+    }
+}
+
 } // namespace t2d::phys

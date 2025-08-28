@@ -76,85 +76,12 @@ void update_turret_aim(const TurretAimInput &aim, TankWithTurret &tank);
 uint32_t fire_projectile_if_ready(
     TankWithTurret &tank, World &world, float speed, float density, float forward_offset, uint32_t next_projectile_id);
 
-inline b2BodyId create_projectile(World &w, float x, float y, float vx, float vy, float density)
-{
-    // Legacy visual bullet: 60x20 px while legacy tank ~640 px height.
-    // Physics tank hull height ~= 4.8 world units (from -2.4 .. +2.4). Pixel->world scale ≈ 4.8 / 640 = 0.0075.
-    // Bullet world size (60 * 0.0075, 20 * 0.0075) ≈ (0.45, 0.15). Half extents: (0.225, 0.075).
-    // Use that to align physical hit box with legacy proportions.
-    b2BodyDef bd = b2DefaultBodyDef();
-    bd.type = b2_dynamicBody;
-    bd.position = {x, y};
-    bd.isBullet = true;
-    b2BodyId body = b2CreateBody(w.id, &bd);
-    b2ShapeDef sd = b2DefaultShapeDef();
-    sd.density = density; // configurable projectile density
-    sd.enableContactEvents = true;
-    sd.filter.categoryBits = CAT_PROJECTILE;
-    sd.filter.maskBits = CAT_BODY | CAT_CRATE; // collide with tanks and crates (walls share CAT_BODY)
-    b2Polygon box = b2MakeBox(0.225f, 0.075f); // width 0.45, height 0.15
-    b2CreatePolygonShape(body, &sd, &box);
-    b2Vec2 vel{vx, vy};
-    b2Body_SetLinearVelocity(body, vel);
-    w.projectile_bodies.push_back(body);
-    return body;
-}
-
-inline b2BodyId create_crate(World &w, float x, float y, float halfExtent)
-{
-    b2BodyDef bd = b2DefaultBodyDef();
-    bd.type = b2_dynamicBody;
-    bd.position = {x, y};
-    bd.angularDamping = 2.0f;
-    b2BodyId body = b2CreateBody(w.id, &bd);
-    b2ShapeDef sd = b2DefaultShapeDef();
-    sd.density = 0.5f;
-    // Surface material properties (Box2D v3 API)
-    sd.material.friction = 0.8f;
-    sd.material.restitution = 0.1f;
-    sd.filter.categoryBits = CAT_CRATE;
-    // Crates collide with tanks (includes walls categorized as CAT_BODY), other crates, and projectiles
-    sd.filter.maskBits = CAT_BODY | CAT_PROJECTILE | CAT_CRATE;
-    sd.enableContactEvents = false;
-    b2Polygon box = b2MakeBox(halfExtent, halfExtent);
-    b2CreatePolygonShape(body, &sd, &box);
-    w.crate_bodies.push_back(body);
-    return body;
-}
-
-inline b2BodyId create_ammo_box(World &w, float x, float y, float radius)
-{
-    b2BodyDef bd = b2DefaultBodyDef();
-    bd.type = b2_staticBody; // static pickup; could switch to kinematic if we want slight motion
-    bd.position = {x, y};
-    b2BodyId body = b2CreateBody(w.id, &bd);
-    b2ShapeDef sd = b2DefaultShapeDef();
-    sd.density = 0.0f;
-    sd.isSensor = true; // sensor so we manually handle pickup
-    sd.filter.categoryBits = CAT_AMMO_BOX;
-    sd.filter.maskBits = CAT_BODY; // only tanks trigger
-    sd.enableContactEvents = true; // we will scan contacts to detect pickup
-    b2Circle circle{{0.0f, 0.0f}, radius};
-    b2CreateCircleShape(body, &sd, &circle);
-    w.ammo_box_bodies.push_back(body);
-    return body;
-}
-
-inline b2Vec2 get_body_position(b2BodyId id)
-{
-    return b2Body_GetPosition(id);
-}
-
-inline void step(World &w, float dt)
-{
-    b2World_Step(w.id, dt, 4);
-}
-
-inline void destroy_body(b2BodyId id)
-{
-    if (b2Body_IsValid(id)) {
-        b2DestroyBody(id);
-    }
-}
+// Projectile / object creation (moved out-of-line to reduce header churn)
+b2BodyId create_projectile(World &w, float x, float y, float vx, float vy, float density);
+b2BodyId create_crate(World &w, float x, float y, float halfExtent);
+b2BodyId create_ammo_box(World &w, float x, float y, float radius);
+b2Vec2 get_body_position(b2BodyId id);
+void step(World &w, float dt);
+void destroy_body(b2BodyId id);
 
 } // namespace t2d::phys
