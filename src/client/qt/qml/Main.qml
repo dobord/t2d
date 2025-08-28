@@ -533,8 +533,8 @@ Window {
                         const PATTERN_STEP_PX = 66; // pixel spacing between tread rungs (tripled from 22)
                         // Rung thickness tripled (was 6) for more pronounced tread divisions
                         const rungHeight = 18;
-                        const light = '#d9d9d9';
-                        const dark = '#202020';
+                        const light = '#9a9a9a'; // darkened highlight
+                        const dark = '#121212'; // darker base
                         function drawTreadColumn(x0, w, offsetPx) {
                             // Clamp and wrap offset
                             offsetPx = ((offsetPx % PATTERN_STEP_PX) + PATTERN_STEP_PX) % PATTERN_STEP_PX;
