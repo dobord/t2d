@@ -253,7 +253,8 @@ b2BodyId create_crate(World &w, float x, float y, float halfExtent)
     b2BodyDef bd = b2DefaultBodyDef();
     bd.type = b2_dynamicBody;
     bd.position = {x, y};
-    bd.angularDamping = 2.0f;
+    bd.linearDamping = 0.5f;
+    bd.angularDamping = 2.0f; // restore original higher angular damping
     b2BodyId body = b2CreateBody(w.id, &bd);
     b2ShapeDef sd = b2DefaultShapeDef();
     sd.density = 0.5f;
