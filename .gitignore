@@ -47,6 +47,9 @@ Thumbs.db
 # Local TSAN build dir
 /build-tsan/
 
+# Local tests build dir
+/build-tests/
+
 # Local no-Qt and Qt client build dirs
 /build-noqt/
 /build-qt/
