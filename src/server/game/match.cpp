@@ -133,8 +133,17 @@ static void process_contacts(
             b2BodyId proj_body_id = a_is_proj ? a : b;
             b2Vec2 proj_pos = b2Body_GetPosition(proj_body_id);
             b2Vec2 rel{proj_pos.x - hull_xf.p.x, proj_pos.y - hull_xf.p.y};
+            // Local basis: forward = hull_fwd, right = (fwd.y, -fwd.x) (see physics::get_body_frame). In this
+            // right-handed 2D (x,y) with CCW positive rotation and forward initially +X, the 2D cross product
+            // fwd x rel = fwd.x*rel.y - fwd.y*rel.x is POSITIVE when rel is to the LEFT of forward (CCW), i.e. the
+            // geometric LEFT side. We want sign relative to RIGHT, so we can either use dot(rel, right) or negate the
+            // cross. We compute both for diagnostics.
             b2Vec2 hull_right{hull_fwd.y, -hull_fwd.x}; // must match get_body_frame
-            float lateral = rel.x * hull_right.x + rel.y * hull_right.y;
+            float lateral_dot = rel.x * hull_right.x + rel.y * hull_right.y; // + => RIGHT
+            float cross = hull_fwd.x * rel.y - hull_fwd.y * rel.x; // + => LEFT
+            // Use dot as the authoritative side sign (less sensitive to very small forward component); retain cross
+            // for logging to detect mismatches that could indicate coordinate misunderstandings.
+            float lateral = lateral_dot;
             float forward_off = rel.x * hull_fwd.x + rel.y * hull_fwd.y;
             float dot_forward = n_out.x * hull_fwd.x + n_out.y * hull_fwd.y;
             // Previous heuristic expected normal opposite hull forward (dot < -0.5), but Box2D contact normal here
@@ -154,12 +163,25 @@ static void process_contacts(
             constexpr float kSideLateralThresh = 0.5f; // half a meter lateral
             bool side = std::fabs(lateral) > kSideLateralThresh && !frontal;
             if (side) {
-                bool hit_right_side = lateral > 0.f; // positive lateral => RIGHT
+                bool hit_right_side = lateral > 0.f; // positive lateral => RIGHT (dot-based)
+                // Diagnostic: detect if cross sign implies opposite side (should be cross>0 => LEFT =>
+                // hit_right_side=false)
+                bool crossSuggestsRight = cross < 0.f; // since cross>0 means LEFT
+                if (crossSuggestsRight != hit_right_side && std::fabs(cross) > 0.2f && std::fabs(lateral) > 0.2f) {
+                    t2d::log::warn(
+                        "[damage] side mapping discrepancy tank={} lateral={} cross={} hit_right={} (dot vs cross sign "
+                        "mismatch)",
+                        tank.entity_id,
+                        lateral,
+                        cross,
+                        hit_right_side);
+                }
                 t2d::log::debug(
-                    "[damage] side hit tank={} lateral={} forward_off={} right_side={} n=({}, {}) hull_right=({}, {}) "
-                    "rel=({}, {}) left_broken={} right_broken={}",
+                    "[damage] side hit tank={} lateral={} cross={} forward_off={} right_side={} n=({}, {}) "
+                    "hull_right=({}, {}) rel=({}, {}) left_broken={} right_broken={}",
                     tank.entity_id,
                     lateral,
+                    cross,
                     forward_off,
                     hit_right_side,
                     n_out.x,
