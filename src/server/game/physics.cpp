@@ -212,8 +212,17 @@ uint32_t fire_projectile_if_ready(
     BodyFrame tf = get_body_frame(tank.turret);
     b2Transform xt = b2Body_GetTransform(tank.turret);
     b2Vec2 muzzle{xt.p.x + tf.forward.x * forward_offset, xt.p.y + tf.forward.y * forward_offset};
+    // Add linear + angular velocity of turret at muzzle point so projectile inherits tank motion.
+    b2Vec2 turret_lin = b2Body_GetLinearVelocity(tank.turret);
+    float turret_ang = b2Body_GetAngularVelocity(tank.turret); // rad/s
+    b2Vec2 r{tf.forward.x * forward_offset, tf.forward.y * forward_offset};
+    // omega x r (2D z-axis cross) => (-w * r.y, w * r.x)
+    b2Vec2 ang_v{-turret_ang * r.y, turret_ang * r.x};
+    b2Vec2 inherit_v{turret_lin.x + ang_v.x, turret_lin.y + ang_v.y};
+    // Base projectile velocity along barrel forward plus inherited velocity
+    b2Vec2 proj_v{tf.forward.x * speed + inherit_v.x, tf.forward.y * speed + inherit_v.y};
     uint32_t pid = next_projectile_id;
-    create_projectile(world, muzzle.x, muzzle.y, tf.forward.x * speed, tf.forward.y * speed, density);
+    create_projectile(world, muzzle.x, muzzle.y, proj_v.x, proj_v.y, density);
     tank.fire_cooldown_cur = tank.fire_cooldown_max;
     tank.ammo--;
     return pid;
