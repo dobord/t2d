@@ -71,12 +71,29 @@ static void process_contacts(
         b2Vec2 vcur = b2Body_GetLinearVelocity(proj_body);
         b2Vec2 n = ev.manifold.normal; // unit normal from shapeA to shapeB
         float vdotn = vcur.x * n.x + vcur.y * n.y;
+        float speed_mag = std::sqrt(vcur.x * vcur.x + vcur.y * vcur.y);
         float into_speed = (a_is_proj ? vdotn : -vdotn); // speed component into the impacted body
         float required = 0.4f * proj.initial_speed;
         if (into_speed + 1e-6f < required) {
             // Not enough normal (penetrating) speed: skip damage & projectile destruction
+            t2d::log::trace(
+                "[penetration] proj={} tank={} into_speed={} speed={} required={} initial={} result=NO",
+                proj.id,
+                tank.entity_id,
+                into_speed,
+                speed_mag,
+                required,
+                proj.initial_speed);
             continue;
         }
+        t2d::log::trace(
+            "[penetration] proj={} tank={} into_speed={} speed={} required={} initial={} result=YES",
+            proj.id,
+            tank.entity_id,
+            into_speed,
+            speed_mag,
+            required,
+            proj.initial_speed);
         if (tank.hp > 0) {
             uint16_t before = tank.hp;
             if (tank.hp <= damage_amount)
@@ -443,7 +460,7 @@ coro::task<void> run_match(std::shared_ptr<coro::io_scheduler> scheduler, std::s
                 t2d::phys::update_turret_aim(aim, adv);
             }
             if (input.fire && adv.ammo > 0) {
-                float forward_offset = 3.3f;
+                float forward_offset = 4.4f; // increased to avoid barrel overlap
                 auto pid = ctx->next_projectile_id++;
                 // Use advanced firing (spawns projectile and applies cooldown/ammo)
                 uint32_t fired = t2d::phys::fire_projectile_if_ready(
@@ -480,6 +497,28 @@ coro::task<void> run_match(std::shared_ptr<coro::io_scheduler> scheduler, std::s
                     t2d::metrics::add_projectile_pool_request(hit, miss);
 #endif
                     projectile_bodies.emplace(fired, phys_world.projectile_bodies.back());
+                    // Spawn trace log (diagnostic): log both intended muzzle velocity and actual body velocity
+                    {
+                        b2BodyId pbid = phys_world.projectile_bodies.back();
+                        if (b2Body_IsValid(pbid)) {
+                            b2Vec2 bv = b2Body_GetLinearVelocity(pbid);
+                            float body_speed = std::sqrt(bv.x * bv.x + bv.y * bv.y);
+                            t2d::log::trace(
+                                "[proj_spawn] proj={} owner={} pos=({}, {}) muzzle_v=({}, {}) body_v=({}, {}) "
+                                "body_speed={} initial={} forward_offset={}",
+                                fired,
+                                adv.entity_id,
+                                pos.x,
+                                pos.y,
+                                slot.vx,
+                                slot.vy,
+                                bv.x,
+                                bv.y,
+                                body_speed,
+                                slot.initial_speed,
+                                forward_offset);
+                        }
+                    }
                     if (sess->is_bot)
                         t2d::mm::instance().clear_bot_fire(sess);
                 }
@@ -502,6 +541,24 @@ coro::task<void> run_match(std::shared_ptr<coro::io_scheduler> scheduler, std::s
         }
         // Physics step (tanks + projectiles + crates) then process contacts before any projectile body destruction
         t2d::phys::step(phys_world, dt);
+        // Post-first-step velocity trace: log velocity after first physics integration step (age==0 before increment)
+        for (auto &p : ctx->projectiles) {
+            if (p.age == 0.f) { // just spawned prior to this step
+                auto itb = projectile_bodies.find(p.id);
+                if (itb != projectile_bodies.end() && b2Body_IsValid(itb->second)) {
+                    b2Vec2 vps = b2Body_GetLinearVelocity(itb->second);
+                    float sp = std::sqrt(vps.x * vps.x + vps.y * vps.y);
+                    t2d::log::trace(
+                        "[proj_post_step0] proj={} owner={} v=({}, {}) speed={} initial={}",
+                        p.id,
+                        p.owner,
+                        vps.x,
+                        vps.y,
+                        sp,
+                        p.initial_speed);
+                }
+            }
+        }
         // Handle projectile vs tank impacts (must run before bounds cull destroys bodies)
         process_contacts(phys_world, projectile_bodies, *ctx);
         // Ammo box pickup detection (scan tank vs sensor overlaps) simple O(N*M)
