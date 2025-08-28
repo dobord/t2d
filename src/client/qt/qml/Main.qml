@@ -531,8 +531,8 @@ Window {
                     // Animated tread pattern (skip if dead to reduce visual noise)
                     if (!isDead) {
                         const PATTERN_STEP_PX = 66; // pixel spacing between tread rungs (tripled from 22)
-                        // Rung thickness tripled (was 6) for more pronounced tread divisions
-                        const rungHeight = 18;
+                        // Rung thickness: previously 6 -> tripled to 18 -> now +50% => 27 for stronger presence
+                        const rungHeight = 27;
                         const light = '#9a9a9a'; // darkened highlight
                         const dark = '#121212'; // darker base
                         function drawTreadColumn(x0, w, offsetPx) {
@@ -695,7 +695,7 @@ Window {
                 // Pixel/world mapping inside tank sprite space: 6.4 world units -> 640 px => 100 px per world unit.
                 const PX_PER_WORLD = 640 / 6.4; // = 100
                 // Tread speed scale: 1.0 = physical (rung spacing ~0.66 world => 66 px). Adjust <1 to slow down.
-                const TREAD_SPEED_SCALE = 0.35; // reduced to slow visual motion (tune 0.2..0.5)
+                const TREAD_SPEED_SCALE = 1.0; // reduced to slow visual motion (tune 0.2..0.5)
                 // Ensure arrays sized
                 const ec = entityModel.count();
                 function normAngle(a) {
