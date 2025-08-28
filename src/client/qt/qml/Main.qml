@@ -1012,9 +1012,28 @@ Window {
                 Button {
                     id: resetStatsBtn
                     text: "Reset"
-                    font.pixelSize: 11
-                    padding: 4
+                    font.pixelSize: 10
+                    padding: 2
+                    opacity: hovered ? 0.85 : 0.45
+                    scale: hovered ? 1.05 : 1.0
+                    background: Rectangle {
+                        radius: 3
+                        color: resetStatsBtn.pressed ? "#28424c" : "#1d3038"
+                        border.color: "#3a5866"
+                        border.width: 1
+                        opacity: 0.9
+                    }
+                    contentItem: Text {
+                        text: parent.text
+                        color: "#d0dde5"
+                        font.pixelSize: parent.font.pixelSize
+                        horizontalAlignment: Text.AlignHCenter
+                        verticalAlignment: Text.AlignVCenter
+                        opacity: parent.opacity
+                    }
                     onClicked: timingState.resetFrameStats()
+                    ToolTip.visible: hovered
+                    ToolTip.text: "Reset frame stats"
                 }
             }
             Rectangle {
