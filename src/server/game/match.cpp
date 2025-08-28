@@ -79,7 +79,15 @@ static void process_contacts(
             for (auto &pl : ctx.players)
                 t2d::mm::instance().push_message(pl, evmsg);
             if (before > 0 && tank.hp == 0) {
-                ctx.removed_tanks_since_full.push_back(tank.entity_id);
+                if (!ctx.persist_destroyed_tanks) {
+                    ctx.removed_tanks_since_full.push_back(tank.entity_id);
+                } else {
+                    // Disable turret motor so corpse stops rotating
+                    if (b2Joint_IsValid(tank.turret_joint)) {
+                        b2RevoluteJoint_EnableMotor(tank.turret_joint, false);
+                        b2RevoluteJoint_SetMotorSpeed(tank.turret_joint, 0.f);
+                    }
+                }
                 ctx.kill_feed_events.emplace_back(tank.entity_id, proj.owner);
                 t2d::ServerMessage tdmsg;
                 auto *td = tdmsg.mutable_destroyed();
@@ -235,7 +243,12 @@ coro::task<void> run_match(std::shared_ptr<coro::io_scheduler> scheduler, std::s
                         auto &tank = ctx->tanks[i];
                         if (tank.hp > 0) {
                             tank.hp = 0;
-                            ctx->removed_tanks_since_full.push_back(tank.entity_id);
+                            if (!ctx->persist_destroyed_tanks) {
+                                ctx->removed_tanks_since_full.push_back(tank.entity_id);
+                            } else if (b2Joint_IsValid(tank.turret_joint)) {
+                                b2RevoluteJoint_EnableMotor(tank.turret_joint, false);
+                                b2RevoluteJoint_SetMotorSpeed(tank.turret_joint, 0.f);
+                            }
                             ctx->kill_feed_events.emplace_back(tank.entity_id, 0);
                             t2d::ServerMessage tdmsg;
                             auto *td = tdmsg.mutable_destroyed();
@@ -538,8 +551,8 @@ coro::task<void> run_match(std::shared_ptr<coro::io_scheduler> scheduler, std::s
                 ctx->last_sent_tanks.resize(ctx->tanks.size());
                 for (size_t ti = 0; ti < ctx->tanks.size(); ++ti) {
                     auto &adv = ctx->tanks[ti];
-                    if (adv.hp == 0)
-                        continue;
+                    if (adv.hp == 0 && !ctx->persist_destroyed_tanks)
+                        continue; // skip corpses unless persistence enabled
                     auto *ts = snap->add_tanks();
                     ts->set_entity_id(adv.entity_id);
                     auto pos = t2d::phys::get_body_position(adv.hull);
@@ -661,7 +674,7 @@ coro::task<void> run_match(std::shared_ptr<coro::io_scheduler> scheduler, std::s
                     ctx->last_sent_tanks.resize(ctx->tanks.size());
                 for (size_t i = 0; i < ctx->tanks.size(); ++i) {
                     auto &adv = ctx->tanks[i];
-                    if (adv.hp == 0)
+                    if (adv.hp == 0 && !ctx->persist_destroyed_tanks)
                         continue;
                     if (i >= ctx->last_sent_tanks.size()) {
                         ctx->last_sent_tanks.push_back({adv.entity_id});

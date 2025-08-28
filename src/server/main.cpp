@@ -168,6 +168,8 @@ struct ServerConfig
     float map_height{80.f};
     // Test/diagnostic hook: when true, spawn players in a horizontal line (even spacing) instead of random.
     bool force_line_spawn{false};
+    // When true, destroyed tanks remain in the world (corpses) until match end (do not remove from snapshots).
+    bool persist_destroyed_tanks{false};
 };
 
 static ServerConfig load_config(const std::string &path)
@@ -253,6 +255,9 @@ static ServerConfig load_config(const std::string &path)
     }
     if (root["force_line_spawn"]) {
         cfg.force_line_spawn = root["force_line_spawn"].as<bool>();
+    }
+    if (root["persist_destroyed_tanks"]) {
+        cfg.persist_destroyed_tanks = root["persist_destroyed_tanks"].as<bool>();
     }
     return cfg;
 }
@@ -385,7 +390,8 @@ int main(int argc, char **argv)
             cfg.test_mode,
             cfg.map_width,
             cfg.map_height,
-            cfg.force_line_spawn}));
+            cfg.force_line_spawn,
+            cfg.persist_destroyed_tanks}));
     // Launch heartbeat monitor
     scheduler->spawn(heartbeat_monitor(scheduler, cfg.heartbeat_timeout_seconds));
     // Launch resource sampler (profiling / production lightweight)

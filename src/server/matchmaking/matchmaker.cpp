@@ -148,6 +148,7 @@ coro::task<void> run_matchmaker(std::shared_ptr<coro::io_scheduler> scheduler, M
             ctx->test_mode = cfg.test_mode;
             ctx->map_width = cfg.map_width;
             ctx->map_height = cfg.map_height;
+            ctx->persist_destroyed_tanks = cfg.persist_destroyed_tanks;
             ctx->physics_world = std::make_unique<t2d::phys::World>(b2Vec2{0.f, 0.f});
             // Spawn distribution (random or forced line for tests)
             uint32_t eid = 1;

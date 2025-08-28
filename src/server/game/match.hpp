@@ -124,6 +124,8 @@ struct MatchContext
     // Reusable scratch buffer for snapshot serialization size estimation (SerializeToString target)
     // Grows on demand, never shrinks during match lifetime. Profiling builds record reuse metric.
     std::string snapshot_scratch;
+    // When true, tanks with hp==0 remain in snapshots (corpses) until match end.
+    bool persist_destroyed_tanks{false};
 };
 
 inline float movement_speed()

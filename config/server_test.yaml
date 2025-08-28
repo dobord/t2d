@@ -29,3 +29,4 @@ auth_stub_prefix: test_user_
 map_width: 80
 map_height: 80
 force_line_spawn: true  # test hook: when true spawn tanks in a horizontal line (deterministic)
+persist_destroyed_tanks: false  # when true, dead tanks stay in snapshots (corpses)
