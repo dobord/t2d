@@ -321,10 +321,14 @@ coro::task<void> run_match(std::shared_ptr<coro::io_scheduler> scheduler, std::s
                         float dy = ttHull.p.y - myHull.p.y;
                         desired_rad = std::atan2(dy, dx);
                         float base_turn = desired_rad - myHullRad;
-                        while (base_turn > (float)M_PI)
-                            base_turn -= 2.f * (float)M_PI;
-                        while (base_turn < -(float)M_PI)
-                            base_turn += 2.f * (float)M_PI;
+                        // Normalize to [-pi, pi] using fmod to avoid potential long while loops
+                        {
+                            float two_pi = 2.f * (float)M_PI;
+                            base_turn = std::fmod(base_turn + (float)M_PI, two_pi);
+                            if (base_turn < 0.f)
+                                base_turn += two_pi;
+                            base_turn -= (float)M_PI;
+                        }
                         input.turn_dir = std::clamp(base_turn * 180.f / 120.f / (float)M_PI, -1.f, 1.f);
                         float dist2 = dx * dx + dy * dy;
                         if (dist2 > 900.f) { // far
@@ -337,10 +341,14 @@ coro::task<void> run_match(std::shared_ptr<coro::io_scheduler> scheduler, std::s
                         }
                         // Turret aim independent for faster tracking
                         float tdiff = desired_rad - myTurretRad;
-                        while (tdiff > (float)M_PI)
-                            tdiff -= 2.f * (float)M_PI;
-                        while (tdiff < -(float)M_PI)
-                            tdiff += 2.f * (float)M_PI;
+                        // Normalize to [-pi, pi] using fmod (single pass)
+                        {
+                            float two_pi = 2.f * (float)M_PI;
+                            tdiff = std::fmod(tdiff + (float)M_PI, two_pi);
+                            if (tdiff < 0.f)
+                                tdiff += two_pi;
+                            tdiff -= (float)M_PI;
+                        }
                         last_align_err = std::fabs(tdiff) * 180.f / (float)M_PI;
                         input.turret_turn = std::clamp(tdiff * 180.f / (60.f * (float)M_PI), -1.f, 1.f);
                     } else {
