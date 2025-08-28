@@ -24,6 +24,7 @@
 #  NO_BOT_AI=1 disable all bot AI (movement/aim/fire) flag: --no-bot-ai
 #  PROFILE=1 enable client profiling (C++ + QML)  flag: --profile
 #  SERVER_CONFIG (server config path)            flag: -c|--server-config <path>
+#  CLIENTS (default 1)                           flag: --clients <num>
 #  -h|--help prints this help
 #
 # Examples:
@@ -48,6 +49,7 @@ PROFILE="${PROFILE:-0}"
 QML_LOG_LEVEL="${QML_LOG_LEVEL:-}"
 SERVER_CONFIG="${SERVER_CONFIG:-}"
 AUTH_STUB_PREFIX="${AUTH_STUB_PREFIX:-}"
+CLIENTS="${CLIENTS:-1}"
 ROOT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 SERVER_BIN="${ROOT_DIR}/${BUILD_DIR}/t2d_server"
 CLIENT_BIN="${ROOT_DIR}/${BUILD_DIR}/t2d_qt_client"
@@ -93,10 +95,10 @@ log_trace() {
 
 # Parse flags (override env defaults)
 print_help() {
-	sed -n '1,/^set -euo pipefail/p' "$0" | sed 's/^# \{0,1\}//' | grep -E '^(run_dev_loop|PORT|BUILD_DIR|BUILD_TYPE|CMAKE_ARGS|LOOP=|NO_BUILD|VERBOSE|LOG_LEVEL|QML_LOG_LEVEL|NO_BOT_FIRE|NO_BOT_AI|PROFILE|-p|Usage:| -r| -d| -t| --cmake-args| --no-build| --once| --loop| --log-level| --qml-log-level| --no-bot-fire| --no-bot-ai| --profile| -v)'
+	sed -n '1,/^set -euo pipefail/p' "$0" | sed 's/^# \{0,1\}//' | grep -E '^(run_dev_loop|PORT|BUILD_DIR|BUILD_TYPE|CMAKE_ARGS|LOOP=|NO_BUILD|VERBOSE|LOG_LEVEL|QML_LOG_LEVEL|NO_BOT_FIRE|NO_BOT_AI|PROFILE|CLIENTS|-p|Usage:| -r| -d| -t| --cmake-args| --no-build| --once| --loop| --log-level| --qml-log-level| --no-bot-fire| --no-bot-ai| --profile| --clients| -v)'
 	echo
-	echo "Example: $0 -d build-debug -p 40100 -r --no-bot-fire --no-bot-ai --cmake-args '-DT2D_ENABLE_SANITIZERS=ON'"
-	echo "       $0 -c config/server.yaml"
+	echo "Example: $0 -d build-debug -p 40100 -r --clients 2 --no-bot-fire --no-bot-ai --cmake-args '-DT2D_ENABLE_SANITIZERS=ON'"
+	echo "       $0 -c config/server.yaml --clients 3"
 }
 
 PENDING_CMAKE_ARGS=()
@@ -159,6 +161,10 @@ while [[ $# -gt 0 ]]; do
 		PROFILE=1
 		shift
 		;;
+	--clients)
+		CLIENTS="$2"
+		shift 2
+		;;
 	-c | --server-config)
 		SERVER_CONFIG="$2"
 		shift 2
@@ -216,7 +222,7 @@ if [[ -n "$AUTH_STUB_PREFIX" ]]; then
 	export T2D_AUTH_STUB_PREFIX="$AUTH_STUB_PREFIX"
 fi
 
-log_debug "Effective flags: PORT=$PORT BUILD_DIR=$BUILD_DIR BUILD_TYPE=$BUILD_TYPE LOOP=$LOOP NO_BUILD=$NO_BUILD VERBOSE=$VERBOSE LOG_LEVEL=$LOG_LEVEL QML_LOG_LEVEL=$QML_LOG_LEVEL PROFILE=$PROFILE NO_BOT_FIRE=${NO_BOT_FIRE:-0} NO_BOT_AI=${NO_BOT_AI:-0} CMAKE_ARGS='$CMAKE_ARGS'"
+log_debug "Effective flags: PORT=$PORT BUILD_DIR=$BUILD_DIR BUILD_TYPE=$BUILD_TYPE LOOP=$LOOP NO_BUILD=$NO_BUILD VERBOSE=$VERBOSE LOG_LEVEL=$LOG_LEVEL QML_LOG_LEVEL=$QML_LOG_LEVEL PROFILE=$PROFILE CLIENTS=$CLIENTS NO_BOT_FIRE=${NO_BOT_FIRE:-0} NO_BOT_AI=${NO_BOT_AI:-0} CMAKE_ARGS='$CMAKE_ARGS'"
 log_debug "SERVER_CONFIG=$SERVER_CONFIG PORT_EXPLICIT=$PORT_EXPLICIT AUTH_STUB_PREFIX=${AUTH_STUB_PREFIX:-}"
 
 # Run code formatting targets before building (mandatory auto-format step)
@@ -368,7 +374,7 @@ run_once() {
 		kill ${SERVER_PID} || true
 		return 1
 	}
-	log "Starting Qt client"
+	log "Starting Qt client(s) count=$CLIENTS"
 	local client_args=()
 	# Determine QML log level argument (case-insensitive). QML side parser handles lowercase.
 	if [[ -n "$QML_LOG_LEVEL" ]]; then
@@ -389,15 +395,20 @@ run_once() {
 	# Always pass server port so client matches server if derived from config
 	client_args+=("--server-port=${PORT}")
 	log_debug "Qt client args: ${client_args[*]:-(none)}"
-	T2D_LOG_APP_ID="qt" "${CLIENT_BIN}" "${client_args[@]}" &
-	CLIENT_PID=$!
-	log "Client PID=${CLIENT_PID}"
-	wait -n ${SERVER_PID} ${CLIENT_PID}
+	declare -a CLIENT_PIDS=()
+	for ((ci = 1; ci <= CLIENTS; ci++)); do
+		local app_id="qt${ci}"
+		T2D_LOG_APP_ID="${app_id}" "${CLIENT_BIN}" "${client_args[@]}" &
+		pid=$!
+		CLIENT_PIDS+=("$pid")
+		log "Client[$ci] PID=${pid}"
+	done
+	wait -n ${SERVER_PID} ${CLIENT_PIDS[@]}
 	local exited=$?
 	log "Process exit detected (code=${exited})"
-	kill ${SERVER_PID} ${CLIENT_PID} 2>/dev/null || true
+	kill ${SERVER_PID} ${CLIENT_PIDS[@]} 2>/dev/null || true
 	wait ${SERVER_PID} 2>/dev/null || true
-	wait ${CLIENT_PID} 2>/dev/null || true
+	for p in "${CLIENT_PIDS[@]}"; do wait "$p" 2>/dev/null || true; done
 	return 0
 }
 
