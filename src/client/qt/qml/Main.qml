@@ -529,12 +529,11 @@ Window {
                     const trackBase = '#424141';
                     const trackBroken = '#2c2c2c';
                     const trackDead = '#2a2a2a';
-                    // NOTE: Swapped mapping: server 'leftBroken' corresponds to visual right side due to sprite
-                    // orientation (90° rotation + sprite coordinate system). Use rightBroken for left rectangle and
-                    // leftBroken for right rectangle to reflect perceived left/right in UI.
-                    ctx.fillStyle = isDead ? trackDead : (rightBroken ? trackBroken : trackBase);
-                    ctx.fillRect(0, 0, 140, H);          // visual left
+                    // Mapping updated: server flag 'leftBroken' now directly corresponds to player's visual LEFT tread.
+                    // Remove previous inversion. leftBroken -> left rectangle, rightBroken -> right rectangle.
                     ctx.fillStyle = isDead ? trackDead : (leftBroken ? trackBroken : trackBase);
+                    ctx.fillRect(0, 0, 140, H);          // visual left
+                    ctx.fillStyle = isDead ? trackDead : (rightBroken ? trackBroken : trackBase);
                     ctx.fillRect(342, 0, 140, H);        // visual right
                     // Animated tread pattern (skip if dead to reduce visual noise)
                     if (!isDead) {
@@ -559,9 +558,8 @@ Window {
                             }
                         }
                         // Suppress animation for broken track (freeze pattern by using constant offset 0)
-                        // Apply same swapped logic for tread animation offsets.
-                        drawTreadColumn(0, 140, rightBroken ? 0 : treadOffsetR);
-                        drawTreadColumn(342, 140, leftBroken ? 0 : treadOffsetL);
+                        drawTreadColumn(0, 140, leftBroken ? 0 : treadOffsetL);
+                        drawTreadColumn(342, 140, rightBroken ? 0 : treadOffsetR);
                     }
                     ctx.fillStyle = isDead ? (isOwn ? '#2f3a2f' : '#323232') : (isOwn ? '#5c6e5c' : '#6f6e6e');
                     ctx.strokeStyle = isDead ? '#1e1e1e' : '#2e2e2e';
