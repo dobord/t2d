@@ -173,15 +173,37 @@ static void process_contacts(
                 if (hit_right_side) {
                     if (!tank.right_track_broken) {
                         ++tank.right_track_hits;
+                        t2d::log::debug(
+                            "[damage] track hit tank={} side=right hits={}/{} broken={}",
+                            tank.entity_id,
+                            tank.right_track_hits,
+                            ctx.track_break_hits,
+                            tank.right_track_broken);
                         if (tank.right_track_hits >= ctx.track_break_hits) {
                             tank.right_track_broken = true;
+                            t2d::log::info(
+                                "[damage] track broken tank={} side=right hits={} threshold={}",
+                                tank.entity_id,
+                                tank.right_track_hits,
+                                ctx.track_break_hits);
                         }
                     }
                 } else { // left side
                     if (!tank.left_track_broken) {
                         ++tank.left_track_hits;
+                        t2d::log::debug(
+                            "[damage] track hit tank={} side=left hits={}/{} broken={}",
+                            tank.entity_id,
+                            tank.left_track_hits,
+                            ctx.track_break_hits,
+                            tank.left_track_broken);
                         if (tank.left_track_hits >= ctx.track_break_hits) {
                             tank.left_track_broken = true;
+                            t2d::log::info(
+                                "[damage] track broken tank={} side=left hits={} threshold={}",
+                                tank.entity_id,
+                                tank.left_track_hits,
+                                ctx.track_break_hits);
                         }
                     }
                 }
@@ -204,6 +226,11 @@ static void process_contacts(
                             tank.frontal_turret_hits,
                             ctx.turret_disable_front_hits);
                     }
+                } else {
+                    t2d::log::debug(
+                        "[damage] frontal turret hit ignored tank={} already_disabled=1 count={}",
+                        tank.entity_id,
+                        tank.frontal_turret_hits);
                 }
             }
             uint16_t before = tank.hp;
