@@ -129,6 +129,10 @@ struct MatchContext
     bool match_over{false};
     uint32_t winner_entity{0};
     bool match_end_sent{false};
+    // Tick when match_over was first set (for post-end grace period). 0 means not yet recorded.
+    uint32_t match_over_tick{0};
+    // Additional ticks to keep streaming snapshots after MatchEnd so clients can render final state.
+    uint32_t post_end_grace_ticks{0}; // set to tick_rate when match ends (== 1s grace)
     // Aggregated kill feed events for batching per tick (victim, attacker)
     std::vector<std::pair<uint32_t, uint32_t>> kill_feed_events;
     // Reusable scratch buffer for snapshot serialization size estimation (SerializeToString target)

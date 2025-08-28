@@ -1143,6 +1143,10 @@ coro::task<void> run_match(std::shared_ptr<coro::io_scheduler> scheduler, std::s
             } else if (timeout_reached) {
                 ctx->match_over = true; // draw if winner_entity not set
             }
+            if (ctx->match_over && ctx->match_over_tick == 0) {
+                ctx->match_over_tick = static_cast<uint32_t>(ctx->server_tick);
+                ctx->post_end_grace_ticks = ctx->tick_rate; // 1 second grace streaming
+            }
             if (ctx->match_over && !ctx->match_end_sent) {
                 t2d::ServerMessage endmsg;
                 auto *me = endmsg.mutable_match_end();
@@ -1161,7 +1165,12 @@ coro::task<void> run_match(std::shared_ptr<coro::io_scheduler> scheduler, std::s
         uint64_t hard_cap_ticks = (ctx->initial_player_count <= 1)
             ? (ctx->tick_rate * 120ull)
             : (ctx->tick_rate * (ctx->disable_bot_fire ? 300ull : 60ull));
-        if ((ctx->match_over && ctx->match_end_sent) || ctx->server_tick > hard_cap_ticks) {
+        bool grace_complete = false;
+        if (ctx->match_over && ctx->match_over_tick > 0) {
+            uint64_t ticks_since_over = ctx->server_tick - ctx->match_over_tick;
+            grace_complete = ticks_since_over >= ctx->post_end_grace_ticks;
+        }
+        if (((ctx->match_over && ctx->match_end_sent && grace_complete)) || ctx->server_tick > hard_cap_ticks) {
             if (!ctx->match_end_sent) {
                 // Ensure we always emit MatchEnd exactly once before exiting (hard cap emergency path)
                 t2d::ServerMessage endmsg;
