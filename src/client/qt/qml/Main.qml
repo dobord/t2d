@@ -530,7 +530,7 @@ Window {
                     ctx.fillRect(342, 0, 140, H);
                     // Animated tread pattern (skip if dead to reduce visual noise)
                     if (!isDead) {
-                        const PATTERN_STEP_PX = 22; // pixel spacing between tread rungs
+                        const PATTERN_STEP_PX = 66; // pixel spacing between tread rungs (tripled from 22)
                         const rungHeight = 6;
                         const light = '#d9d9d9';
                         const dark = '#202020';
