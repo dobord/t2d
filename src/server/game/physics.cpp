@@ -130,14 +130,23 @@ void apply_tracked_drive(const TankDriveInput &in, TankWithTurret &tank, float s
         frame.forward.x * e1 * base_drive_force * k_drive, frame.forward.y * e1 * base_drive_force * k_drive};
     b2Vec2 fwd_force2{
         frame.forward.x * e2 * base_drive_force * k_drive, frame.forward.y * e2 * base_drive_force * k_drive};
-    apply_force_at(fwd_force1, p1);
-    apply_force_at(fwd_force2, p2);
+    // Disable propulsion on broken track(s)
+    if (!tank.left_track_broken) {
+        apply_force_at(fwd_force1, p1);
+    }
+    if (!tank.right_track_broken) {
+        apply_force_at(fwd_force2, p2);
+    }
     if (b1 > 0.f || b2 > 0.f) {
         b2Vec2 brake_dir{-frame.forward.x, -frame.forward.y};
-        apply_force_at(
-            {brake_dir.x * b1 * base_drive_force * k_drive, brake_dir.y * b1 * base_drive_force * k_drive}, p1);
-        apply_force_at(
-            {brake_dir.x * b2 * base_drive_force * k_drive, brake_dir.y * b2 * base_drive_force * k_drive}, p2);
+        if (b1 > 0.f && !tank.left_track_broken) {
+            apply_force_at(
+                {brake_dir.x * b1 * base_drive_force * k_drive, brake_dir.y * b1 * base_drive_force * k_drive}, p1);
+        }
+        if (b2 > 0.f && !tank.right_track_broken) {
+            apply_force_at(
+                {brake_dir.x * b2 * base_drive_force * k_drive, brake_dir.y * b2 * base_drive_force * k_drive}, p2);
+        }
     }
     if (!is_drive && v > 0.01f) {
         float proj = (v_lin.x * frame.forward.x + v_lin.y * frame.forward.y) / v;
