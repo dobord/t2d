@@ -64,18 +64,17 @@ static void process_contacts(
         auto &proj = *pit;
         if (tank.entity_id == proj.owner)
             continue;
-        // Penetration requirement: tangential component of projectile velocity relative to contact normal
-        // must be >= 40% of initial muzzle speed. If not, projectile continues (no damage, not destroyed).
+        // Penetration requirement: normal component of projectile velocity INTO the target
+        // must be >= 40% of initial muzzle speed. We adjust sign based on which body is the projectile.
+        // Box2D manifold normal points from shapeA to shapeB. If projectile is shapeB, flip sign.
         b2BodyId proj_body = a_is_proj ? a : b;
         b2Vec2 vcur = b2Body_GetLinearVelocity(proj_body);
-        b2Vec2 n = ev.manifold.normal; // unit normal from shapeA to bodyB
+        b2Vec2 n = ev.manifold.normal; // unit normal from shapeA to shapeB
         float vdotn = vcur.x * n.x + vcur.y * n.y;
-        float tx = vcur.x - vdotn * n.x;
-        float ty = vcur.y - vdotn * n.y;
-        float tangential_speed = std::sqrt(tx * tx + ty * ty);
+        float into_speed = (a_is_proj ? vdotn : -vdotn); // speed component into the impacted body
         float required = 0.4f * proj.initial_speed;
-        if (tangential_speed + 1e-6f < required) {
-            // Skip damage & projectile destruction
+        if (into_speed + 1e-6f < required) {
+            // Not enough normal (penetrating) speed: skip damage & projectile destruction
             continue;
         }
         if (tank.hp > 0) {
