@@ -101,9 +101,12 @@ void apply_tracked_drive(const TankDriveInput &in, TankWithTurret &tank, float s
     float mg = mass * g; // used for drag, lateral resistance & rotational damping
     bool is_brake = in.brake;
     bool is_drive = std::fabs(in.drive_forward) > 0.0001f && !is_brake;
-    bool is_turn = std::fabs(in.turn) > 0.0001f && !is_brake;
+    bool is_turn = std::fabs(in.turn) > 0.0001f && !is_brake && !tank.left_track_broken && !tank.right_track_broken;
     float dy = std::clamp(in.drive_forward, -1.f, 1.f);
     float dx = std::clamp(in.turn, -1.f, 1.f);
+    if (!is_turn) {
+        dx = 0.f;
+    }
     float e1 = 0.f, e2 = 0.f, b1 = 0.f, b2 = 0.f;
     if (!is_brake) {
         if (dy >= 0) {
@@ -144,12 +147,12 @@ void apply_tracked_drive(const TankDriveInput &in, TankWithTurret &tank, float s
     }
     if (b1 > 0.f || b2 > 0.f) {
         b2Vec2 brake_dir{-frame.forward.x, -frame.forward.y};
-        if (b1 > 0.f && !tank.right_track_broken) { // visual right
+        if (b1 > 0.f) { // visual right
             apply_force_at(
                 {brake_dir.x * b1 * base_drive_force * k_drive, brake_dir.y * b1 * base_drive_force * k_drive},
                 p_visual_right);
         }
-        if (b2 > 0.f && !tank.left_track_broken) { // visual left
+        if (b2 > 0.f) { // visual left
             apply_force_at(
                 {brake_dir.x * b2 * base_drive_force * k_drive, brake_dir.y * b2 * base_drive_force * k_drive},
                 p_visual_left);
