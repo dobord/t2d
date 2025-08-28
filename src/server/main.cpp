@@ -166,6 +166,8 @@ struct ServerConfig
     // Map dimensions (world playable area). Walls will be created at perimeter.
     float map_width{80.f};
     float map_height{80.f};
+    // Test/diagnostic hook: when true, spawn players in a horizontal line (even spacing) instead of random.
+    bool force_line_spawn{false};
 };
 
 static ServerConfig load_config(const std::string &path)
@@ -248,6 +250,9 @@ static ServerConfig load_config(const std::string &path)
     }
     if (root["map_height"]) {
         cfg.map_height = root["map_height"].as<float>();
+    }
+    if (root["force_line_spawn"]) {
+        cfg.force_line_spawn = root["force_line_spawn"].as<bool>();
     }
     return cfg;
 }
@@ -379,7 +384,8 @@ int main(int argc, char **argv)
             cfg.disable_bot_ai,
             cfg.test_mode,
             cfg.map_width,
-            cfg.map_height}));
+            cfg.map_height,
+            cfg.force_line_spawn}));
     // Launch heartbeat monitor
     scheduler->spawn(heartbeat_monitor(scheduler, cfg.heartbeat_timeout_seconds));
     // Launch resource sampler (profiling / production lightweight)

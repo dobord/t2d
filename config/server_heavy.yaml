@@ -1,7 +1,7 @@
 # Server runtime configuration
 version: 1
-max_players_per_match: 4
-max_parallel_matches: 8
+max_players_per_match: 32
+max_parallel_matches: 4
 queue_soft_limit: 256
 fill_timeout_seconds: 5    # after this waiting match fills with bots (reduced for faster local matches)
 tick_rate: 60
