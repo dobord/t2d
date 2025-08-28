@@ -15,6 +15,8 @@ struct QtProjectileRow
     float y{};
     float prev_x{};
     float prev_y{};
+    float vx{}; // authoritative velocity (from snapshot)
+    float vy{};
 };
 
 class ProjectileModel : public QAbstractListModel
@@ -59,8 +61,11 @@ public:
     {
         std::scoped_lock lk(m_);
         if (row < 0 || (size_t)row >= rows_.size())
-            return 1.f; // default direction to avoid zero vector ambiguity
+            return 1.f; // default non-zero to avoid undefined angle
         const auto &r = rows_[row];
+        // Prefer authoritative velocity; fallback to position delta if near zero (e.g. very slow or missing)
+        if (std::fabs(r.vx) > 1e-6f || std::fabs(r.vy) > 1e-6f)
+            return r.vx;
         return (r.x - r.prev_x);
     }
 
@@ -70,6 +75,8 @@ public:
         if (row < 0 || (size_t)row >= rows_.size())
             return 0.f;
         const auto &r = rows_[row];
+        if (std::fabs(r.vx) > 1e-6f || std::fabs(r.vy) > 1e-6f)
+            return r.vy;
         return (r.y - r.prev_y);
     }
 
@@ -113,7 +120,7 @@ public:
         std::vector<QtProjectileRow> newRows;
         newRows.reserve(snap.projectiles_size());
         for (const auto &p : snap.projectiles())
-            newRows.push_back(QtProjectileRow{p.projectile_id(), p.x(), p.y(), p.x(), p.y()});
+            newRows.push_back(QtProjectileRow{p.projectile_id(), p.x(), p.y(), p.x(), p.y(), p.vx(), p.vy()});
         std::scoped_lock lk(m_);
         beginResetModel();
         rows_.swap(newRows);
@@ -157,11 +164,13 @@ public:
                 row.prev_y = row.y;
                 row.x = p.x();
                 row.y = p.y();
+                row.vx = p.vx();
+                row.vy = p.vy();
                 auto ix = index(i);
                 emit dataChanged(ix, ix);
             } else {
                 beginInsertRows({}, (int)rows_.size(), (int)rows_.size());
-                rows_.push_back(QtProjectileRow{p.projectile_id(), p.x(), p.y(), p.x(), p.y()});
+                rows_.push_back(QtProjectileRow{p.projectile_id(), p.x(), p.y(), p.x(), p.y(), p.vx(), p.vy()});
                 endInsertRows();
                 index_.emplace(p.projectile_id(), (int)rows_.size() - 1);
             }
