@@ -222,18 +222,21 @@ uint32_t fire_projectile_if_ready(
     // Base projectile velocity along barrel forward plus inherited velocity
     b2Vec2 proj_v{tf.forward.x * speed + inherit_v.x, tf.forward.y * speed + inherit_v.y};
     uint32_t pid = next_projectile_id;
-    create_projectile(world, muzzle.x, muzzle.y, proj_v.x, proj_v.y, density);
+    // Orient projectile to barrel forward direction (angle of turret forward vector)
+    float barrel_angle = std::atan2(tf.forward.y, tf.forward.x);
+    create_projectile(world, muzzle.x, muzzle.y, proj_v.x, proj_v.y, density, barrel_angle);
     tank.fire_cooldown_cur = tank.fire_cooldown_max;
     tank.ammo--;
     return pid;
 }
 
-b2BodyId create_projectile(World &w, float x, float y, float vx, float vy, float density)
+b2BodyId create_projectile(World &w, float x, float y, float vx, float vy, float density, float angle_rad)
 {
     b2BodyDef bd = b2DefaultBodyDef();
     bd.type = b2_dynamicBody;
     bd.position = {x, y};
     bd.isBullet = true;
+    bd.rotation = b2MakeRot(angle_rad);
     b2BodyId body = b2CreateBody(w.id, &bd);
     b2ShapeDef sd = b2DefaultShapeDef();
     sd.density = density;

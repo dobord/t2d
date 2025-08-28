@@ -77,7 +77,7 @@ uint32_t fire_projectile_if_ready(
     TankWithTurret &tank, World &world, float speed, float density, float forward_offset, uint32_t next_projectile_id);
 
 // Projectile / object creation (moved out-of-line to reduce header churn)
-b2BodyId create_projectile(World &w, float x, float y, float vx, float vy, float density);
+b2BodyId create_projectile(World &w, float x, float y, float vx, float vy, float density, float angle_rad);
 b2BodyId create_crate(World &w, float x, float y, float halfExtent);
 b2BodyId create_ammo_box(World &w, float x, float y, float radius);
 b2Vec2 get_body_position(b2BodyId id);
