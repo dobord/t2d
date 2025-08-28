@@ -67,7 +67,11 @@ struct MatchContext
         float vx;
         float vy;
         uint32_t owner;
+        float initial_speed{0.f};
+        float age{0.f}; // seconds since spawn
     };
+
+    float projectile_max_lifetime_sec{5.0f}; // lifespan cap after spawn
 
     std::vector<ProjectileSimple> projectiles;
     uint32_t next_projectile_id{1};

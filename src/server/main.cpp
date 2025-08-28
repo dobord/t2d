@@ -157,6 +157,7 @@ struct ServerConfig
     float reload_interval_sec{1.5f};
     float projectile_speed{10.0f};
     float projectile_density{0.02f};
+    float projectile_max_lifetime_sec{5.0f};
     float fire_cooldown_sec{0.25f};
     float hull_density{5.0f};
     float turret_density{2.5f};
@@ -228,6 +229,9 @@ static ServerConfig load_config(const std::string &path)
     }
     if (root["projectile_density"]) {
         cfg.projectile_density = root["projectile_density"].as<float>();
+    }
+    if (root["projectile_max_lifetime_sec"]) {
+        cfg.projectile_max_lifetime_sec = root["projectile_max_lifetime_sec"].as<float>();
     }
     if (root["fire_cooldown_sec"]) {
         cfg.fire_cooldown_sec = root["fire_cooldown_sec"].as<float>();
@@ -382,6 +386,7 @@ int main(int argc, char **argv)
             cfg.reload_interval_sec,
             cfg.projectile_speed,
             cfg.projectile_density,
+            cfg.projectile_max_lifetime_sec,
             cfg.fire_cooldown_sec,
             cfg.hull_density,
             cfg.turret_density,

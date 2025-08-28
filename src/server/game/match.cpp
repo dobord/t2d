@@ -64,6 +64,20 @@ static void process_contacts(
         auto &proj = *pit;
         if (tank.entity_id == proj.owner)
             continue;
+        // Penetration requirement: tangential component of projectile velocity relative to contact normal
+        // must be >= 40% of initial muzzle speed. If not, projectile continues (no damage, not destroyed).
+        b2BodyId proj_body = a_is_proj ? a : b;
+        b2Vec2 vcur = b2Body_GetLinearVelocity(proj_body);
+        b2Vec2 n = ev.manifold.normal; // unit normal from shapeA to bodyB
+        float vdotn = vcur.x * n.x + vcur.y * n.y;
+        float tx = vcur.x - vdotn * n.x;
+        float ty = vcur.y - vdotn * n.y;
+        float tangential_speed = std::sqrt(tx * tx + ty * ty);
+        float required = 0.4f * proj.initial_speed;
+        if (tangential_speed + 1e-6f < required) {
+            // Skip damage & projectile destruction
+            continue;
+        }
         if (tank.hp > 0) {
             uint16_t before = tank.hp;
             if (tank.hp <= damage_amount)
@@ -458,6 +472,8 @@ coro::task<void> run_match(std::shared_ptr<coro::io_scheduler> scheduler, std::s
                     slot.vx = dir.x * ctx->projectile_speed;
                     slot.vy = dir.y * ctx->projectile_speed;
                     slot.owner = adv.entity_id;
+                    slot.initial_speed = ctx->projectile_speed;
+                    slot.age = 0.f;
                     ctx->projectiles.push_back(slot); // copy lightweight POD
                     if (ctx->projectiles.size() > ctx->projectile_pool_hwm)
                         ctx->projectile_pool_hwm = static_cast<uint32_t>(ctx->projectiles.size());
@@ -530,13 +546,14 @@ coro::task<void> run_match(std::shared_ptr<coro::io_scheduler> scheduler, std::s
                 p.x += p.vx * dt;
                 p.y += p.vy * dt;
             }
+            p.age += dt;
         }
         // Simple bounds cull for projectiles (world prototype area +/-100)
         {
             std::vector<size_t> to_remove_bounds;
             for (size_t i = 0; i < ctx->projectiles.size(); ++i) {
                 auto &pr = ctx->projectiles[i];
-                if (std::fabs(pr.x) > 100.f || std::fabs(pr.y) > 100.f) {
+                if (pr.age > ctx->projectile_max_lifetime_sec || std::fabs(pr.x) > 100.f || std::fabs(pr.y) > 100.f) {
                     to_remove_bounds.push_back(i);
                 }
             }

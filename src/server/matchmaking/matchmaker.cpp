@@ -140,6 +140,7 @@ coro::task<void> run_matchmaker(std::shared_ptr<coro::io_scheduler> scheduler, M
             ctx->reload_interval_sec = cfg.reload_interval_sec;
             ctx->projectile_speed = cfg.projectile_speed;
             ctx->projectile_density = cfg.projectile_density;
+            ctx->projectile_max_lifetime_sec = cfg.projectile_max_lifetime_sec;
             ctx->fire_cooldown_sec = cfg.fire_cooldown_sec;
             ctx->hull_density = cfg.hull_density;
             ctx->turret_density = cfg.turret_density;
