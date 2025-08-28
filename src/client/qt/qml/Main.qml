@@ -531,7 +531,8 @@ Window {
                     // Animated tread pattern (skip if dead to reduce visual noise)
                     if (!isDead) {
                         const PATTERN_STEP_PX = 66; // pixel spacing between tread rungs (tripled from 22)
-                        const rungHeight = 6;
+                        // Rung thickness tripled (was 6) for more pronounced tread divisions
+                        const rungHeight = 18;
                         const light = '#d9d9d9';
                         const dark = '#202020';
                         function drawTreadColumn(x0, w, offsetPx) {
@@ -544,9 +545,9 @@ Window {
                                 // Rung base
                                 ctx.fillStyle = dark;
                                 ctx.fillRect(x0 + 6, yy, w - 12, rungHeight);
-                                // Highlight stripe
+                                // Highlight stripe (kept at 1/3 of rung height for contrast)
                                 ctx.fillStyle = light;
-                                ctx.fillRect(x0 + 6, yy + 1, w - 12, 2);
+                                ctx.fillRect(x0 + 6, yy + 2, w - 12, Math.max(2, Math.floor(rungHeight / 3)));
                             }
                         }
                         drawTreadColumn(0, 140, treadOffsetL);
