@@ -504,7 +504,9 @@ Window {
                     }
                 }
                 const SPRITE_FRONT_OFFSET = Math.PI / 2; // Protocol: 0° = +X (right). Sprite points up, so rotate +90° to align sprite front with +X.
-                function drawTank(ctx, wx, wy, hullRad, turretRad, isOwn, isDead) {
+                // Draw a single tank with animated treads. Track animation speed matches linear velocity at the
+                // midpoint of each track: v_track = v_forward ± omega * trackLateralOffset.
+                function drawTank(ctx, wx, wy, hullRad, turretRad, isOwn, isDead, treadOffsetL, treadOffsetR) {
                     // Convert protocol angle (0°=+X) to sprite angle (0 sprite up) via SPRITE_FRONT_OFFSET.
                     const W = 480, H = 640;
                     const scalePix = 6.4 / H;
@@ -513,9 +515,34 @@ Window {
                     ctx.rotate(hullRad + SPRITE_FRONT_OFFSET);
                     ctx.scale(scalePix, scalePix);
                     ctx.translate(-W / 2, -H / 2);
+                    // Base track rectangles
                     ctx.fillStyle = isDead ? '#2a2a2a' : '#424141';
                     ctx.fillRect(0, 0, 140, H);
                     ctx.fillRect(342, 0, 140, H);
+                    // Animated tread pattern (skip if dead to reduce visual noise)
+                    if (!isDead) {
+                        const PATTERN_STEP_PX = 22; // pixel spacing between tread rungs
+                        const rungHeight = 6;
+                        const light = '#d9d9d9';
+                        const dark = '#202020';
+                        function drawTreadColumn(x0, w, offsetPx) {
+                            // Clamp and wrap offset
+                            offsetPx = ((offsetPx % PATTERN_STEP_PX) + PATTERN_STEP_PX) % PATTERN_STEP_PX;
+                            for (let y = -PATTERN_STEP_PX; y < H + PATTERN_STEP_PX; y += PATTERN_STEP_PX) {
+                                const yy = y + offsetPx;
+                                if (yy < -rungHeight || yy > H)
+                                    continue;
+                                // Rung base
+                                ctx.fillStyle = dark;
+                                ctx.fillRect(x0 + 6, yy, w - 12, rungHeight);
+                                // Highlight stripe
+                                ctx.fillStyle = light;
+                                ctx.fillRect(x0 + 6, yy + 1, w - 12, 2);
+                            }
+                        }
+                        drawTreadColumn(0, 140, treadOffsetL);
+                        drawTreadColumn(342, 140, treadOffsetR);
+                    }
                     ctx.fillStyle = isDead ? (isOwn ? '#2f3a2f' : '#323232') : (isOwn ? '#5c6e5c' : '#6f6e6e');
                     ctx.strokeStyle = isDead ? '#1e1e1e' : '#2e2e2e';
                     ctx.lineWidth = 2;
@@ -639,13 +666,68 @@ Window {
                     ctx.fillRect(0, 0, PX_W, PX_H);
                     ctx.restore();
                 }
-                for (let i = 0; i < entityModel.count(); ++i) {
-                    const wx = entityModel.interpX(i, a);
-                    const wy = entityModel.interpY(i, a);
+                // Persistent per-frame tracking arrays (attached to rootItem for lifetime)
+                if (!rootItem._treadInit) {
+                    rootItem._treadInit = true;
+                    rootItem._treadPrevX = [];
+                    rootItem._treadPrevY = [];
+                    rootItem._treadPrevHull = [];
+                    rootItem._treadOffL = [];
+                    rootItem._treadOffR = [];
+                    rootItem._treadLastMs = Date.now();
+                }
+                const nowMsTracks = Date.now();
+                let dtTracks = (nowMsTracks - rootItem._treadLastMs) / 1000.0;
+                if (dtTracks <= 0 || dtTracks > 0.25)
+                    dtTracks = 1 / 60; // fallback clamp
+                rootItem._treadLastMs = nowMsTracks;
+                const TRACK_LATERAL_OFFSET_WORLD = 1.7; // distance from center to each track midpoint (approx)
+                const WORLD_LENGTH_PER_TEXTURE_REPEAT = 0.55; // tune visual density
+                const PX_PER_WORLD = 640 / 6.4; // sprite mapping (H / worldHeight)
+                // Ensure arrays sized
+                const ec = entityModel.count();
+                function normAngle(a) {
+                    while (a > Math.PI)
+                        a -= Math.PI * 2;
+                    while (a < -Math.PI)
+                        a += Math.PI * 2;
+                    return a;
+                }
+                for (let i = 0; i < ec; ++i) {
+                    if (rootItem._treadPrevX.length <= i) {
+                        rootItem._treadPrevX[i] = entityModel.interpX(i, a);
+                        rootItem._treadPrevY[i] = entityModel.interpY(i, a);
+                        rootItem._treadPrevHull[i] = entityModel.interpHullAngleRad(i, a);
+                        rootItem._treadOffL[i] = 0;
+                        rootItem._treadOffR[i] = 0;
+                    }
+                    const x = entityModel.interpX(i, a);
+                    const y = entityModel.interpY(i, a);
                     const hullRad = entityModel.interpHullAngleRad(i, a);
                     const turretRad = entityModel.interpTurretAngleRad(i, a);
                     const dead = entityModel.isDead(i);
-                    drawTank(ctx, wx, wy, hullRad, turretRad, i === ownIndex, dead);
+                    const dx = x - rootItem._treadPrevX[i];
+                    const dy = y - rootItem._treadPrevY[i];
+                    const forwardX = Math.cos(hullRad);
+                    const forwardY = Math.sin(hullRad);
+                    const vForward = (dx * forwardX + dy * forwardY) / dtTracks; // world units / s
+                    const dHull = normAngle(hullRad - rootItem._treadPrevHull[i]);
+                    const omega = dHull / dtTracks; // rad/s
+                    // Track forward speeds at midpoint (world units / s)
+                    const vLeft = vForward - omega * TRACK_LATERAL_OFFSET_WORLD;
+                    const vRight = vForward + omega * TRACK_LATERAL_OFFSET_WORLD;
+                    // Convert incremental displacement to pixel offset for pattern
+                    rootItem._treadOffL[i] += (vLeft * dtTracks / WORLD_LENGTH_PER_TEXTURE_REPEAT) * (640); // scale then wrap
+                    rootItem._treadOffR[i] += (vRight * dtTracks / WORLD_LENGTH_PER_TEXTURE_REPEAT) * (640);
+                    // Wrap to keep numbers bounded
+                    if (rootItem._treadOffL[i] > 100000 || rootItem._treadOffL[i] < -100000)
+                        rootItem._treadOffL[i] = rootItem._treadOffL[i] % 100000;
+                    if (rootItem._treadOffR[i] > 100000 || rootItem._treadOffR[i] < -100000)
+                        rootItem._treadOffR[i] = rootItem._treadOffR[i] % 100000;
+                    drawTank(ctx, x, y, hullRad, turretRad, i === ownIndex, dead, rootItem._treadOffL[i], rootItem._treadOffR[i]);
+                    rootItem._treadPrevX[i] = x;
+                    rootItem._treadPrevY[i] = y;
+                    rootItem._treadPrevHull[i] = hullRad;
                 }
                 // Ammo boxes (simple square with plus sign)
                 if (typeof ammoBoxModel !== 'undefined') {
