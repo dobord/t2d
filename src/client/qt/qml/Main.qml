@@ -538,8 +538,15 @@ Window {
                         ctx.fillRect(46, 576, 80, 23);
                         ctx.fillRect(358, 576, 80, 23);
                     }
-                    drawRoundedRect(ctx, 65, 49, 43, 30, 15, '#f1f0f0');
-                    drawRoundedRect(ctx, 377, 49, 43, 30, 15, '#f1f0f0');
+                    // Front headlights: disable when dead (no white glow after destruction)
+                    if (!isDead) {
+                        drawRoundedRect(ctx, 65, 49, 43, 30, 15, '#f1f0f0');
+                        drawRoundedRect(ctx, 377, 49, 43, 30, 15, '#f1f0f0');
+                    } else {
+                        // Optionally draw dimmed placeholder to retain silhouette (very dark)
+                        drawRoundedRect(ctx, 65, 49, 43, 30, 15, '#1a1a1a');
+                        drawRoundedRect(ctx, 377, 49, 43, 30, 15, '#1a1a1a');
+                    }
                     ctx.save();
                     ctx.translate(W / 2, H / 2);
                     ctx.rotate(turretRad - hullRad); // both already protocol-space; relative rotation unaffected by offset
