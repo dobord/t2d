@@ -533,7 +533,7 @@ Window {
                         const PATTERN_STEP_PX = 66; // pixel spacing between tread rungs (tripled from 22)
                         // Rung thickness: previously 6 -> tripled to 18 -> now +50% => 27 for stronger presence
                         const rungHeight = 27;
-                        const light = '#9a9a9a'; // darkened highlight
+                        const light = '#6a6a6a'; // further darkened highlight (was #9a9a9a)
                         const dark = '#121212'; // darker base
                         function drawTreadColumn(x0, w, offsetPx) {
                             // Clamp and wrap offset
@@ -694,8 +694,7 @@ Window {
                 const TRACK_LATERAL_OFFSET_WORLD = 1.7; // distance from center to each track midpoint (approx)
                 // Pixel/world mapping inside tank sprite space: 6.4 world units -> 640 px => 100 px per world unit.
                 const PX_PER_WORLD = 640 / 6.4; // = 100
-                // Tread speed scale: 1.0 = physical (rung spacing ~0.66 world => 66 px). Adjust <1 to slow down.
-                const TREAD_SPEED_SCALE = 1.0; // reduced to slow visual motion (tune 0.2..0.5)
+                // Tread speed: fixed at physical scale (pixels = v * dt * PX_PER_WORLD). Removed tuning constant.
                 // Ensure arrays sized
                 const ec = entityModel.count();
                 function normAngle(a) {
@@ -731,8 +730,8 @@ Window {
                     // Convert incremental displacement to pixel offset for pattern.
                     // Previous version greatly over-scaled (factor ~11.6×). Now: pixels = v * dt * PX_PER_WORLD * scale.
                     // Invert sign so visual tread appears to move backward relative to forward hull motion.
-                    rootItem._treadOffL[i] -= vLeft * dtTracks * PX_PER_WORLD * TREAD_SPEED_SCALE; // apply speed scale
-                    rootItem._treadOffR[i] -= vRight * dtTracks * PX_PER_WORLD * TREAD_SPEED_SCALE; // apply speed scale
+                    rootItem._treadOffL[i] -= vLeft * dtTracks * PX_PER_WORLD; // fixed scale = 1.0
+                    rootItem._treadOffR[i] -= vRight * dtTracks * PX_PER_WORLD; // fixed scale = 1.0
                     // Wrap to keep numbers bounded
                     if (rootItem._treadOffL[i] > 100000 || rootItem._treadOffL[i] < -100000)
                         rootItem._treadOffL[i] = rootItem._treadOffL[i] % 100000;
