@@ -208,6 +208,15 @@ public:
         tickRate_ = tickRate;
         fallbackTicks_ = fallbackTicks;
         matchOver_ = false;
+        // Reset auto-return / requeue state for a fresh match so that auto requeue works every time.
+        if (autoRequeueTriggered_ || requeueRequested_ || autoReturnSeconds_ != 0) {
+            autoRequeueTriggered_ = false;
+            requeueRequested_ = false;
+            if (autoReturnSeconds_ != 0) {
+                autoReturnSeconds_ = 0;
+                emit autoReturnSecondsChanged();
+            }
+        }
         serverTickSeen_ = false;
         if (tickRate_ > 0 && fallbackTicks_ > 0) {
             int secs = (int)(fallbackTicks_ / tickRate_);
