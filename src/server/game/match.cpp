@@ -163,14 +163,18 @@ static void process_contacts(
             constexpr float kSideLateralThresh = 0.5f; // half a meter lateral
             bool side = std::fabs(lateral) > kSideLateralThresh && !frontal;
             if (side) {
-                bool hit_right_side = lateral > 0.f; // positive lateral => RIGHT (dot-based)
-                // Diagnostic: detect if cross sign implies opposite side (should be cross>0 => LEFT =>
-                // hit_right_side=false)
-                bool crossSuggestsRight = cross < 0.f; // since cross>0 means LEFT
+                // Visual alignment adjustment:
+                // physics 'right' = (fwd.y, -fwd.x). For default facing +X this points toward world -Y, while the
+                // sprite's perceived RIGHT tread lies at world +Y (because sprite art is rotated +90° to map front
+                // to +X). Thus physics lateral sign is inverted relative to visual expectation. Flip mapping so
+                // damage terminology matches what the player sees: negative lateral => visual RIGHT.
+                bool hit_right_side = lateral < 0.f; // flipped: physics RIGHT (lateral>0) becomes visual LEFT
+                // Cross sign: cross>0 => physics-left => visual-right => should imply hit_right_side=true after flip.
+                bool crossSuggestsRight = cross > 0.f;
                 if (crossSuggestsRight != hit_right_side && std::fabs(cross) > 0.2f && std::fabs(lateral) > 0.2f) {
                     t2d::log::warn(
-                        "[damage] side mapping discrepancy tank={} lateral={} cross={} hit_right={} (dot vs cross sign "
-                        "mismatch)",
+                        "[damage] side mapping discrepancy tank={} lateral={} cross={} hit_right={} (expected cross>0 "
+                        "=> right)",
                         tank.entity_id,
                         lateral,
                         cross,
