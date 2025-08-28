@@ -32,6 +32,8 @@ struct MatchConfig
     bool test_mode{true};
     float map_width{80.f};
     float map_height{80.f};
+    // Test hook: when true, spawn players in a horizontal line centered at origin (even spacing) instead of random.
+    bool force_line_spawn{false};
 };
 
 coro::task<void> run_matchmaker(std::shared_ptr<coro::io_scheduler> scheduler, MatchConfig cfg);

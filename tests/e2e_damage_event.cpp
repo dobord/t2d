@@ -88,6 +88,7 @@ int main(int argc, char **argv)
     auto sched = coro::default_executor::io_executor();
     uint16_t port = 41060;
     t2d::mm::MatchConfig mc{2, 1, 30};
+    mc.force_line_spawn = true; // deterministic opposite line spawn
     if (argc > 1) {
         t2d::test::apply_match_config_overrides(mc, argv[1]);
     }

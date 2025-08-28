@@ -56,6 +56,8 @@ inline void apply_match_config_overrides(t2d::mm::MatchConfig &cfg, const std::s
             cfg.map_width = root["map_width"].as<float>();
         if (root["map_height"])
             cfg.map_height = root["map_height"].as<float>();
+        if (root["force_line_spawn"])
+            cfg.force_line_spawn = root["force_line_spawn"].as<bool>();
     } catch (const std::exception &) {
         // Swallow errors: tests fall back to embedded defaults if file missing or invalid.
     }

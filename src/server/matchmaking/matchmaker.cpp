@@ -149,55 +149,80 @@ coro::task<void> run_matchmaker(std::shared_ptr<coro::io_scheduler> scheduler, M
             ctx->map_width = cfg.map_width;
             ctx->map_height = cfg.map_height;
             ctx->physics_world = std::make_unique<t2d::phys::World>(b2Vec2{0.f, 0.f});
-            // Random non-overlapping spawn distribution inside map bounds.
-            // Simple Poisson-like rejection sampling with limited attempts.
+            // Spawn distribution (random or forced line for tests)
             uint32_t eid = 1;
-            std::mt19937 rng(seed);
-            float safe_half_w = std::max(1.f, ctx->map_width * 0.5f - 5.f);
-            float safe_half_h = std::max(1.f, ctx->map_height * 0.5f - 5.f);
-            std::uniform_real_distribution<float> dx(-safe_half_w, safe_half_w);
-            std::uniform_real_distribution<float> dy(-safe_half_h, safe_half_h);
-            const float min_dist = 12.f; // separation to avoid overlap (tank ~6 world units long incl. turret)
-            std::vector<std::pair<float, float>> placed;
-            placed.reserve(group.size());
-            for (auto &s : group) {
-                float x = 0.f, y = 0.f;
-                bool ok = false;
-                for (int attempt = 0; attempt < 200 && !ok; ++attempt) {
-                    x = dx(rng);
-                    y = dy(rng);
-                    ok = true;
-                    for (auto &pp : placed) {
-                        float ddx = x - pp.first;
-                        float ddy = y - pp.second;
-                        if ((ddx * ddx + ddy * ddy) < (min_dist * min_dist)) {
-                            ok = false;
-                            break;
+            if (cfg.force_line_spawn) {
+                // Evenly spaced along X axis centered at origin; y=0. Tanks face default orientation.
+                float spacing = 20.f;
+                size_t n = group.size();
+                float start = -((static_cast<float>(n) - 1.f) * spacing * 0.5f);
+                size_t idx = 0;
+                for (auto &s : group) {
+                    float x = start + spacing * static_cast<float>(idx++);
+                    float y = 0.f;
+                    auto phys_tank = t2d::phys::create_tank_with_turret(
+                        *ctx->physics_world, x, y, eid++, ctx->hull_density, ctx->turret_density);
+                    ctx->tanks.push_back(phys_tank);
+                    s->tank_entity_id = phys_tank.entity_id;
+                    t2d::ServerMessage smsg;
+                    auto *ms = smsg.mutable_match_start();
+                    ms->set_match_id(ctx->match_id);
+                    ms->set_tick_rate(cfg.tick_rate);
+                    ms->set_seed(seed);
+                    ms->set_initial_player_count(static_cast<uint32_t>(group.size()));
+                    ms->set_disable_bot_fire(cfg.disable_bot_fire);
+                    ms->set_my_entity_id(s->tank_entity_id);
+                    mgr.push_message(s, smsg);
+                    t2d::log::info(std::string("MatchStart queued session=") + s->session_id);
+                }
+            } else {
+                // Random non-overlapping spawn distribution inside map bounds.
+                // Simple Poisson-like rejection sampling with limited attempts.
+                std::mt19937 rng(seed);
+                float safe_half_w = std::max(1.f, ctx->map_width * 0.5f - 5.f);
+                float safe_half_h = std::max(1.f, ctx->map_height * 0.5f - 5.f);
+                std::uniform_real_distribution<float> dx(-safe_half_w, safe_half_w);
+                std::uniform_real_distribution<float> dy(-safe_half_h, safe_half_h);
+                const float min_dist = 12.f; // separation to avoid overlap (tank ~6 world units long incl. turret)
+                std::vector<std::pair<float, float>> placed;
+                placed.reserve(group.size());
+                for (auto &s : group) {
+                    float x = 0.f, y = 0.f;
+                    bool ok = false;
+                    for (int attempt = 0; attempt < 200 && !ok; ++attempt) {
+                        x = dx(rng);
+                        y = dy(rng);
+                        ok = true;
+                        for (auto &pp : placed) {
+                            float ddx = x - pp.first;
+                            float ddy = y - pp.second;
+                            if ((ddx * ddx + ddy * ddy) < (min_dist * min_dist)) {
+                                ok = false;
+                                break;
+                            }
                         }
                     }
+                    if (!ok) {
+                        // fallback spiral placement
+                        x = static_cast<float>(placed.size()) * 6.f;
+                        y = 0.f;
+                    }
+                    placed.emplace_back(x, y);
+                    auto phys_tank = t2d::phys::create_tank_with_turret(
+                        *ctx->physics_world, x, y, eid++, ctx->hull_density, ctx->turret_density);
+                    ctx->tanks.push_back(phys_tank);
+                    s->tank_entity_id = phys_tank.entity_id;
+                    t2d::ServerMessage smsg;
+                    auto *ms = smsg.mutable_match_start();
+                    ms->set_match_id(ctx->match_id);
+                    ms->set_tick_rate(cfg.tick_rate);
+                    ms->set_seed(seed);
+                    ms->set_initial_player_count(static_cast<uint32_t>(group.size()));
+                    ms->set_disable_bot_fire(cfg.disable_bot_fire);
+                    ms->set_my_entity_id(s->tank_entity_id);
+                    mgr.push_message(s, smsg);
+                    t2d::log::info(std::string("MatchStart queued session=") + s->session_id);
                 }
-                if (!ok) {
-                    // fallback spiral placement
-                    x = static_cast<float>(placed.size()) * 6.f;
-                    y = 0.f;
-                }
-                placed.emplace_back(x, y);
-                auto phys_tank = t2d::phys::create_tank_with_turret(
-                    *ctx->physics_world, x, y, eid++, ctx->hull_density, ctx->turret_density);
-                ctx->tanks.push_back(phys_tank);
-                s->tank_entity_id = phys_tank.entity_id;
-                t2d::ServerMessage smsg;
-                auto *ms = smsg.mutable_match_start();
-                ms->set_match_id(ctx->match_id);
-                ms->set_tick_rate(cfg.tick_rate);
-                ms->set_seed(seed);
-                // Provide initial player count (including bots) so client can derive hard-cap timer.
-                ms->set_initial_player_count(static_cast<uint32_t>(group.size()));
-                ms->set_disable_bot_fire(cfg.disable_bot_fire);
-                // Per-recipient entity id (own tank)
-                ms->set_my_entity_id(s->tank_entity_id);
-                mgr.push_message(s, smsg);
-                t2d::log::info(std::string("MatchStart queued session=") + s->session_id);
             }
             // Baseline snapshot at server_tick=0 (only to real players)
             {
