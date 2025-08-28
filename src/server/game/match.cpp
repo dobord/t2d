@@ -73,27 +73,51 @@ static void process_contacts(
         float vdotn = vcur.x * n.x + vcur.y * n.y;
         float speed_mag = std::sqrt(vcur.x * vcur.x + vcur.y * vcur.y);
         float into_speed = (a_is_proj ? vdotn : -vdotn); // speed component into the impacted body
+        // Additional diagnostic: compute direction from projectile center to tank center and project velocity on it.
+        b2BodyId tank_body_dbg = a_is_proj ? b : a;
+        b2Vec2 ppos = b2Body_GetPosition(proj_body);
+        b2Vec2 tpos = b2Body_GetPosition(tank_body_dbg);
+        b2Vec2 to_tank{tpos.x - ppos.x, tpos.y - ppos.y};
+        float to_len = std::sqrt(to_tank.x * to_tank.x + to_tank.y * to_tank.y);
+        float center_into = 0.f;
+        if (to_len > 1e-6f) {
+            to_tank.x /= to_len;
+            to_tank.y /= to_len;
+            center_into = vcur.x * to_tank.x + vcur.y * to_tank.y; // should be >0 if moving toward tank center
+        }
         float required = 0.4f * proj.initial_speed;
         if (into_speed + 1e-6f < required) {
             // Not enough normal (penetrating) speed: skip damage & projectile destruction
             t2d::log::trace(
-                "[proj_penetration] proj={} tank={} into_speed={} speed={} required={} initial={} result=NO",
+                "[proj_penetration] proj={} tank={} into_speed={} center_into={} speed={} required={} initial={} "
+                "vdotn={} n=({}, {}) a_is_proj={} result=NO",
                 proj.id,
                 tank.entity_id,
                 into_speed,
+                center_into,
                 speed_mag,
                 required,
-                proj.initial_speed);
+                proj.initial_speed,
+                vdotn,
+                n.x,
+                n.y,
+                a_is_proj);
             continue;
         }
         t2d::log::trace(
-            "[proj_penetration] proj={} tank={} into_speed={} speed={} required={} initial={} result=YES",
+            "[proj_penetration] proj={} tank={} into_speed={} center_into={} speed={} required={} initial={} vdotn={} "
+            "n=({}, {}) a_is_proj={} result=YES",
             proj.id,
             tank.entity_id,
             into_speed,
+            center_into,
             speed_mag,
             required,
-            proj.initial_speed);
+            proj.initial_speed,
+            vdotn,
+            n.x,
+            n.y,
+            a_is_proj);
         if (tank.hp > 0) {
             uint16_t before = tank.hp;
             if (tank.hp <= damage_amount)
