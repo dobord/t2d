@@ -37,6 +37,9 @@ struct MatchConfig
     // Test hook: when true, spawn players in a horizontal line centered at origin (even spacing) instead of random.
     bool force_line_spawn{false};
     bool persist_destroyed_tanks{false};
+    // Damage system thresholds
+    uint32_t track_break_hits{1}; // hits to a side before that track breaks
+    uint32_t turret_disable_front_hits{2}; // frontal hits to disable turret motor
 };
 
 coro::task<void> run_matchmaker(std::shared_ptr<coro::io_scheduler> scheduler, MatchConfig cfg);

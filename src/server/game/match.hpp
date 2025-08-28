@@ -136,6 +136,9 @@ struct MatchContext
     std::string snapshot_scratch;
     // When true, tanks with hp==0 remain in snapshots (corpses) until match end.
     bool persist_destroyed_tanks{false};
+    // Damage thresholds (copied from match config)
+    uint32_t track_break_hits{1};
+    uint32_t turret_disable_front_hits{2};
 };
 
 inline float movement_speed()

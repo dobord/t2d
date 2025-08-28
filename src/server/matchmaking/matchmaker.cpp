@@ -150,6 +150,8 @@ coro::task<void> run_matchmaker(std::shared_ptr<coro::io_scheduler> scheduler, M
             ctx->map_width = cfg.map_width;
             ctx->map_height = cfg.map_height;
             ctx->persist_destroyed_tanks = cfg.persist_destroyed_tanks;
+            ctx->track_break_hits = cfg.track_break_hits;
+            ctx->turret_disable_front_hits = cfg.turret_disable_front_hits;
             ctx->physics_world = std::make_unique<t2d::phys::World>(b2Vec2{0.f, 0.f});
             // Spawn distribution (random or forced line for tests)
             uint32_t eid = 1;
@@ -250,6 +252,9 @@ coro::task<void> run_matchmaker(std::shared_ptr<coro::io_scheduler> scheduler, M
                     ts->set_turret_angle(tur_deg);
                     ts->set_hp(adv.hp);
                     ts->set_ammo(adv.ammo);
+                    ts->set_track_left_broken(adv.left_track_broken);
+                    ts->set_track_right_broken(adv.right_track_broken);
+                    ts->set_turret_disabled(adv.turret_disabled);
                     ctx->last_sent_tanks.push_back(
                         {adv.entity_id, pos.x, pos.y, hull_deg, tur_deg, adv.hp, adv.ammo, true});
                 }

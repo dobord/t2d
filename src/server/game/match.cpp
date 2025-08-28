@@ -120,6 +120,47 @@ static void process_contacts(
             n.y,
             a_is_proj);
         if (tank.hp > 0) {
+            // Determine impact orientation relative to hull forward to attribute subsystem hits.
+            // Hull forward vector from body transform.
+            b2Transform hull_xf = b2Body_GetTransform(tank.hull);
+            b2Vec2 hull_fwd{hull_xf.q.c, hull_xf.q.s};
+            // Vector from projectile pre-position to impact body center (approx direction of travel into tank)
+            b2Vec2 impact_dir = {hull_fwd.x, hull_fwd.y}; // default forward
+            // Classify frontal vs side: dot with hull forward.
+            float dot_forward = n.x * hull_fwd.x + n.y * hull_fwd.y;
+            bool frontal = dot_forward < -0.5f; // normal points from shapeA->shapeB; sign heuristic
+            // Side classification for tracks: compare contact normal to left/right directions (perpendicular)
+            b2Vec2 hull_right{hull_fwd.y, -hull_fwd.x};
+            float dot_right = n.x * hull_right.x + n.y * hull_right.y;
+            bool side = std::fabs(dot_right) > 0.5f && !frontal;
+            if (side) {
+                bool right_side = dot_right < 0.f; // normal pointing roughly toward +right means hit on left side
+                if (right_side) {
+                    if (!tank.right_track_broken) {
+                        ++tank.right_track_hits;
+                        if (tank.right_track_hits >= ctx.track_break_hits) {
+                            tank.right_track_broken = true;
+                        }
+                    }
+                } else {
+                    if (!tank.left_track_broken) {
+                        ++tank.left_track_hits;
+                        if (tank.left_track_hits >= ctx.track_break_hits) {
+                            tank.left_track_broken = true;
+                        }
+                    }
+                }
+            } else if (frontal) {
+                if (!tank.turret_disabled) {
+                    ++tank.frontal_turret_hits;
+                    if (tank.frontal_turret_hits >= ctx.turret_disable_front_hits
+                        && b2Joint_IsValid(tank.turret_joint)) {
+                        b2RevoluteJoint_EnableMotor(tank.turret_joint, false);
+                        b2RevoluteJoint_SetMotorSpeed(tank.turret_joint, 0.f);
+                        tank.turret_disabled = true;
+                    }
+                }
+            }
             uint16_t before = tank.hp;
             if (tank.hp <= damage_amount)
                 tank.hp = 0;
@@ -472,18 +513,30 @@ coro::task<void> run_match(std::shared_ptr<coro::io_scheduler> scheduler, std::s
             drive.drive_forward = std::clamp(input.move_dir, -1.f, 1.f);
             drive.turn = std::clamp(input.turn_dir, -1.f, 1.f);
             drive.brake = input.brake; // new brake input
+            // Mobility degradation: if one track broken, halve forward & turn authority; if both broken, no movement.
+            if (adv.left_track_broken && adv.right_track_broken) {
+                drive.drive_forward = 0.f;
+                drive.turn = 0.f;
+            } else if (adv.left_track_broken || adv.right_track_broken) {
+                drive.drive_forward *= 0.5f;
+                drive.turn *= 0.5f;
+            }
             t2d::phys::apply_tracked_drive(drive, adv, dt);
 
             // Turret aim: accumulate turret angle (convert from degrees to target world angle incrementally)
             if (std::fabs(input.turret_turn) > 0.0001f) {
-                // current turret world angle
-                b2Transform xt = b2Body_GetTransform(adv.turret);
-                float current = std::atan2(xt.q.s, xt.q.c);
-                float desired =
-                    current + input.turret_turn * t2d::game::turret_turn_speed_deg() * dt * float(M_PI / 180.0);
-                t2d::phys::TurretAimInput aim{};
-                aim.target_angle_world = desired;
-                t2d::phys::update_turret_aim(aim, adv);
+                if (adv.turret_disabled) {
+                    // Ignore turret input when disabled
+                } else {
+                    // current turret world angle
+                    b2Transform xt = b2Body_GetTransform(adv.turret);
+                    float current = std::atan2(xt.q.s, xt.q.c);
+                    float desired =
+                        current + input.turret_turn * t2d::game::turret_turn_speed_deg() * dt * float(M_PI / 180.0);
+                    t2d::phys::TurretAimInput aim{};
+                    aim.target_angle_world = desired;
+                    t2d::phys::update_turret_aim(aim, adv);
+                }
             }
             if (input.fire && adv.ammo > 0) {
                 float forward_offset = 4.4f; // increased to avoid barrel overlap
@@ -735,6 +788,9 @@ coro::task<void> run_match(std::shared_ptr<coro::io_scheduler> scheduler, std::s
                     cache.alive = adv.hp > 0;
                     ts->set_hp(adv.hp);
                     ts->set_ammo(adv.ammo);
+                    ts->set_track_left_broken(adv.left_track_broken);
+                    ts->set_track_right_broken(adv.right_track_broken);
+                    ts->set_turret_disabled(adv.turret_disabled);
                 }
                 // above loop sets hp/ammo, continue existing code path (skip duplicate at end)
                 for (auto &adv_unused_for_scope : ctx->tanks) {
@@ -857,6 +913,9 @@ coro::task<void> run_match(std::shared_ptr<coro::io_scheduler> scheduler, std::s
 #endif
                         ts->set_hp(adv.hp);
                         ts->set_ammo(adv.ammo);
+                        ts->set_track_left_broken(adv.left_track_broken);
+                        ts->set_track_right_broken(adv.right_track_broken);
+                        ts->set_turret_disabled(adv.turret_disabled);
                         prev.x = pos.x;
                         prev.y = pos.y;
                         prev.hull_angle = hull_deg;

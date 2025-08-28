@@ -20,6 +20,8 @@
 | reload_interval_sec | float | 3.0 | Seconds to regenerate 1 ammo |
 | hull_density | float | 1.0 | Tank hull body physics density |
 | turret_density | float | 0.5 | Tank turret body physics density |
+| track_break_hits | uint | 1 | Hits to a side track before it breaks (mobility reduction) |
+| turret_disable_front_hits | uint | 2 | Frontal hits required to disable turret motor |
 | disable_bot_fire | bool | false | When true bots never fire (overrides bot cadence) |
 | test_mode | bool | false | Enables internal test-oriented clamps (faster bots, higher damage) |
 | map_width | float | 100 | World width in world units (earlier prototype used 300) |

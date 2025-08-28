@@ -34,3 +34,5 @@ map_width: 100
 map_height: 100
 force_line_spawn: false  # test hook: when true spawn tanks in a horizontal line (deterministic spawn layout)
 persist_destroyed_tanks: true  # when true, destroyed tanks remain as corpses until match end
+track_break_hits: 1            # hits required to break a track
+turret_disable_front_hits: 2   # frontal hits required to disable turret rotation

@@ -46,6 +46,13 @@ struct TankWithTurret
     uint16_t ammo{20};
     float fire_cooldown_max{0.25f}; // configured per match from fire_cooldown_sec
     float fire_cooldown_cur{0.0f};
+    // Damage subsystem
+    uint32_t left_track_hits{0};
+    uint32_t right_track_hits{0};
+    bool left_track_broken{false};
+    bool right_track_broken{false};
+    uint32_t frontal_turret_hits{0};
+    bool turret_disabled{false};
 };
 
 struct TankDriveInput

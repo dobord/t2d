@@ -61,6 +61,10 @@ message TankState {
   float turret_angle = 5;
   uint32 hp = 6;
   uint32 ammo = 7;
+  // Damage subsystem (added later; absent = false for older clients)
+  bool track_left_broken = 8;
+  bool track_right_broken = 9;
+  bool turret_disabled = 10;
 }
 
 message ProjectileState {

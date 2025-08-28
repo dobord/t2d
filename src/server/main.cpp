@@ -171,6 +171,8 @@ struct ServerConfig
     bool force_line_spawn{false};
     // When true, destroyed tanks remain in the world (corpses) until match end (do not remove from snapshots).
     bool persist_destroyed_tanks{false};
+    uint32_t track_break_hits{1};
+    uint32_t turret_disable_front_hits{2};
 };
 
 static ServerConfig load_config(const std::string &path)
@@ -262,6 +264,12 @@ static ServerConfig load_config(const std::string &path)
     }
     if (root["persist_destroyed_tanks"]) {
         cfg.persist_destroyed_tanks = root["persist_destroyed_tanks"].as<bool>();
+    }
+    if (root["track_break_hits"]) {
+        cfg.track_break_hits = root["track_break_hits"].as<uint32_t>();
+    }
+    if (root["turret_disable_front_hits"]) {
+        cfg.turret_disable_front_hits = root["turret_disable_front_hits"].as<uint32_t>();
     }
     return cfg;
 }
