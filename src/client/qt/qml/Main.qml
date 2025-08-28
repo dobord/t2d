@@ -560,21 +560,11 @@ Window {
                     ctx.rect(28, 41, 424, 558);
                     ctx.fill();
                     ctx.stroke();
-                    // Rear brake lights: brighten & glow when local player braking
+                    // Rear brake lights: flat (no glow) per request to remove shadowBlur
                     const brakeOn = isOwn && inputState.brake && !isDead;
-                    if (brakeOn) {
-                        ctx.save();
-                        ctx.fillStyle = '#ff2727';
-                        ctx.shadowColor = '#ff4545';
-                        ctx.shadowBlur = 32;
-                        ctx.fillRect(46, 576, 80, 23);
-                        ctx.fillRect(358, 576, 80, 23);
-                        ctx.restore();
-                    } else {
-                        ctx.fillStyle = isDead ? '#1c1c1c' : '#5c1010'; // dim when not braking or dead
-                        ctx.fillRect(46, 576, 80, 23);
-                        ctx.fillRect(358, 576, 80, 23);
-                    }
+                    ctx.fillStyle = brakeOn ? '#ff2727' : (isDead ? '#1c1c1c' : '#5c1010');
+                    ctx.fillRect(46, 576, 80, 23);
+                    ctx.fillRect(358, 576, 80, 23);
                     // Front headlights: disable when dead (no white glow after destruction)
                     if (!isDead) {
                         drawRoundedRect(ctx, 65, 49, 43, 30, 15, '#f1f0f0');
