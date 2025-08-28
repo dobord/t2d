@@ -33,7 +33,8 @@ struct MatchContext
     uint32_t projectile_damage{50}; // increased damage to ensure lethal sequences within test timeout
     float reload_interval_sec{3.0f};
     float projectile_speed{5.0f};
-    float projectile_density{0.01f};
+    // Default projectile density raised significantly to reduce exaggerated ricochet and stabilize penetration.
+    float projectile_density{20.0f};
     float fire_cooldown_sec{0.25f};
     float hull_density{1.0f};
     float turret_density{0.5f};

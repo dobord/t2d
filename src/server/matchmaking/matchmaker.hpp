@@ -23,7 +23,8 @@ struct MatchConfig
     uint32_t projectile_damage{50};
     float reload_interval_sec{1.5f};
     float projectile_speed{10.0f};
-    float projectile_density{0.02f};
+    // Increased default to align with gameplay tuning (higher mass-like behavior)
+    float projectile_density{20.0f};
     float projectile_max_lifetime_sec{5.0f};
     float fire_cooldown_sec{0.25f};
     float hull_density{5.0f};

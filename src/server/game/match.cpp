@@ -390,6 +390,7 @@ coro::task<void> run_match(std::shared_ptr<coro::io_scheduler> scheduler, std::s
                         if (j == i)
                             continue;
                         const auto &ot = ctx->tanks[j];
+                        // Always ignore destroyed tanks even if persist_destroyed_tanks keeps them in world snapshots.
                         if (ot.hp == 0)
                             continue;
                         b2Transform oHull = b2Body_GetTransform(ot.hull);

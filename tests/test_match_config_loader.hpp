@@ -40,6 +40,7 @@ inline void apply_match_config_overrides(t2d::mm::MatchConfig &cfg, const std::s
             cfg.projectile_speed = root["projectile_speed"].as<float>();
         if (root["projectile_density"])
             cfg.projectile_density = root["projectile_density"].as<float>();
+        // Bots ignore destroyed tanks regardless of persistence; no config needed.
         if (root["fire_cooldown_sec"])
             cfg.fire_cooldown_sec = root["fire_cooldown_sec"].as<float>();
         if (root["hull_density"])

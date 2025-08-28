@@ -15,7 +15,7 @@
 | movement_speed | float | 2.0 | Tank linear speed (units/s) |
 | projectile_speed | float | 15.0 | Projectile speed (units/s) (older docs listed 5.0) |
 | projectile_damage | uint | 25 | Damage per projectile hit (>=50 in `test_mode`) |
-| projectile_density | float | 0.1 | Projectile physics density (affects mass; earlier 0.01) |
+| projectile_density | float | 20.0 | Projectile physics density (higher value for more stable flight vs. earlier 0.01–0.1) |
 | fire_cooldown_sec | float | 1.0 | Minimum seconds between player shots (tank cannon) |
 | reload_interval_sec | float | 3.0 | Seconds to regenerate 1 ammo |
 | hull_density | float | 1.0 | Tank hull body physics density |
@@ -36,6 +36,8 @@
 Test configuration example: see `config/server_test.yaml` for a faster iteration profile (reduced cooldowns, higher projectile damage, smaller map, `test_mode: true`).
 
 Bot fire controls: `disable_bot_fire: true` in config or runtime flags/env (`--no-bot-fire`, `T2D_NO_BOT_FIRE=1`) force bots to never shoot (reflected in `MatchStart.disable_bot_fire`).
+
+AI targeting: Bots always ignore tanks with `hp == 0` even when `persist_destroyed_tanks: true` keeps corpses in snapshots.
 
 Delta Snapshot Contents (current): tanks, new projectiles, removed_tanks, removed_projectiles, crates (changed/new), removed_crates. Ammo boxes (static until picked up) are sent only in full snapshots; when picked up they simply disappear from subsequent full snapshots (delta optimization pending).
 
