@@ -23,14 +23,19 @@
 #  NO_BOT_FIRE=1 disable bot firing              flag: --no-bot-fire
 #  NO_BOT_AI=1 disable all bot AI (movement/aim/fire) flag: --no-bot-ai
 #  PROFILE=1 enable client profiling (C++ + QML)  flag: --profile
+#  SERVER_CONFIG (server config path)            flag: -c|--server-config <path>
 #  -h|--help prints this help
 #
 # Examples:
 #   ./scripts/run_dev_loop.sh
 #   VERBOSE=1 LOOP=0 ./scripts/run_dev_loop.sh
 #   BUILD_DIR=build-debug CMAKE_ARGS="-DT2D_BUILD_QT_CLIENT=ON -DT2D_ENABLE_TSAN=ON" ./scripts/run_dev_loop.sh
+#   ./scripts/run_dev_loop.sh -c config/server.yaml
 set -euo pipefail
 
+# Track whether port was explicitly provided (env var preset or flag -p/--port)
+PORT_EXPLICIT=0
+if [[ -n "${PORT:-}" ]]; then PORT_EXPLICIT=1; fi
 PORT="${PORT:-40000}"
 BUILD_DIR="${BUILD_DIR:-build}"
 CMAKE_ARGS=${CMAKE_ARGS:-}
@@ -41,6 +46,8 @@ VERBOSE="${VERBOSE:-0}"
 LOG_LEVEL="${LOG_LEVEL:-}"
 PROFILE="${PROFILE:-0}"
 QML_LOG_LEVEL="${QML_LOG_LEVEL:-}"
+SERVER_CONFIG="${SERVER_CONFIG:-}"
+AUTH_STUB_PREFIX="${AUTH_STUB_PREFIX:-}"
 ROOT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 SERVER_BIN="${ROOT_DIR}/${BUILD_DIR}/t2d_server"
 CLIENT_BIN="${ROOT_DIR}/${BUILD_DIR}/t2d_qt_client"
@@ -89,6 +96,7 @@ print_help() {
 	sed -n '1,/^set -euo pipefail/p' "$0" | sed 's/^# \{0,1\}//' | grep -E '^(run_dev_loop|PORT|BUILD_DIR|BUILD_TYPE|CMAKE_ARGS|LOOP=|NO_BUILD|VERBOSE|LOG_LEVEL|QML_LOG_LEVEL|NO_BOT_FIRE|NO_BOT_AI|PROFILE|-p|Usage:| -r| -d| -t| --cmake-args| --no-build| --once| --loop| --log-level| --qml-log-level| --no-bot-fire| --no-bot-ai| --profile| -v)'
 	echo
 	echo "Example: $0 -d build-debug -p 40100 -r --no-bot-fire --no-bot-ai --cmake-args '-DT2D_ENABLE_SANITIZERS=ON'"
+	echo "       $0 -c config/server.yaml"
 }
 
 PENDING_CMAKE_ARGS=()
@@ -96,6 +104,7 @@ while [[ $# -gt 0 ]]; do
 	case "$1" in
 	-p | --port)
 		PORT="$2"
+		PORT_EXPLICIT=1
 		shift 2
 		;;
 	-d | --build-dir)
@@ -150,6 +159,10 @@ while [[ $# -gt 0 ]]; do
 		PROFILE=1
 		shift
 		;;
+	-c | --server-config)
+		SERVER_CONFIG="$2"
+		shift 2
+		;;
 	-h | --help)
 		print_help
 		exit 0
@@ -177,7 +190,34 @@ fi
 export T2D_LOG_LEVEL="${LOG_LEVEL,,}"
 _threshold=$(_level_value "$LOG_LEVEL")
 [[ "$VERBOSE" == 1 ]] && set -x && log_debug "Shell trace enabled (VERBOSE=1)"
+
+# Derive PORT from server config if not explicitly set
+if [[ $PORT_EXPLICIT -eq 0 && -n "$SERVER_CONFIG" && -f "$SERVER_CONFIG" ]]; then
+	cfg_port=$(grep -E '^[[:space:]]*listen_port:' "$SERVER_CONFIG" | head -n1 | sed -E 's/^[^:]+:[[:space:]]*([0-9]+).*/\1/') || cfg_port=""
+	if [[ "$cfg_port" =~ ^[0-9]+$ ]]; then
+		PORT="$cfg_port"
+		log_debug "Port derived from server config ($SERVER_CONFIG): $PORT"
+	else
+		log_warn "Failed to parse listen_port from $SERVER_CONFIG; keeping PORT=$PORT"
+	fi
+fi
+
+# Derive AUTH_STUB_PREFIX from server config (unless already explicitly provided via env)
+if [[ -z "$AUTH_STUB_PREFIX" && -n "$SERVER_CONFIG" && -f "$SERVER_CONFIG" ]]; then
+	cfg_auth_stub_prefix=$(grep -E '^[[:space:]]*auth_stub_prefix:' "$SERVER_CONFIG" | head -n1 | sed -E 's/^[^:]+:[[:space:]]*([^#[:space:]]+).*/\1/') || cfg_auth_stub_prefix=""
+	if [[ -n "$cfg_auth_stub_prefix" ]]; then
+		AUTH_STUB_PREFIX="$cfg_auth_stub_prefix"
+		log_debug "auth_stub_prefix derived from server config ($SERVER_CONFIG): $AUTH_STUB_PREFIX"
+	else
+		log_trace "auth_stub_prefix not found in $SERVER_CONFIG"
+	fi
+fi
+if [[ -n "$AUTH_STUB_PREFIX" ]]; then
+	export T2D_AUTH_STUB_PREFIX="$AUTH_STUB_PREFIX"
+fi
+
 log_debug "Effective flags: PORT=$PORT BUILD_DIR=$BUILD_DIR BUILD_TYPE=$BUILD_TYPE LOOP=$LOOP NO_BUILD=$NO_BUILD VERBOSE=$VERBOSE LOG_LEVEL=$LOG_LEVEL QML_LOG_LEVEL=$QML_LOG_LEVEL PROFILE=$PROFILE NO_BOT_FIRE=${NO_BOT_FIRE:-0} NO_BOT_AI=${NO_BOT_AI:-0} CMAKE_ARGS='$CMAKE_ARGS'"
+log_debug "SERVER_CONFIG=$SERVER_CONFIG PORT_EXPLICIT=$PORT_EXPLICIT AUTH_STUB_PREFIX=${AUTH_STUB_PREFIX:-}"
 
 # Run code formatting targets before building (mandatory auto-format step)
 run_format() {
@@ -315,6 +355,11 @@ run_once() {
 		server_args+=("--no-bot-ai")
 		log "Bot AI disabled via NO_BOT_AI=1"
 	fi
+	if [[ -n "$SERVER_CONFIG" ]]; then
+		# Server expects config path as positional (no --config flag)
+		server_args+=("$SERVER_CONFIG")
+		log "Server config: $SERVER_CONFIG (positional)"
+	fi
 	T2D_LOG_APP_ID="srv" "${SERVER_BIN}" "${server_args[@]}" &
 	SERVER_PID=$!
 	log "Server PID=${SERVER_PID}"
@@ -337,6 +382,12 @@ run_once() {
 		client_args+=("--qml-profile")
 		log "Profiling enabled (T2D_PROFILE=1 --qml-profile)"
 	fi
+	if [[ -n "$AUTH_STUB_PREFIX" ]]; then
+		client_args+=("--auth-stub-prefix=${AUTH_STUB_PREFIX}")
+		log_debug "Passing auth stub prefix to client: ${AUTH_STUB_PREFIX}"
+	fi
+	# Always pass server port so client matches server if derived from config
+	client_args+=("--server-port=${PORT}")
 	log_debug "Qt client args: ${client_args[*]:-(none)}"
 	T2D_LOG_APP_ID="qt" "${CLIENT_BIN}" "${client_args[@]}" &
 	CLIENT_PID=$!

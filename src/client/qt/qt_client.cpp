@@ -13,11 +13,13 @@
 #include <coro/default_executor.hpp>
 #include <coro/io_scheduler.hpp>
 #include <coro/net/tcp/client.hpp>
+#include <unistd.h> // getpid for oauth token suffix
 
 #include <atomic>
 #include <chrono>
 #include <csignal>
 #include <cstdlib>
+#include <cstring> // std::strncmp
 #include <iomanip>
 #include <sstream>
 #include <thread>
@@ -122,24 +124,27 @@ coro::task<void> run_network(
     TimingState *timing,
     LobbyState *lobby,
     std::string host,
-    uint16_t port)
+    uint16_t port,
+    const std::string &oauth_token)
 {
     co_await sched->schedule();
     coro::net::tcp::client cli{sched, {.address = coro::net::ip_address::from_string(host), .port = port}};
     auto rc = co_await cli.connect(5s);
     if (rc != coro::net::connect_status::connected) {
-        t2d::log::error("qt_client connect failed");
+        t2d::log::error("qt_client connect failed status={} host={} port={}", (int)rc, host, port);
         co_return;
     }
-    t2d::log::info("qt_client connected host={} port={}", host, port);
+    t2d::log::info("qt_client connected host={} port={} status=connected", host, port);
     t2d::ClientMessage auth;
     auto *rq = auth.mutable_auth_request();
-    rq->set_oauth_token("qt_ui_dummy");
+    rq->set_oauth_token(oauth_token);
     rq->set_client_version(T2D_VERSION);
     co_await send_frame(cli, auth);
+    t2d::log::debug("auth_request sent token_len={}", oauth_token.size());
     t2d::ClientMessage q;
     q.mutable_queue_join();
     co_await send_frame(cli, q);
+    t2d::log::debug("queue_join sent");
     std::string session_id;
     bool in_match = false;
     uint32_t myEntityId = 0; // authoritative from MatchStart
@@ -227,6 +232,7 @@ coro::task<void> run_network(
                     ++prof.msgs;
                 if (sm.has_auth_response()) {
                     session_id = sm.auth_response().session_id();
+                    t2d::log::info("auth_response session_id={} (len={})", session_id, session_id.size());
                 } else if (sm.has_match_start()) {
                     in_match = true;
                     timing->setMatchActive(true);
@@ -366,6 +372,56 @@ int main(int argc, char **argv)
             setenv("T2D_LOG_LEVEL", "info", 1);
         }
     }
+    // Extract optional auth stub prefix (env has priority, then CLI arg --auth-stub-prefix=PREFIX)
+    std::string auth_stub_prefix;
+    if (const char *env_pref = std::getenv("T2D_AUTH_STUB_PREFIX"); env_pref && *env_pref) {
+        auth_stub_prefix = env_pref;
+    }
+    // Allow overriding server host/port (defaults 127.0.0.1:40000)
+    std::string server_host = "127.0.0.1";
+    uint16_t server_port = 40000;
+    for (int i = 1; i < argc; ++i) {
+        const char aprefix[] = "--auth-stub-prefix=";
+        const char hpfx[] = "--server-host=";
+        const char ppfx[] = "--server-port=";
+        if (std::strncmp(argv[i], aprefix, sizeof(aprefix) - 1) == 0) {
+            if (auth_stub_prefix.empty()) {
+                const char *val = argv[i] + (sizeof(aprefix) - 1);
+                if (*val)
+                    auth_stub_prefix = val;
+            }
+            for (int j = i; j + 1 < argc; ++j)
+                argv[j] = argv[j + 1];
+            --argc;
+            --i;
+            continue;
+        } else if (std::strncmp(argv[i], hpfx, sizeof(hpfx) - 1) == 0) {
+            const char *val = argv[i] + (sizeof(hpfx) - 1);
+            if (*val)
+                server_host = val;
+            for (int j = i; j + 1 < argc; ++j)
+                argv[j] = argv[j + 1];
+            --argc;
+            --i;
+            continue;
+        } else if (std::strncmp(argv[i], ppfx, sizeof(ppfx) - 1) == 0) {
+            const char *val = argv[i] + (sizeof(ppfx) - 1);
+            if (*val) {
+                try {
+                    int p = std::stoi(val);
+                    if (p > 0 && p < 65536)
+                        server_port = static_cast<uint16_t>(p);
+                } catch (...) {
+                    // ignore invalid
+                }
+            }
+            for (int j = i; j + 1 < argc; ++j)
+                argv[j] = argv[j + 1];
+            --argc;
+            --i;
+            continue;
+        }
+    }
     t2d::log::init();
     QGuiApplication app(argc, argv);
     EntityModel tankModel; // tanks
@@ -418,9 +474,24 @@ int main(int argc, char **argv)
                 });
         }
     }
+    // Construct oauth token from prefix (prefix + "qt" + pid) or fallback constant
+    std::string oauth_token = "qt_ui_dummy";
+    if (!auth_stub_prefix.empty()) {
+        oauth_token = auth_stub_prefix + "qt" + std::to_string(::getpid());
+    }
     auto sched = coro::default_executor::io_executor();
     sched->spawn(run_network(
-        sched, &tankModel, &projectileModel, &ammoBoxModel, &crateModel, &input, &timing, &lobby, "127.0.0.1", 40000));
+        sched,
+        &tankModel,
+        &projectileModel,
+        &ammoBoxModel,
+        &crateModel,
+        &input,
+        &timing,
+        &lobby,
+        server_host,
+        server_port,
+        oauth_token));
     int rc = app.exec();
     g_shutdown.store(true);
     return rc;

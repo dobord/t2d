@@ -4,18 +4,18 @@ max_players_per_match: 4
 max_parallel_matches: 4
 queue_soft_limit: 64
 fill_timeout_seconds: 2
-tick_rate: 30
-snapshot_interval_ticks: 5
-full_snapshot_interval_ticks: 30
+tick_rate: 60
+snapshot_interval_ticks: 2
+full_snapshot_interval_ticks: 60
 bot_fire_interval_ticks: 5      # rapid bot firing for tests
-movement_speed: 2.5             # slightly faster for quicker engagements
+movement_speed: 5.0             # slightly faster for quicker engagements
 projectile_damage: 50           # ensure lethality within short test windows
 reload_interval_sec: 1.5        # faster ammo regen
 fire_cooldown_sec: 0.25         # high rate of fire for stress tests
-projectile_speed: 10.0          # moderately faster than prod but less extreme than prod speed buff
-projectile_density: 0.02        # lighter for quicker acceleration
-hull_density: 5.0
-turret_density: 2.5
+projectile_speed: 50.0          # moderately faster than prod but less extreme than prod speed buff
+projectile_density: 10.0        # lighter for quicker acceleration
+hull_density: 1.0
+turret_density: 0.5
 disable_bot_fire: false
 test_mode: true
 listen_port: 40001              # alternate port to avoid clash with prod config
