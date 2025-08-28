@@ -77,7 +77,7 @@ static void process_contacts(
         if (into_speed + 1e-6f < required) {
             // Not enough normal (penetrating) speed: skip damage & projectile destruction
             t2d::log::trace(
-                "[penetration] proj={} tank={} into_speed={} speed={} required={} initial={} result=NO",
+                "[proj_penetration] proj={} tank={} into_speed={} speed={} required={} initial={} result=NO",
                 proj.id,
                 tank.entity_id,
                 into_speed,
@@ -87,7 +87,7 @@ static void process_contacts(
             continue;
         }
         t2d::log::trace(
-            "[penetration] proj={} tank={} into_speed={} speed={} required={} initial={} result=YES",
+            "[proj_penetration] proj={} tank={} into_speed={} speed={} required={} initial={} result=YES",
             proj.id,
             tank.entity_id,
             into_speed,
