@@ -124,10 +124,14 @@ static void process_contacts(
             // Hull forward vector from body transform.
             b2Transform hull_xf = b2Body_GetTransform(tank.hull);
             b2Vec2 hull_fwd{hull_xf.q.c, hull_xf.q.s};
+            // Contact manifold normal n is from shapeA to shapeB. We need an OUTWARD normal from the hull.
+            // If the projectile was shapeA (a_is_proj == true) then the hull is shapeB and n points inward.
+            // Flip in that case so classification is consistent.
+            b2Vec2 n_out = a_is_proj ? b2Vec2{-n.x, -n.y} : n;
             // Vector from projectile pre-position to impact body center (approx direction of travel into tank)
             b2Vec2 impact_dir = {hull_fwd.x, hull_fwd.y}; // default forward
             // Classify frontal vs side: dot with hull forward.
-            float dot_forward = n.x * hull_fwd.x + n.y * hull_fwd.y;
+            float dot_forward = n_out.x * hull_fwd.x + n_out.y * hull_fwd.y;
             // Previous heuristic expected normal opposite hull forward (dot < -0.5), but Box2D contact normal here
             // points outward from the hull (aligned with hull forward on frontal impacts). This prevented frontal hits
             // from being counted. Flip logic: treat as frontal when normal aligns with forward strongly.
@@ -137,21 +141,31 @@ static void process_contacts(
                 tank.entity_id,
                 dot_forward,
                 frontal,
-                n.x,
-                n.y,
+                n_out.x,
+                n_out.y,
                 hull_fwd.x,
                 hull_fwd.y);
-            // Side classification for tracks: compare contact normal to left/right directions (perpendicular)
+            // Side classification for tracks: compare contact normal to left/right directions (perpendicular).
+            // We keep the original geometric right vector (fwd.y, -fwd.x).
+            // Empirically: a projectile impacting the tank's RIGHT side produced contact normal aligning with this
+            // vector (dot_right > 0). LEFT side impacts give dot_right < 0. That mapping was correct; the observed
+            // issue (left hit breaking right track) stemmed from track hit attribution elsewhere, not vector sign.
+            // Add extra debug to confirm mapping in live play.
             b2Vec2 hull_right{hull_fwd.y, -hull_fwd.x};
-            float dot_right = n.x * hull_right.x + n.y * hull_right.y; // +1 ~ right side, -1 ~ left side
+            float dot_right = n_out.x * hull_right.x + n_out.y * hull_right.y; // +1 ~ right side, -1 ~ left side
             bool side = std::fabs(dot_right) > 0.5f && !frontal;
             if (side) {
-                bool hit_right_side = dot_right > 0.f; // positive projection => right side impact
+                bool hit_right_side = dot_right > 0.f; // positive => RIGHT
                 t2d::log::debug(
-                    "[damage] side hit tank={} dot_right={} right_side={} left_broken={} right_broken={}",
+                    "[damage] side hit tank={} dot_right={} right_side={} n=({}, {}) hull_right=({}, {}) "
+                    "left_broken={} right_broken={}",
                     tank.entity_id,
                     dot_right,
                     hit_right_side,
+                    n_out.x,
+                    n_out.y,
+                    hull_right.x,
+                    hull_right.y,
                     tank.left_track_broken,
                     tank.right_track_broken);
                 if (hit_right_side) {

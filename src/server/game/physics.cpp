@@ -120,8 +120,9 @@ void apply_tracked_drive(const TankDriveInput &in, TankWithTurret &tank, float s
     }
     b2Transform xf = b2Body_GetTransform(tank.hull);
     b2Vec2 p_center = xf.p;
-    b2Vec2 p1{p_center.x - frame.right.x * track_offset, p_center.y - frame.right.y * track_offset};
-    b2Vec2 p2{p_center.x + frame.right.x * track_offset, p_center.y + frame.right.y * track_offset};
+    b2Vec2 p1{p_center.x - frame.right.x * track_offset, p_center.y - frame.right.y * track_offset}; // RIGHT track
+                                                                                                     // point
+    b2Vec2 p2{p_center.x + frame.right.x * track_offset, p_center.y + frame.right.y * track_offset}; // LEFT track point
     auto apply_force_at = [&](b2Vec2 force, b2Vec2 point)
     {
         b2Body_ApplyForce(tank.hull, force, point, true);
@@ -130,7 +131,7 @@ void apply_tracked_drive(const TankDriveInput &in, TankWithTurret &tank, float s
         frame.forward.x * e1 * base_drive_force * k_drive, frame.forward.y * e1 * base_drive_force * k_drive};
     b2Vec2 fwd_force2{
         frame.forward.x * e2 * base_drive_force * k_drive, frame.forward.y * e2 * base_drive_force * k_drive};
-    // Disable propulsion on broken track(s)
+    // Disable propulsion on broken track(s). Note: p1 is RIGHT, p2 is LEFT in world space.
     if (!tank.right_track_broken) {
         apply_force_at(fwd_force1, p1);
     }
