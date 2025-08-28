@@ -53,6 +53,15 @@ Window {
         property real lastMouseY: 0
         property bool lastMouseValid: false
 
+        // Tank tread animation state (initialized lazily). Arrays sized to entity count.
+        property bool _treadInit: false
+        property var _treadPrevX: ([])
+        property var _treadPrevY: ([])
+        property var _treadPrevHull: ([])
+        property var _treadOffL: ([])
+        property var _treadOffR: ([])
+        property double _treadLastMs: 0
+
         // QML logging helpers & level filtering
         property string qmlLogLevel: "INFO" // default (override via --qml-log-level or --log-level; supports TRACE|DEBUG|INFO|WARN|ERROR)
         function _levelValue(lv) {
