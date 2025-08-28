@@ -180,11 +180,11 @@ void update_turret_aim(const TurretAimInput &aim, TankWithTurret &tank)
     diff -= (float)M_PI;
 
     // Parameters (radians)
-    constexpr float kMaxSpeedDeg = 120.f; // desired max turret speed deg/s
+    constexpr float kMaxSpeedDeg = 180.f; // desired max turret speed deg/s
     constexpr float kMaxSpeedRad = kMaxSpeedDeg * (float)M_PI / 180.f;
     constexpr float kFullSpeedThresholdDeg = 5.f; // above this error => full speed
     constexpr float kFullSpeedThresholdRad = kFullSpeedThresholdDeg * (float)M_PI / 180.f;
-    constexpr float kDeadzoneDeg = 0.15f; // snap when very close (~0.15 deg)
+    constexpr float kDeadzoneDeg = 0.10f; // snap when very close (~0.10 deg)
     constexpr float kDeadzoneRad = kDeadzoneDeg * (float)M_PI / 180.f;
 
     float absDiff = std::fabs(diff);
