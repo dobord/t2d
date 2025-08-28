@@ -33,4 +33,4 @@ auth_stub_prefix: user_
 map_width: 100
 map_height: 100
 force_line_spawn: false  # test hook: when true spawn tanks in a horizontal line (deterministic spawn layout)
-persist_destroyed_tanks: false  # when true, destroyed tanks remain as corpses until match end
+persist_destroyed_tanks: true  # when true, destroyed tanks remain as corpses until match end
