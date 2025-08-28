@@ -93,7 +93,8 @@ int main(int argc, char **argv)
     if (argc > 1) {
         t2d::test::apply_match_config_overrides(mc, argv[1]);
     }
-    sched->spawn(t2d::net::run_listener(sched, port));
+    const uint32_t tickRate = 60;
+    sched->spawn(t2d::net::run_listener(sched, port, tickRate));
     sched->spawn(t2d::mm::run_matchmaker(sched, mc));
     coro::sync_wait(client_flow(sched, port));
     return 0;
