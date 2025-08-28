@@ -41,6 +41,8 @@ Bot fire controls: `disable_bot_fire: true` in config or runtime flags/env (`--n
 
 AI targeting: Bots always ignore tanks with `hp == 0` even when `persist_destroyed_tanks: true` keeps corpses in snapshots.
 
+Subsystem Damage: Track and turret impairment thresholds are controlled via `track_break_hits` and `turret_disable_front_hits`. Setting either to 0 disables that impairment type (no accumulation). These flags replicate as booleans per tank (`track_left_broken`, `track_right_broken`, `turret_disabled`). Broken tracks reduce movement effectiveness; disabled turret stops rotation.
+
 Delta Snapshot Contents (current): tanks, new projectiles, removed_tanks, removed_projectiles, crates (changed/new), removed_crates. Ammo boxes (static until picked up) are sent only in full snapshots; when picked up they simply disappear from subsequent full snapshots (delta optimization pending).
 
 Fields may evolve; new keys are ignored by older binaries (forward compatibility); unknown keys are skipped with defaults.

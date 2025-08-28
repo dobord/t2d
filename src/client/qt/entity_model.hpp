@@ -22,6 +22,9 @@ struct QtTankRow
     float prev_turret_angle{};
     float hp{};
     float ammo{};
+    bool track_left_broken{false};
+    bool track_right_broken{false};
+    bool turret_disabled{false};
     // Precomputed unit vectors for hull & turret (current and previous) to enable slerp without per-frame trig.
     float hull_dir_x{1.f};
     float hull_dir_y{0.f};
@@ -51,7 +54,10 @@ public:
         TurretAngleRole,
         HPRole,
         AmmoRole,
-        DeadRole
+        DeadRole,
+        TrackLeftBrokenRole,
+        TrackRightBrokenRole,
+        TurretDisabledRole
     };
 
     explicit EntityModel(QObject *parent = nullptr) : QAbstractListModel(parent) {}
@@ -171,6 +177,12 @@ public:
                 return r.ammo;
             case DeadRole:
                 return r.hp <= 0.f;
+            case TrackLeftBrokenRole:
+                return r.track_left_broken;
+            case TrackRightBrokenRole:
+                return r.track_right_broken;
+            case TurretDisabledRole:
+                return r.turret_disabled;
         }
         return {};
     }
@@ -187,7 +199,10 @@ public:
             {TurretAngleRole, "turretAngle"},
             {HPRole, "hp"},
             {AmmoRole, "ammo"},
-            {DeadRole, "dead"}};
+            {DeadRole, "dead"},
+            {TrackLeftBrokenRole, "trackLeftBroken"},
+            {TrackRightBrokenRole, "trackRightBroken"},
+            {TurretDisabledRole, "turretDisabled"}};
     }
 
     Q_INVOKABLE bool isDead(int row) const
@@ -196,6 +211,30 @@ public:
         if (row < 0 || (size_t)row >= rows_.size())
             return false;
         return rows_[row].hp <= 0.f;
+    }
+
+    Q_INVOKABLE bool trackLeftBroken(int row) const
+    {
+        std::scoped_lock lk(m_);
+        if (row < 0 || (size_t)row >= rows_.size())
+            return false;
+        return rows_[row].track_left_broken;
+    }
+
+    Q_INVOKABLE bool trackRightBroken(int row) const
+    {
+        std::scoped_lock lk(m_);
+        if (row < 0 || (size_t)row >= rows_.size())
+            return false;
+        return rows_[row].track_right_broken;
+    }
+
+    Q_INVOKABLE bool turretDisabled(int row) const
+    {
+        std::scoped_lock lk(m_);
+        if (row < 0 || (size_t)row >= rows_.size())
+            return false;
+        return rows_[row].turret_disabled;
     }
 
     void applyFull(const t2d::StateSnapshot &snap)
@@ -220,6 +259,10 @@ public:
             row.prev_turret_angle = ta;
             row.hp = (float)t.hp();
             row.ammo = (float)t.ammo();
+            // Proto3 scalar bools have no presence (no has_*), default false is fine.
+            row.track_left_broken = t.track_left_broken();
+            row.track_right_broken = t.track_right_broken();
+            row.turret_disabled = t.turret_disabled();
             row.hull_dir_x = std::cos(hrad);
             row.hull_dir_y = std::sin(hrad);
             row.prev_hull_dir_x = row.hull_dir_x;
@@ -309,6 +352,9 @@ public:
                 row.turret_dir_y = std::sin(trad);
                 row.hp = (float)t.hp();
                 row.ammo = (float)t.ammo();
+                row.track_left_broken = t.track_left_broken();
+                row.track_right_broken = t.track_right_broken();
+                row.turret_disabled = t.turret_disabled();
                 auto ix = index(i);
                 emit dataChanged(ix, ix);
             } else {
@@ -330,6 +376,9 @@ public:
                 row.prev_turret_angle = ta;
                 row.hp = (float)t.hp();
                 row.ammo = (float)t.ammo();
+                row.track_left_broken = t.track_left_broken();
+                row.track_right_broken = t.track_right_broken();
+                row.turret_disabled = t.turret_disabled();
                 row.hull_dir_x = std::cos(hrad);
                 row.hull_dir_y = std::sin(hrad);
                 row.prev_hull_dir_x = row.hull_dir_x;

@@ -128,7 +128,19 @@ static void process_contacts(
             b2Vec2 impact_dir = {hull_fwd.x, hull_fwd.y}; // default forward
             // Classify frontal vs side: dot with hull forward.
             float dot_forward = n.x * hull_fwd.x + n.y * hull_fwd.y;
-            bool frontal = dot_forward < -0.5f; // normal points from shapeA->shapeB; sign heuristic
+            // Previous heuristic expected normal opposite hull forward (dot < -0.5), but Box2D contact normal here
+            // points outward from the hull (aligned with hull forward on frontal impacts). This prevented frontal hits
+            // from being counted. Flip logic: treat as frontal when normal aligns with forward strongly.
+            bool frontal = dot_forward > 0.5f;
+            t2d::log::debug(
+                "[damage] impact tank={} dot_forward={} frontal={} n=({}, {}) hull_fwd=({}, {})",
+                tank.entity_id,
+                dot_forward,
+                frontal,
+                n.x,
+                n.y,
+                hull_fwd.x,
+                hull_fwd.y);
             // Side classification for tracks: compare contact normal to left/right directions (perpendicular)
             b2Vec2 hull_right{hull_fwd.y, -hull_fwd.x};
             float dot_right = n.x * hull_right.x + n.y * hull_right.y;
@@ -153,11 +165,21 @@ static void process_contacts(
             } else if (frontal) {
                 if (!tank.turret_disabled) {
                     ++tank.frontal_turret_hits;
+                    t2d::log::debug(
+                        "[damage] frontal turret hit tank={} count={}/{}",
+                        tank.entity_id,
+                        tank.frontal_turret_hits,
+                        ctx.turret_disable_front_hits);
                     if (tank.frontal_turret_hits >= ctx.turret_disable_front_hits
                         && b2Joint_IsValid(tank.turret_joint)) {
                         b2RevoluteJoint_EnableMotor(tank.turret_joint, false);
                         b2RevoluteJoint_SetMotorSpeed(tank.turret_joint, 0.f);
                         tank.turret_disabled = true;
+                        t2d::log::info(
+                            "[damage] turret disabled tank={} frontal_hits={} threshold={}",
+                            tank.entity_id,
+                            tank.frontal_turret_hits,
+                            ctx.turret_disable_front_hits);
                     }
                 }
             }

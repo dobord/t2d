@@ -63,6 +63,17 @@ License Compatibility:
 8. Win condition: last surviving tank (future: teams / additional modes).
 9. In‑match HUD: kills, score, HP, ammo (extended stats later).
 
+### 3.1 Subsystem Damage (Prototype)
+The damage model includes degradable subsystems to increase tactical variety:
+| Subsystem | Trigger | Configuration Keys | Effect | Client Visualization |
+|-----------|---------|--------------------|--------|----------------------|
+| Left / Right Track | Side projectile impacts (contact normal lateral to hull) accumulate hits | `track_break_hits` | On threshold: track marked broken; movement effectiveness reduced, tread animation frozen | Track darkened, tread stops scrolling |
+| Turret Motor | Frontal projectile impacts (contact normal aligned with hull forward) accumulate hits | `turret_disable_front_hits` | On threshold: turret joint motor disabled (no rotation) | Turret recolored gray/dim |
+
+Heuristic (current): classify contact via dot products with hull forward (`dot_forward > 0.5` => frontal) and hull right (`abs(dot_right) > 0.5` => side unless frontal). These thresholds are provisional and subject to tuning. Future iterations may incorporate impact velocity vectors for more robust classification and angle-based armor effects.
+
+All subsystem flags replicate to clients as booleans in `TankState`; absent (older clients) defaults to `false` for graceful downgrade.
+
 ### Current / Planned Entities
 - Tank (player / bot)
 - Projectile

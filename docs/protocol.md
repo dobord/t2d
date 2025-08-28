@@ -48,6 +48,44 @@ Two snapshot forms:
 1. `StateSnapshot` (full): complete tank, projectile, ammo box (active only), crate state + map dimensions.
 2. `DeltaSnapshot`: changes since a base full snapshot (`base_tick`).
 
+#### 6.1 TankState Fields
+Each tank entry carries the authoritative instantaneous combat & kinematic state required for client prediction/interpolation and UI. Current fields (proto: `message TankState`):
+
+| Field | Type | Notes |
+|-------|------|-------|
+| entity_id | uint32 | Stable per match unique id (references in other messages) |
+| x, y | float | World position (center) in world units |
+| hull_angle | float | Degrees, 0 = +X axis (right), increases CCW |
+| turret_angle | float | Degrees in same space as hull; NOT relative (absolute orientation) |
+| hp | uint32 | Current hit points (0 => destroyed) |
+| ammo | uint32 | Current ammo count (regenerates server-side) |
+| track_left_broken | bool | Subsystem damage flag: true when left track is broken (movement penalty) |
+| track_right_broken | bool | Subsystem damage flag: true when right track is broken (movement penalty) |
+| turret_disabled | bool | Subsystem damage flag: turret rotation motor disabled (cannot aim) |
+
+Presence & Backward Compatibility: These booleans are proto3 scalar fields (no presence bit). Older clients that lack them will treat missing data as `false` and simply not render subsystem impairment.
+
+#### 6.2 Subsystem Damage Semantics
+Subsystem impairment is applied server-side upon projectile impacts:
+* Track Breaks: Side impacts classified by contact normal vs. hull lateral axis increment per-track hit counters; on reaching `track_break_hits` (config) the corresponding track is marked broken, reducing effective mobility (server-side movement scaling) and freezing tread animation client-side.
+* Turret Disable: Frontal impacts classified by contact normal alignment with hull forward increment a frontal turret hit counter; on reaching `turret_disable_front_hits` (config) the turret motor is disabled (joint motor off) and `turret_disabled` set. Client renders a dimmed turret and suppresses rotation input feedback.
+
+Classification Heuristic (current prototype):
+```
+dot_forward = dot(contact_normal, hull_forward)
+frontal = dot_forward > 0.5
+dot_right = dot(contact_normal, hull_right)
+side = abs(dot_right) > 0.5 && !frontal
+```
+Right vs left track decided by sign of `dot_right` (see `match.cpp` for implementation). Thresholds may be tuned; future iterations may use impact vector instead of contact normal for improved robustness.
+
+Effects on Simulation:
+* Broken track: immediate mobility reduction (asymmetric turning / forward speed scaling) – values TBD and refined during playtesting.
+* Disabled turret: turret joint motor disabled; no further rotation until match end (no repair mechanic yet).
+
+Client Visualization (current): darkened track rectangles / frozen tread animation for broken tracks; gray turret for disabled state (distinct from destroyed hull coloring).
+
+
 Clients interpolate tank/projectile motion between authoritative updates. Projectiles currently only emit a creation delta; linear motion is predicted until removal or impact.
 
 ### 7. Delta Snapshot Semantics

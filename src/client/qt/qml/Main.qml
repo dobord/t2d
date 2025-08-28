@@ -515,7 +515,7 @@ Window {
                 const SPRITE_FRONT_OFFSET = Math.PI / 2; // Protocol: 0° = +X (right). Sprite points up, so rotate +90° to align sprite front with +X.
                 // Draw a single tank with animated treads. Track animation speed matches linear velocity at the
                 // midpoint of each track: v_track = v_forward ± omega * trackLateralOffset.
-                function drawTank(ctx, wx, wy, hullRad, turretRad, isOwn, isDead, treadOffsetL, treadOffsetR) {
+                function drawTank(ctx, wx, wy, hullRad, turretRad, isOwn, isDead, treadOffsetL, treadOffsetR, leftBroken, rightBroken, turretDisabled) {
                     // Convert protocol angle (0°=+X) to sprite angle (0 sprite up) via SPRITE_FRONT_OFFSET.
                     const W = 480, H = 640;
                     const scalePix = 6.4 / H;
@@ -525,8 +525,13 @@ Window {
                     ctx.scale(scalePix, scalePix);
                     ctx.translate(-W / 2, -H / 2);
                     // Base track rectangles
-                    ctx.fillStyle = isDead ? '#2a2a2a' : '#424141';
+                    // Base track rectangles; darken individually if broken (and further if dead)
+                    const trackBase = '#424141';
+                    const trackBroken = '#2c2c2c';
+                    const trackDead = '#2a2a2a';
+                    ctx.fillStyle = isDead ? trackDead : (leftBroken ? trackBroken : trackBase);
                     ctx.fillRect(0, 0, 140, H);
+                    ctx.fillStyle = isDead ? trackDead : (rightBroken ? trackBroken : trackBase);
                     ctx.fillRect(342, 0, 140, H);
                     // Animated tread pattern (skip if dead to reduce visual noise)
                     if (!isDead) {
@@ -550,8 +555,9 @@ Window {
                                 ctx.fillRect(x0 + 6, yy + 2, w - 12, Math.max(2, Math.floor(rungHeight / 3)));
                             }
                         }
-                        drawTreadColumn(0, 140, treadOffsetL);
-                        drawTreadColumn(342, 140, treadOffsetR);
+                        // Suppress animation for broken track (freeze pattern by using constant offset 0)
+                        drawTreadColumn(0, 140, leftBroken ? 0 : treadOffsetL);
+                        drawTreadColumn(342, 140, rightBroken ? 0 : treadOffsetR);
                     }
                     ctx.fillStyle = isDead ? (isOwn ? '#2f3a2f' : '#323232') : (isOwn ? '#5c6e5c' : '#6f6e6e');
                     ctx.strokeStyle = isDead ? '#1e1e1e' : '#2e2e2e';
@@ -578,10 +584,13 @@ Window {
                     ctx.translate(W / 2, H / 2);
                     ctx.rotate(turretRad - hullRad); // both already protocol-space; relative rotation unaffected by offset
                     ctx.translate(-W / 2, -H / 2);
-                    drawRoundedRect(ctx, 140, 195, 200, 250, 32, isDead ? '#5e5e5e' : '#bfbfbf', isDead ? '#2a2828' : '#363434', 8);
+                    // Turret coloring: distinct disabled state (darker but not fully dead)
+                    const turretFill = isDead ? '#5e5e5e' : (turretDisabled ? '#888888' : '#bfbfbf');
+                    const turretStroke = isDead ? '#2a2828' : (turretDisabled ? '#353535' : '#363434');
+                    drawRoundedRect(ctx, 140, 195, 200, 250, 32, turretFill, turretStroke, 8);
                     ctx.lineWidth = 8;
-                    ctx.fillStyle = isDead ? '#5e5e5e' : '#bfbfbf';
-                    ctx.strokeStyle = isDead ? '#2a2828' : '#363434';
+                    ctx.fillStyle = turretFill;
+                    ctx.strokeStyle = turretStroke;
                     ctx.beginPath();
                     ctx.rect((W - 30) / 2, -80, 30, 320);
                     ctx.fill();
@@ -715,8 +724,11 @@ Window {
                     const dHull = normAngle(hullRad - rootItem._treadPrevHull[i]);
                     const omega = dHull / dtTracks; // rad/s
                     // Track forward speeds at midpoint (world units / s)
-                    const vLeft = vForward - omega * TRACK_LATERAL_OFFSET_WORLD;
-                    const vRight = vForward + omega * TRACK_LATERAL_OFFSET_WORLD;
+                    const leftBroken = entityModel.trackLeftBroken(i);
+                    const rightBroken = entityModel.trackRightBroken(i);
+                    const turretDisabled = entityModel.turretDisabled(i);
+                    const vLeft = (leftBroken ? 0 : (vForward - omega * TRACK_LATERAL_OFFSET_WORLD));
+                    const vRight = (rightBroken ? 0 : (vForward + omega * TRACK_LATERAL_OFFSET_WORLD));
                     // Convert incremental displacement to pixel offset for pattern.
                     // Previous version greatly over-scaled (factor ~11.6×). Now: pixels = v * dt * PX_PER_WORLD * scale.
                     // Invert sign so visual tread appears to move backward relative to forward hull motion.
@@ -727,7 +739,7 @@ Window {
                         rootItem._treadOffL[i] = rootItem._treadOffL[i] % 100000;
                     if (rootItem._treadOffR[i] > 100000 || rootItem._treadOffR[i] < -100000)
                         rootItem._treadOffR[i] = rootItem._treadOffR[i] % 100000;
-                    drawTank(ctx, x, y, hullRad, turretRad, i === ownIndex, dead, rootItem._treadOffL[i], rootItem._treadOffR[i]);
+                    drawTank(ctx, x, y, hullRad, turretRad, i === ownIndex, dead, rootItem._treadOffL[i], rootItem._treadOffR[i], leftBroken, rightBroken, turretDisabled);
                     rootItem._treadPrevX[i] = x;
                     rootItem._treadPrevY[i] = y;
                     rootItem._treadPrevHull[i] = hullRad;
