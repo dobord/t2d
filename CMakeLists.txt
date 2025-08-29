@@ -333,6 +333,8 @@ if (T2D_BUILD_QT_CLIENT)
             if (EXISTS ${T2D_QML_DIR})
                 # Use qt_add_qml_module if available (Qt6)
                 if (COMMAND qt_add_qml_module)
+                    # Embed QML + image assets via explicit .qrc (stable resource paths)
+                    set(T2D_QRC src/client/qt/qml/t2d_images.qrc)
                     qt_add_qml_module(
                         t2d_qt_client
                         URI
@@ -343,6 +345,7 @@ if (T2D_BUILD_QT_CLIENT)
                         src/client/qt/qml/Main.qml
                         src/client/qt/qml/Joystick.qml
                         src/client/qt/qml/CustomButton.qml)
+                    qt_add_resources(t2d_qt_client t2d_images_qrc FILES ${T2D_QRC})
                 else ()
                     message(WARNING "qt_add_qml_module not available; QML files not embedded")
                 endif ()

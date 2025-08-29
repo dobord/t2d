@@ -1,0 +1,14 @@
+<!-- SPDX-License-Identifier: Apache-2.0 -->
+<RCC>
+  <!-- Image assets for joystick and future UI icons -->
+  <qresource prefix="/T2DClient">
+    <file>img/icons8-back-40.png</file>
+    <file>img/icons8-collapse-arrow-40.png</file>
+    <file>img/icons8-down-arrow-40.png</file>
+    <file>img/icons8-expand-arrow-40.png</file>
+    <file>img/icons8-forward-40.png</file>
+    <file>img/icons8-long-arrow-up-40.png</file>
+    <file>img/icons8-rotate-left-40.png</file>
+    <file>img/icons8-rotate-right-40.png</file>
+  </qresource>
+</RCC>

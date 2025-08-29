@@ -76,7 +76,7 @@ Item {
             anchors.left: parent.left
             anchors.leftMargin: 2
             anchors.verticalCenter: parent.verticalCenter
-            source: "img/icons8-rotate-left-40.png"
+            source: "qrc:/T2DClient/img/icons8-rotate-left-40.png"
             sourceSize.width: 32
             sourceSize.height: 32
             opacity: 0.75
@@ -86,7 +86,7 @@ Item {
             anchors.right: parent.right
             anchors.rightMargin: 2
             anchors.verticalCenter: parent.verticalCenter
-            source: "img/icons8-rotate-right-40.png"
+            source: "qrc:/T2DClient/img/icons8-rotate-right-40.png"
             sourceSize.width: 32
             sourceSize.height: 32
             opacity: 0.75
@@ -96,7 +96,7 @@ Item {
             anchors.bottom: parent.bottom
             anchors.bottomMargin: 0
             anchors.horizontalCenter: parent.horizontalCenter
-            source: "img/icons8-down-arrow-40.png"
+            source: "qrc:/T2DClient/img/icons8-down-arrow-40.png"
             sourceSize.width: 32
             sourceSize.height: 32
             opacity: 0.75
@@ -106,7 +106,7 @@ Item {
             anchors.top: parent.top
             anchors.topMargin: 0
             anchors.horizontalCenter: parent.horizontalCenter
-            source: "img/icons8-long-arrow-up-40.png"
+            source: "qrc:/T2DClient/img/icons8-long-arrow-up-40.png"
             sourceSize.width: 32
             sourceSize.height: 32
             opacity: 0.75
@@ -160,7 +160,7 @@ Item {
             anchors.left: parent.left
             anchors.leftMargin: 2
             anchors.verticalCenter: parent.verticalCenter
-            source: "img/icons8-back-40.png"
+            source: "qrc:/T2DClient/img/icons8-back-40.png"
             sourceSize.width: 32
             sourceSize.height: 32
             opacity: 0.75
@@ -170,7 +170,7 @@ Item {
             anchors.top: parent.top
             anchors.topMargin: 0
             anchors.horizontalCenter: parent.horizontalCenter
-            source: "img/icons8-collapse-arrow-40.png"
+            source: "qrc:/T2DClient/img/icons8-collapse-arrow-40.png"
             sourceSize.width: 32
             sourceSize.height: 32
             opacity: 0.75
@@ -180,7 +180,7 @@ Item {
             anchors.bottom: parent.bottom
             anchors.bottomMargin: 0
             anchors.horizontalCenter: parent.horizontalCenter
-            source: "img/icons8-expand-arrow-40.png"
+            source: "qrc:/T2DClient/img/icons8-expand-arrow-40.png"
             sourceSize.width: 32
             sourceSize.height: 32
             opacity: 0.75
@@ -190,7 +190,7 @@ Item {
             anchors.right: parent.right
             anchors.rightMargin: 2
             anchors.verticalCenter: parent.verticalCenter
-            source: "img/icons8-forward-40.png"
+            source: "qrc:/T2DClient/img/icons8-forward-40.png"
             sourceSize.width: 32
             sourceSize.height: 32
             opacity: 0.75
