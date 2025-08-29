@@ -71,38 +71,46 @@ Item {
             }
         ]
 
-        // Replace image assets with simple text arrows to avoid external resource dependency
-        Text {
+        // Visual control hints (image assets)
+        Image {
             anchors.left: parent.left
-            anchors.leftMargin: 4
+            anchors.leftMargin: 2
             anchors.verticalCenter: parent.verticalCenter
-            text: "⟲"
-            color: "#8098a8"
-            font.pixelSize: 18
+            source: "img/icons8-rotate-left-40.png"
+            sourceSize.width: 32
+            sourceSize.height: 32
+            opacity: 0.75
+            smooth: true
         }
-        Text {
+        Image {
             anchors.right: parent.right
-            anchors.rightMargin: 4
+            anchors.rightMargin: 2
             anchors.verticalCenter: parent.verticalCenter
-            text: "⟳"
-            color: "#8098a8"
-            font.pixelSize: 18
+            source: "img/icons8-rotate-right-40.png"
+            sourceSize.width: 32
+            sourceSize.height: 32
+            opacity: 0.75
+            smooth: true
         }
-        Text {
+        Image {
             anchors.bottom: parent.bottom
-            anchors.bottomMargin: 2
+            anchors.bottomMargin: 0
             anchors.horizontalCenter: parent.horizontalCenter
-            text: "↓"
-            color: "#8098a8"
-            font.pixelSize: 18
+            source: "img/icons8-down-arrow-40.png"
+            sourceSize.width: 32
+            sourceSize.height: 32
+            opacity: 0.75
+            smooth: true
         }
-        Text {
+        Image {
             anchors.top: parent.top
-            anchors.topMargin: 2
+            anchors.topMargin: 0
             anchors.horizontalCenter: parent.horizontalCenter
-            text: "↑"
-            color: "#8098a8"
-            font.pixelSize: 18
+            source: "img/icons8-long-arrow-up-40.png"
+            sourceSize.width: 32
+            sourceSize.height: 32
+            opacity: 0.75
+            smooth: true
         }
 
         Rectangle {
@@ -148,37 +156,45 @@ Item {
             }
         ]
 
-        Text {
+        Image {
             anchors.left: parent.left
-            anchors.leftMargin: 4
+            anchors.leftMargin: 2
             anchors.verticalCenter: parent.verticalCenter
-            text: "←"
-            color: "#8098a8"
-            font.pixelSize: 18
+            source: "img/icons8-back-40.png"
+            sourceSize.width: 32
+            sourceSize.height: 32
+            opacity: 0.75
+            smooth: true
         }
-        Text {
+        Image {
             anchors.top: parent.top
-            anchors.topMargin: 2
+            anchors.topMargin: 0
             anchors.horizontalCenter: parent.horizontalCenter
-            text: "↑"
-            color: "#8098a8"
-            font.pixelSize: 18
+            source: "img/icons8-collapse-arrow-40.png"
+            sourceSize.width: 32
+            sourceSize.height: 32
+            opacity: 0.75
+            smooth: true
         }
-        Text {
+        Image {
             anchors.bottom: parent.bottom
-            anchors.bottomMargin: 2
+            anchors.bottomMargin: 0
             anchors.horizontalCenter: parent.horizontalCenter
-            text: "↓"
-            color: "#8098a8"
-            font.pixelSize: 18
+            source: "img/icons8-expand-arrow-40.png"
+            sourceSize.width: 32
+            sourceSize.height: 32
+            opacity: 0.75
+            smooth: true
         }
-        Text {
+        Image {
             anchors.right: parent.right
-            anchors.rightMargin: 4
+            anchors.rightMargin: 2
             anchors.verticalCenter: parent.verticalCenter
-            text: "→"
-            color: "#8098a8"
-            font.pixelSize: 18
+            source: "img/icons8-forward-40.png"
+            sourceSize.width: 32
+            sourceSize.height: 32
+            opacity: 0.75
+            smooth: true
         }
 
         Rectangle {
