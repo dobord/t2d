@@ -987,10 +987,19 @@ coro::task<void> run_match(std::shared_ptr<coro::io_scheduler> scheduler, std::s
 #if T2D_PROFILING_ENABLED
                     bool reused = !ctx->snapshot_scratch.empty();
 #endif
-                    // Phase 2 perf: reserve scratch string capacity using size estimate to reduce growth reallocs.
-                    // ByteSizeLong() cost is amortized vs multiple reallocs for large snapshots.
-                    {
+                    // Phase 2 perf (iteration 2): Heuristic scratch pre-size only if current capacity < 50% of previous
+                    // size. Avoid unconditional ByteSizeLong() (was regression). Only call when we detect likely
+                    // growth.
+                    if (ctx->snapshot_scratch.capacity() < ctx->snapshot_scratch.size() / 2) {
+                        auto bs_start = std::chrono::steady_clock::now();
                         size_t estimate = sm.ByteSizeLong();
+                        auto bs_ns = std::chrono::duration_cast<std::chrono::nanoseconds>(
+                                         std::chrono::steady_clock::now() - bs_start)
+                                         .count();
+#if T2D_PROFILING_ENABLED
+                        t2d::metrics::add_custom_counter("bytesize_calls", 1);
+                        t2d::metrics::add_custom_counter("bytesize_time_ns", (uint64_t)bs_ns);
+#endif
                         if (ctx->snapshot_scratch.capacity() < estimate)
                             ctx->snapshot_scratch.reserve(estimate);
                     }
@@ -1152,9 +1161,17 @@ coro::task<void> run_match(std::shared_ptr<coro::io_scheduler> scheduler, std::s
 #if T2D_PROFILING_ENABLED
                     bool reused = !ctx->snapshot_scratch.empty();
 #endif
-                    // Phase 2 perf: reserve scratch for delta serialization as above.
-                    {
+                    // Delta path heuristic identical to full snapshot.
+                    if (ctx->snapshot_scratch.capacity() < ctx->snapshot_scratch.size() / 2) {
+                        auto bs_start = std::chrono::steady_clock::now();
                         size_t estimate = sm.ByteSizeLong();
+                        auto bs_ns = std::chrono::duration_cast<std::chrono::nanoseconds>(
+                                         std::chrono::steady_clock::now() - bs_start)
+                                         .count();
+#if T2D_PROFILING_ENABLED
+                        t2d::metrics::add_custom_counter("bytesize_calls", 1);
+                        t2d::metrics::add_custom_counter("bytesize_time_ns", (uint64_t)bs_ns);
+#endif
                         if (ctx->snapshot_scratch.capacity() < estimate)
                             ctx->snapshot_scratch.reserve(estimate);
                     }
