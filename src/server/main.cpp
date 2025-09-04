@@ -585,6 +585,17 @@ int main(int argc, char **argv)
                     j << ",\"snapshot_full_projectiles_mean\":" << fproj_mean;
                     j << ",\"snapshot_full_crates_mean\":" << fcrates_mean;
                     j << ",\"snapshot_full_ammo_mean\":" << fammo_mean;
+                    double ftanks_ns = (double)rtm.snapshot_full_phase_tanks_ns.load(std::memory_order_relaxed) / fs;
+                    double fammo_ns = (double)rtm.snapshot_full_phase_ammo_ns.load(std::memory_order_relaxed) / fs;
+                    double fcrates_ns = (double)rtm.snapshot_full_phase_crates_ns.load(std::memory_order_relaxed) / fs;
+                    double fproj_ns =
+                        (double)rtm.snapshot_full_phase_projectiles_ns.load(std::memory_order_relaxed) / fs;
+                    double fser_ns = (double)rtm.snapshot_full_phase_serialize_ns.load(std::memory_order_relaxed) / fs;
+                    j << ",\"snapshot_full_phase_tanks_ns_mean\":" << ftanks_ns;
+                    j << ",\"snapshot_full_phase_ammo_ns_mean\":" << fammo_ns;
+                    j << ",\"snapshot_full_phase_crates_ns_mean\":" << fcrates_ns;
+                    j << ",\"snapshot_full_phase_projectiles_ns_mean\":" << fproj_ns;
+                    j << ",\"snapshot_full_phase_serialize_ns_mean\":" << fser_ns;
                 }
                 uint64_t ds = rtm.snapshot_delta_samples.load(std::memory_order_relaxed);
                 if (ds > 0) {
@@ -595,6 +606,36 @@ int main(int argc, char **argv)
                     j << ",\"snapshot_delta_tanks_mean\":" << dtanks_mean;
                     j << ",\"snapshot_delta_projectiles_mean\":" << dproj_mean;
                     j << ",\"snapshot_delta_crates_mean\":" << dcrates_mean;
+                    double dtanks_ns = (double)rtm.snapshot_delta_phase_tanks_ns.load(std::memory_order_relaxed) / ds;
+                    double dproj_ns =
+                        (double)rtm.snapshot_delta_phase_projectiles_ns.load(std::memory_order_relaxed) / ds;
+                    double dcrates_ns = (double)rtm.snapshot_delta_phase_crates_ns.load(std::memory_order_relaxed) / ds;
+                    double dser_ns = (double)rtm.snapshot_delta_phase_serialize_ns.load(std::memory_order_relaxed) / ds;
+                    j << ",\"snapshot_delta_phase_tanks_ns_mean\":" << dtanks_ns;
+                    j << ",\"snapshot_delta_phase_projectiles_ns_mean\":" << dproj_ns;
+                    j << ",\"snapshot_delta_phase_crates_ns_mean\":" << dcrates_ns;
+                    j << ",\"snapshot_delta_phase_serialize_ns_mean\":" << dser_ns;
+                    if (dmean > 0.0) {
+                        double dother = dmean - (dtanks_ns + dproj_ns + dcrates_ns + dser_ns);
+                        if (dother < 0)
+                            dother = 0;
+                        j << ",\"snapshot_delta_phase_other_ns_mean\":" << dother;
+                    }
+                }
+                // Full snapshot other phase time (after full phase means are available)
+                if (fcnt > 0 && fs > 0) {
+                    double ftanks_ns = (double)rtm.snapshot_full_phase_tanks_ns.load(std::memory_order_relaxed) / fs;
+                    double fammo_ns = (double)rtm.snapshot_full_phase_ammo_ns.load(std::memory_order_relaxed) / fs;
+                    double fcrates_ns = (double)rtm.snapshot_full_phase_crates_ns.load(std::memory_order_relaxed) / fs;
+                    double fproj_ns =
+                        (double)rtm.snapshot_full_phase_projectiles_ns.load(std::memory_order_relaxed) / fs;
+                    double fser_ns = (double)rtm.snapshot_full_phase_serialize_ns.load(std::memory_order_relaxed) / fs;
+                    if (fmean > 0.0) {
+                        double fother = fmean - (ftanks_ns + fammo_ns + fcrates_ns + fproj_ns + fser_ns);
+                        if (fother < 0)
+                            fother = 0;
+                        j << ",\"snapshot_full_phase_other_ns_mean\":" << fother;
+                    }
                 }
             }
             {

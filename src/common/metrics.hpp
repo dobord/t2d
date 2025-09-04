@@ -108,6 +108,17 @@ struct RuntimeCounters
     std::atomic<uint64_t> snapshot_delta_projectiles_accum{0};
     std::atomic<uint64_t> snapshot_delta_crates_accum{0};
     std::atomic<uint64_t> snapshot_delta_samples{0};
+    // Full snapshot phase timing accumulators (nanoseconds)
+    std::atomic<uint64_t> snapshot_full_phase_tanks_ns{0};
+    std::atomic<uint64_t> snapshot_full_phase_ammo_ns{0};
+    std::atomic<uint64_t> snapshot_full_phase_crates_ns{0};
+    std::atomic<uint64_t> snapshot_full_phase_projectiles_ns{0};
+    std::atomic<uint64_t> snapshot_full_phase_serialize_ns{0};
+    // Delta snapshot phase timing accumulators (nanoseconds)
+    std::atomic<uint64_t> snapshot_delta_phase_tanks_ns{0};
+    std::atomic<uint64_t> snapshot_delta_phase_projectiles_ns{0};
+    std::atomic<uint64_t> snapshot_delta_phase_crates_ns{0};
+    std::atomic<uint64_t> snapshot_delta_phase_serialize_ns{0};
 #endif
 };
 
@@ -346,6 +357,46 @@ inline void add_snapshot_delta_entity_counts(uint32_t tanks, uint32_t projectile
     rt.snapshot_delta_projectiles_accum.fetch_add(projectiles, std::memory_order_relaxed);
     rt.snapshot_delta_crates_accum.fetch_add(crates, std::memory_order_relaxed);
     rt.snapshot_delta_samples.fetch_add(1, std::memory_order_relaxed);
+#    endif
+}
+
+struct SnapshotFullPhaseTimes
+{
+    uint64_t tanks_ns{0};
+    uint64_t ammo_ns{0};
+    uint64_t crates_ns{0};
+    uint64_t projectiles_ns{0};
+    uint64_t serialize_ns{0};
+};
+
+inline void add_snapshot_full_phase_times(const SnapshotFullPhaseTimes &t)
+{
+#    if T2D_PROFILING_ENABLED
+    auto &rt = runtime();
+    rt.snapshot_full_phase_tanks_ns.fetch_add(t.tanks_ns, std::memory_order_relaxed);
+    rt.snapshot_full_phase_ammo_ns.fetch_add(t.ammo_ns, std::memory_order_relaxed);
+    rt.snapshot_full_phase_crates_ns.fetch_add(t.crates_ns, std::memory_order_relaxed);
+    rt.snapshot_full_phase_projectiles_ns.fetch_add(t.projectiles_ns, std::memory_order_relaxed);
+    rt.snapshot_full_phase_serialize_ns.fetch_add(t.serialize_ns, std::memory_order_relaxed);
+#    endif
+}
+
+struct SnapshotDeltaPhaseTimes
+{
+    uint64_t tanks_ns{0};
+    uint64_t projectiles_ns{0};
+    uint64_t crates_ns{0};
+    uint64_t serialize_ns{0};
+};
+
+inline void add_snapshot_delta_phase_times(const SnapshotDeltaPhaseTimes &t)
+{
+#    if T2D_PROFILING_ENABLED
+    auto &rt = runtime();
+    rt.snapshot_delta_phase_tanks_ns.fetch_add(t.tanks_ns, std::memory_order_relaxed);
+    rt.snapshot_delta_phase_projectiles_ns.fetch_add(t.projectiles_ns, std::memory_order_relaxed);
+    rt.snapshot_delta_phase_crates_ns.fetch_add(t.crates_ns, std::memory_order_relaxed);
+    rt.snapshot_delta_phase_serialize_ns.fetch_add(t.serialize_ns, std::memory_order_relaxed);
 #    endif
 }
 #else

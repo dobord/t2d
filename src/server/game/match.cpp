@@ -864,6 +864,11 @@ coro::task<void> run_match(std::shared_ptr<coro::io_scheduler> scheduler, std::s
             bool send_full = (ctx->server_tick - ctx->last_full_snapshot_tick >= ctx->full_snapshot_interval_ticks);
             if (send_full) {
                 auto snap_start = std::chrono::steady_clock::now();
+#if T2D_PROFILING_ENABLED
+                // Phase timing instrumentation (tanks, ammo, crates, projectiles, serialize)
+                auto phase_prev = snap_start;
+                t2d::metrics::SnapshotFullPhaseTimes phase_times{};
+#endif
                 t2d::ServerMessage sm;
                 auto *snap = sm.mutable_snapshot();
                 snap->set_server_tick(static_cast<uint32_t>(ctx->server_tick));
@@ -916,6 +921,14 @@ coro::task<void> run_match(std::shared_ptr<coro::io_scheduler> scheduler, std::s
                     ts->set_track_right_broken(adv.right_track_broken);
                     ts->set_turret_disabled(adv.turret_disabled);
                 }
+#if T2D_PROFILING_ENABLED
+                {
+                    auto now = std::chrono::steady_clock::now();
+                    phase_times.tanks_ns =
+                        std::chrono::duration_cast<std::chrono::nanoseconds>(now - phase_prev).count();
+                    phase_prev = now;
+                }
+#endif
                 // above loop sets hp/ammo, continue existing code path (skip duplicate at end)
                 for (auto &adv_unused_for_scope : ctx->tanks) {
                     (void)adv_unused_for_scope; // no-op; maintain structure after refactor
@@ -930,6 +943,14 @@ coro::task<void> run_match(std::shared_ptr<coro::io_scheduler> scheduler, std::s
                     bx->set_y(ab.y);
                     bx->set_active(true);
                 }
+#if T2D_PROFILING_ENABLED
+                {
+                    auto now = std::chrono::steady_clock::now();
+                    phase_times.ammo_ns =
+                        std::chrono::duration_cast<std::chrono::nanoseconds>(now - phase_prev).count();
+                    phase_prev = now;
+                }
+#endif
                 // Crates (position + angle)
                 for (auto &cr : ctx->crates) {
                     if (!b2Body_IsValid(cr.body))
@@ -957,6 +978,14 @@ coro::task<void> run_match(std::shared_ptr<coro::io_scheduler> scheduler, std::s
                         ctx->last_sent_crates.push_back({cr.id, xf.p.x, xf.p.y, ang_deg, true});
                     }
                 }
+#if T2D_PROFILING_ENABLED
+                {
+                    auto now = std::chrono::steady_clock::now();
+                    phase_times.crates_ns =
+                        std::chrono::duration_cast<std::chrono::nanoseconds>(now - phase_prev).count();
+                    phase_prev = now;
+                }
+#endif
                 for (auto si : ctx->projectile_indices) {
                     if (si >= ctx->projectiles_storage.size())
                         continue;
@@ -976,6 +1005,14 @@ coro::task<void> run_match(std::shared_ptr<coro::io_scheduler> scheduler, std::s
                     ps->set_vy(p.vy);
 #endif
                 }
+#if T2D_PROFILING_ENABLED
+                {
+                    auto now = std::chrono::steady_clock::now();
+                    phase_times.projectiles_ns =
+                        std::chrono::duration_cast<std::chrono::nanoseconds>(now - phase_prev).count();
+                    phase_prev = now;
+                }
+#endif
                 // Approx size: serialize into reusable scratch buffer (size() after serialize provides byte count)
                 {
 #if T2D_PROFILING_ENABLED
@@ -994,6 +1031,13 @@ coro::task<void> run_match(std::shared_ptr<coro::io_scheduler> scheduler, std::s
                             static_cast<uint32_t>(snap->projectiles_size()),
                             static_cast<uint32_t>(snap->crates_size()),
                             static_cast<uint32_t>(snap->ammo_boxes_size()));
+                        {
+                            auto now = std::chrono::steady_clock::now();
+                            phase_times.serialize_ns =
+                                std::chrono::duration_cast<std::chrono::nanoseconds>(now - phase_prev).count();
+                            // Submit phase timings once per full snapshot
+                            t2d::metrics::add_snapshot_full_phase_times(phase_times);
+                        }
 #endif
                     }
                 }
@@ -1012,6 +1056,10 @@ coro::task<void> run_match(std::shared_ptr<coro::io_scheduler> scheduler, std::s
             } else {
                 // delta snapshot
                 auto snap_start = std::chrono::steady_clock::now();
+#if T2D_PROFILING_ENABLED
+                auto phase_prev_delta = snap_start;
+                t2d::metrics::SnapshotDeltaPhaseTimes delta_phase_times{};
+#endif
                 t2d::ServerMessage sm;
                 auto *delta = sm.mutable_delta_snapshot();
                 delta->set_server_tick(static_cast<uint32_t>(ctx->server_tick));
@@ -1068,6 +1116,14 @@ coro::task<void> run_match(std::shared_ptr<coro::io_scheduler> scheduler, std::s
                         prev.alive = adv.hp > 0;
                     }
                 }
+#if T2D_PROFILING_ENABLED
+                {
+                    auto now = std::chrono::steady_clock::now();
+                    delta_phase_times.tanks_ns =
+                        std::chrono::duration_cast<std::chrono::nanoseconds>(now - phase_prev_delta).count();
+                    phase_prev_delta = now;
+                }
+#endif
                 for (auto id : ctx->removed_tanks_since_full)
                     delta->add_removed_tanks(id);
                 // new projectiles since base: naive include all with id > 0 created after base tick (simplify: send all
@@ -1094,6 +1150,14 @@ coro::task<void> run_match(std::shared_ptr<coro::io_scheduler> scheduler, std::s
                 }
                 for (auto id : ctx->removed_projectiles_since_full)
                     delta->add_removed_projectiles(id);
+#if T2D_PROFILING_ENABLED
+                {
+                    auto now = std::chrono::steady_clock::now();
+                    delta_phase_times.projectiles_ns =
+                        std::chrono::duration_cast<std::chrono::nanoseconds>(now - phase_prev_delta).count();
+                    phase_prev_delta = now;
+                }
+#endif
                 // Crate deltas
                 if (ctx->last_sent_crates.size() < ctx->crates.size())
                     ctx->last_sent_crates.resize(ctx->crates.size());
@@ -1133,6 +1197,14 @@ coro::task<void> run_match(std::shared_ptr<coro::io_scheduler> scheduler, std::s
                 }
                 for (auto cid : ctx->removed_crates_since_full)
                     delta->add_removed_crates(cid);
+#if T2D_PROFILING_ENABLED
+                {
+                    auto now = std::chrono::steady_clock::now();
+                    delta_phase_times.crates_ns =
+                        std::chrono::duration_cast<std::chrono::nanoseconds>(now - phase_prev_delta).count();
+                    phase_prev_delta = now;
+                }
+#endif
                 // Deltas for ammo boxes omitted (they are static until picked up; appear only in full snapshots)
                 {
 #if T2D_PROFILING_ENABLED
@@ -1149,6 +1221,12 @@ coro::task<void> run_match(std::shared_ptr<coro::io_scheduler> scheduler, std::s
                             static_cast<uint32_t>(delta->tanks_size()),
                             static_cast<uint32_t>(delta->projectiles_size()),
                             static_cast<uint32_t>(delta->crates_size()));
+                        {
+                            auto now = std::chrono::steady_clock::now();
+                            delta_phase_times.serialize_ns =
+                                std::chrono::duration_cast<std::chrono::nanoseconds>(now - phase_prev_delta).count();
+                            t2d::metrics::add_snapshot_delta_phase_times(delta_phase_times);
+                        }
 #endif
                     }
                 }
