@@ -870,6 +870,12 @@ coro::task<void> run_match(std::shared_ptr<coro::io_scheduler> scheduler, std::s
                 // Static map dimensions (unchanged during match) sent with each full snapshot
                 snap->set_map_width(ctx->map_width);
                 snap->set_map_height(ctx->map_height);
+                // Phase 2 perf: pre-reserve protobuf repeated fields to avoid incremental realloc during add_*
+                // We reserve upper bounds (some entries may be skipped, e.g. destroyed tanks when not persisted).
+                snap->mutable_tanks()->Reserve(static_cast<int>(ctx->tanks.size()));
+                snap->mutable_projectiles()->Reserve(static_cast<int>(ctx->projectile_indices.size()));
+                snap->mutable_ammo_boxes()->Reserve(static_cast<int>(ctx->ammo_boxes.size()));
+                snap->mutable_crates()->Reserve(static_cast<int>(ctx->crates.size()));
                 ctx->last_full_snapshot_tick = static_cast<uint32_t>(ctx->server_tick);
                 // Rebuild cache from physics state
                 ctx->last_sent_tanks.clear();
@@ -981,6 +987,13 @@ coro::task<void> run_match(std::shared_ptr<coro::io_scheduler> scheduler, std::s
 #if T2D_PROFILING_ENABLED
                     bool reused = !ctx->snapshot_scratch.empty();
 #endif
+                    // Phase 2 perf: reserve scratch string capacity using size estimate to reduce growth reallocs.
+                    // ByteSizeLong() cost is amortized vs multiple reallocs for large snapshots.
+                    {
+                        size_t estimate = sm.ByteSizeLong();
+                        if (ctx->snapshot_scratch.capacity() < estimate)
+                            ctx->snapshot_scratch.reserve(estimate);
+                    }
                     if (!sm.SerializeToString(&ctx->snapshot_scratch)) {
                         // Fallback: should not happen; skip metrics if serialize fails
                     } else {
@@ -1009,6 +1022,14 @@ coro::task<void> run_match(std::shared_ptr<coro::io_scheduler> scheduler, std::s
                 auto *delta = sm.mutable_delta_snapshot();
                 delta->set_server_tick(static_cast<uint32_t>(ctx->server_tick));
                 delta->set_base_tick(ctx->last_full_snapshot_tick);
+                // Phase 2 perf: pre-reserve repeated fields (upper bounds) to minimize reallocs during mutation.
+                delta->mutable_tanks()->Reserve(static_cast<int>(ctx->tanks.size()));
+                delta->mutable_projectiles()->Reserve(static_cast<int>(ctx->projectile_indices.size()));
+                delta->mutable_removed_tanks()->Reserve(static_cast<int>(ctx->removed_tanks_since_full.size()));
+                delta->mutable_removed_projectiles()->Reserve(
+                    static_cast<int>(ctx->removed_projectiles_since_full.size()));
+                delta->mutable_crates()->Reserve(static_cast<int>(ctx->crates.size()));
+                delta->mutable_removed_crates()->Reserve(static_cast<int>(ctx->removed_crates_since_full.size()));
                 // compare tanks
                 if (ctx->last_sent_tanks.size() != ctx->tanks.size())
                     ctx->last_sent_tanks.resize(ctx->tanks.size());
@@ -1131,6 +1152,12 @@ coro::task<void> run_match(std::shared_ptr<coro::io_scheduler> scheduler, std::s
 #if T2D_PROFILING_ENABLED
                     bool reused = !ctx->snapshot_scratch.empty();
 #endif
+                    // Phase 2 perf: reserve scratch for delta serialization as above.
+                    {
+                        size_t estimate = sm.ByteSizeLong();
+                        if (ctx->snapshot_scratch.capacity() < estimate)
+                            ctx->snapshot_scratch.reserve(estimate);
+                    }
                     if (!sm.SerializeToString(&ctx->snapshot_scratch)) {
                         // skip metrics if failure
                     } else {
