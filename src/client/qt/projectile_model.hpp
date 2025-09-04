@@ -2,7 +2,6 @@
 #pragma once
 #include "game.pb.h"
 
-#include <mutex>
 #include <unordered_map>
 #include <vector>
 
@@ -39,7 +38,6 @@ public:
 
     Q_INVOKABLE float interpX(int row, float alpha) const
     {
-        std::scoped_lock lk(m_);
         if (row < 0 || (size_t)row >= rows_.size())
             return 0.f;
         const auto &r = rows_[row];
@@ -48,7 +46,6 @@ public:
 
     Q_INVOKABLE float interpY(int row, float alpha) const
     {
-        std::scoped_lock lk(m_);
         if (row < 0 || (size_t)row >= rows_.size())
             return 0.f;
         const auto &r = rows_[row];
@@ -59,11 +56,9 @@ public:
     // Returned values are frame-to-frame deltas; magnitude scaling is not needed for orientation when drawing.
     Q_INVOKABLE float interpVx(int row, float /*alpha*/) const
     {
-        std::scoped_lock lk(m_);
         if (row < 0 || (size_t)row >= rows_.size())
-            return 1.f; // default non-zero to avoid undefined angle
+            return 1.f;
         const auto &r = rows_[row];
-        // Prefer authoritative velocity; fallback to position delta if near zero (e.g. very slow or missing)
         if (std::fabs(r.vx) > 1e-6f || std::fabs(r.vy) > 1e-6f)
             return r.vx;
         return (r.x - r.prev_x);
@@ -71,7 +66,6 @@ public:
 
     Q_INVOKABLE float interpVy(int row, float /*alpha*/) const
     {
-        std::scoped_lock lk(m_);
         if (row < 0 || (size_t)row >= rows_.size())
             return 0.f;
         const auto &r = rows_[row];
@@ -91,7 +85,6 @@ public:
     {
         if (!idx.isValid())
             return {};
-        std::scoped_lock lk(m_);
         if (idx.row() < 0 || (size_t)idx.row() >= rows_.size())
             return {};
         const auto &r = rows_[idx.row()];
@@ -121,7 +114,6 @@ public:
         newRows.reserve(snap.projectiles_size());
         for (const auto &p : snap.projectiles())
             newRows.push_back(QtProjectileRow{p.projectile_id(), p.x(), p.y(), p.x(), p.y(), p.vx(), p.vy()});
-        std::scoped_lock lk(m_);
         beginResetModel();
         rows_.swap(newRows);
         index_.clear();
@@ -133,7 +125,6 @@ public:
 
     void applyDelta(const t2d::DeltaSnapshot &d)
     {
-        std::scoped_lock lk(m_);
         std::vector<int> removeIdx;
         removeIdx.reserve(d.removed_projectiles_size());
         for (auto rid : d.removed_projectiles()) {
@@ -155,6 +146,8 @@ public:
             for (int i = 0; i < (int)rows_.size(); ++i)
                 index_.emplace(rows_[i].id, i);
         }
+        std::vector<int> changed;
+        changed.reserve(d.projectiles_size());
         for (const auto &p : d.projectiles()) {
             auto it = index_.find(p.projectile_id());
             if (it != index_.end()) {
@@ -166,8 +159,7 @@ public:
                 row.y = p.y();
                 row.vx = p.vx();
                 row.vy = p.vy();
-                auto ix = index(i);
-                emit dataChanged(ix, ix);
+                changed.push_back(i);
             } else {
                 beginInsertRows({}, (int)rows_.size(), (int)rows_.size());
                 rows_.push_back(QtProjectileRow{p.projectile_id(), p.x(), p.y(), p.x(), p.y(), p.vx(), p.vy()});
@@ -175,10 +167,23 @@ public:
                 index_.emplace(p.projectile_id(), (int)rows_.size() - 1);
             }
         }
+        if (!changed.empty()) {
+            std::sort(changed.begin(), changed.end());
+            int rs = changed.front();
+            int prev = rs;
+            for (size_t k = 1; k < changed.size(); ++k) {
+                int cur = changed[k];
+                if (cur != prev + 1) {
+                    emit dataChanged(index(rs), index(prev));
+                    rs = cur;
+                }
+                prev = cur;
+            }
+            emit dataChanged(index(rs), index(prev));
+        }
     }
 
 private:
-    mutable std::mutex m_;
     std::vector<QtProjectileRow> rows_;
     std::unordered_map<uint32_t, int> index_;
 };

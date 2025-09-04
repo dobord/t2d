@@ -262,18 +262,33 @@ coro::task<void> run_network(
                     matchStartServerTick = 0;
                     timing->setHardCap(matchStartServerTick, tickRate, hardCapTicks);
                 } else if (sm.has_snapshot()) {
-                    tankModel->applyFull(sm.snapshot());
-                    projModel->applyFull(sm.snapshot());
-                    ammoModel->applyFull(sm.snapshot());
-                    crateModel->applyFull(sm.snapshot());
-                    timing->markServerTick();
-                    timing->setServerTick(sm.snapshot().server_tick());
+                    // Dispatch to UI thread to mutate models (Qt requirement)
+                    auto snap = std::make_shared<t2d::StateSnapshot>(sm.snapshot());
+                    QMetaObject::invokeMethod(
+                        tankModel,
+                        [tankModel, projModel, ammoModel, crateModel, timing, snap]()
+                        {
+                            tankModel->applyFull(*snap);
+                            projModel->applyFull(*snap);
+                            ammoModel->applyFull(*snap);
+                            crateModel->applyFull(*snap);
+                            timing->markServerTick();
+                            timing->setServerTick(snap->server_tick());
+                        },
+                        Qt::QueuedConnection);
                 } else if (sm.has_delta_snapshot()) {
-                    tankModel->applyDelta(sm.delta_snapshot());
-                    projModel->applyDelta(sm.delta_snapshot());
-                    crateModel->applyDelta(sm.delta_snapshot());
-                    timing->markServerTick();
-                    timing->setServerTick(sm.delta_snapshot().server_tick());
+                    auto delta = std::make_shared<t2d::DeltaSnapshot>(sm.delta_snapshot());
+                    QMetaObject::invokeMethod(
+                        tankModel,
+                        [tankModel, projModel, crateModel, timing, delta]()
+                        {
+                            tankModel->applyDelta(*delta);
+                            projModel->applyDelta(*delta);
+                            crateModel->applyDelta(*delta);
+                            timing->markServerTick();
+                            timing->setServerTick(delta->server_tick());
+                        },
+                        Qt::QueuedConnection);
                 } else if (sm.has_match_end()) {
                     t2d::log::info(
                         "match_end received winner_entity={} my_entity={} server_tick={}",

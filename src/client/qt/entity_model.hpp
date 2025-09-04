@@ -3,7 +3,6 @@
 #include "game.pb.h"
 
 #include <cmath>
-#include <mutex>
 #include <unordered_map>
 #include <vector>
 
@@ -70,25 +69,17 @@ public:
 
     Q_INVOKABLE uint32_t entityId(int row) const
     {
-        std::scoped_lock lk(m_);
-        if (row < 0 || (size_t)row >= rows_.size())
-            return 0;
-        return rows_[row].id;
+        return (row >= 0 && (size_t)row < rows_.size()) ? rows_[row].id : 0;
     }
 
     Q_INVOKABLE int rowForEntity(uint32_t id) const
     {
-        std::scoped_lock lk(m_);
-        for (size_t i = 0; i < rows_.size(); ++i) {
-            if (rows_[i].id == id)
-                return (int)i;
-        }
-        return -1;
+        auto it = index_.find(id);
+        return it == index_.end() ? -1 : it->second;
     }
 
     Q_INVOKABLE float interpX(int row, float alpha) const
     {
-        std::scoped_lock lk(m_);
         if (row < 0 || (size_t)row >= rows_.size())
             return 0.f;
         const auto &r = rows_[row];
@@ -97,7 +88,6 @@ public:
 
     Q_INVOKABLE float interpY(int row, float alpha) const
     {
-        std::scoped_lock lk(m_);
         if (row < 0 || (size_t)row >= rows_.size())
             return 0.f;
         const auto &r = rows_[row];
@@ -106,7 +96,6 @@ public:
 
     Q_INVOKABLE float interpHullAngle(int row, float alpha) const
     {
-        std::scoped_lock lk(m_);
         if (row < 0 || (size_t)row >= rows_.size())
             return 0.f;
         const auto &r = rows_[row];
@@ -115,7 +104,6 @@ public:
 
     Q_INVOKABLE float interpTurretAngle(int row, float alpha) const
     {
-        std::scoped_lock lk(m_);
         if (row < 0 || (size_t)row >= rows_.size())
             return 0.f;
         const auto &r = rows_[row];
@@ -125,7 +113,6 @@ public:
     // Radian versions to reduce per-frame JS math in QML (deg->rad conversion moved to C++):
     Q_INVOKABLE float interpHullAngleRad(int row, float alpha) const
     {
-        std::scoped_lock lk(m_);
         if (row < 0 || (size_t)row >= rows_.size())
             return 0.f;
         const auto &r = rows_[row];
@@ -134,7 +121,6 @@ public:
 
     Q_INVOKABLE float interpTurretAngleRad(int row, float alpha) const
     {
-        std::scoped_lock lk(m_);
         if (row < 0 || (size_t)row >= rows_.size())
             return 0.f;
         const auto &r = rows_[row];
@@ -152,7 +138,6 @@ public:
     {
         if (!index.isValid())
             return {};
-        std::scoped_lock lk(m_);
         if (index.row() < 0 || static_cast<size_t>(index.row()) >= rows_.size())
             return {};
         const auto &r = rows_[index.row()];
@@ -207,34 +192,22 @@ public:
 
     Q_INVOKABLE bool isDead(int row) const
     {
-        std::scoped_lock lk(m_);
-        if (row < 0 || (size_t)row >= rows_.size())
-            return false;
-        return rows_[row].hp <= 0.f;
+        return (row >= 0 && (size_t)row < rows_.size()) ? rows_[row].hp <= 0.f : false;
     }
 
     Q_INVOKABLE bool trackLeftBroken(int row) const
     {
-        std::scoped_lock lk(m_);
-        if (row < 0 || (size_t)row >= rows_.size())
-            return false;
-        return rows_[row].track_left_broken;
+        return (row >= 0 && (size_t)row < rows_.size()) ? rows_[row].track_left_broken : false;
     }
 
     Q_INVOKABLE bool trackRightBroken(int row) const
     {
-        std::scoped_lock lk(m_);
-        if (row < 0 || (size_t)row >= rows_.size())
-            return false;
-        return rows_[row].track_right_broken;
+        return (row >= 0 && (size_t)row < rows_.size()) ? rows_[row].track_right_broken : false;
     }
 
     Q_INVOKABLE bool turretDisabled(int row) const
     {
-        std::scoped_lock lk(m_);
-        if (row < 0 || (size_t)row >= rows_.size())
-            return false;
-        return rows_[row].turret_disabled;
+        return (row >= 0 && (size_t)row < rows_.size()) ? rows_[row].turret_disabled : false;
     }
 
     void applyFull(const t2d::StateSnapshot &snap)
@@ -282,11 +255,46 @@ public:
             map_height_ = h;
             dimsChanged = true;
         }
-        {
-            std::scoped_lock lk(m_);
+        bool canUpdateInPlace = (newRows.size() == rows_.size());
+        if (canUpdateInPlace) {
+            for (auto &nr : newRows) {
+                if (index_.find(nr.id) == index_.end()) {
+                    canUpdateInPlace = false;
+                    break;
+                }
+            }
+        }
+        if (canUpdateInPlace) {
+            for (auto &nr : newRows) {
+                auto it = index_.find(nr.id);
+                auto &dst = rows_[it->second];
+                dst.prev_x = nr.prev_x;
+                dst.prev_y = nr.prev_y;
+                dst.x = nr.x;
+                dst.y = nr.y;
+                dst.prev_hull_angle = nr.prev_hull_angle;
+                dst.prev_turret_angle = nr.prev_turret_angle;
+                dst.hull_angle = nr.hull_angle;
+                dst.turret_angle = nr.turret_angle;
+                dst.prev_hull_dir_x = nr.prev_hull_dir_x;
+                dst.prev_hull_dir_y = nr.prev_hull_dir_y;
+                dst.prev_turret_dir_x = nr.prev_turret_dir_x;
+                dst.prev_turret_dir_y = nr.prev_turret_dir_y;
+                dst.hull_dir_x = nr.hull_dir_x;
+                dst.hull_dir_y = nr.hull_dir_y;
+                dst.turret_dir_x = nr.turret_dir_x;
+                dst.turret_dir_y = nr.turret_dir_y;
+                dst.hp = nr.hp;
+                dst.ammo = nr.ammo;
+                dst.track_left_broken = nr.track_left_broken;
+                dst.track_right_broken = nr.track_right_broken;
+                dst.turret_disabled = nr.turret_disabled;
+            }
+            if (!rows_.empty())
+                emit dataChanged(index(0), index((int)rows_.size() - 1));
+        } else {
             beginResetModel();
             rows_.swap(newRows);
-            // Rebuild persistent index cache.
             index_.clear();
             index_.reserve(rows_.size());
             for (int i = 0; i < (int)rows_.size(); ++i)
@@ -299,7 +307,6 @@ public:
 
     void applyDelta(const t2d::DeltaSnapshot &d)
     {
-        std::scoped_lock lk(m_);
         // Removals: collect indices via persistent index_.
         std::vector<int> removeIdx;
         removeIdx.reserve(d.removed_tanks_size());
@@ -323,7 +330,9 @@ public:
             for (int i = 0; i < (int)rows_.size(); ++i)
                 index_.emplace(rows_[i].id, i);
         }
-        // Updates / additions.
+        // Updates / additions (batched dataChanged ranges)
+        std::vector<int> changedIndices;
+        changedIndices.reserve(d.tanks_size());
         for (const auto &t : d.tanks()) {
             auto it = index_.find(t.entity_id());
             if (it != index_.end()) {
@@ -355,8 +364,7 @@ public:
                 row.track_left_broken = t.track_left_broken();
                 row.track_right_broken = t.track_right_broken();
                 row.turret_disabled = t.turret_disabled();
-                auto ix = index(i);
-                emit dataChanged(ix, ix);
+                changedIndices.push_back(i);
             } else {
                 beginInsertRows({}, (int)rows_.size(), (int)rows_.size());
                 constexpr float kDegToRad3 = 3.14159265358979323846f / 180.f;
@@ -392,13 +400,26 @@ public:
                 index_.emplace(t.entity_id(), (int)rows_.size() - 1);
             }
         }
+        if (!changedIndices.empty()) {
+            std::sort(changedIndices.begin(), changedIndices.end());
+            int runStart = changedIndices.front();
+            int prev = runStart;
+            for (size_t k = 1; k < changedIndices.size(); ++k) {
+                int cur = changedIndices[k];
+                if (cur != prev + 1) {
+                    emit dataChanged(index(runStart), index(prev));
+                    runStart = cur;
+                }
+                prev = cur;
+            }
+            emit dataChanged(index(runStart), index(prev));
+        }
     }
 
 signals:
     void mapDimensionsChanged();
 
 private:
-    mutable std::mutex m_;
     std::vector<QtTankRow> rows_;
     float map_width_{0.f};
     float map_height_{0.f};

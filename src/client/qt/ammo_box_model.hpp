@@ -2,7 +2,6 @@
 #pragma once
 #include "game.pb.h"
 
-#include <mutex>
 #include <vector>
 
 #include <QtCore/QAbstractListModel>
@@ -41,7 +40,6 @@ public:
 
     Q_INVOKABLE QVariant get(int row) const
     {
-        std::scoped_lock lk(m_);
         if (row < 0 || (size_t)row >= rows_.size())
             return {};
         const auto &r = rows_[row];
@@ -57,7 +55,6 @@ public:
     {
         if (!idx.isValid())
             return {};
-        std::scoped_lock lk(m_);
         if (idx.row() < 0 || (size_t)idx.row() >= rows_.size())
             return {};
         const auto &r = rows_[idx.row()];
@@ -86,13 +83,11 @@ public:
         for (auto &b : snap.ammo_boxes()) {
             newRows.push_back({b.box_id(), b.x(), b.y(), b.active()});
         }
-        std::scoped_lock lk(m_);
         beginResetModel();
         rows_.swap(newRows);
         endResetModel();
     }
 
 private:
-    mutable std::mutex m_;
     std::vector<QtAmmoBoxRow> rows_;
 };

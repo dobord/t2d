@@ -2,7 +2,6 @@
 #pragma once
 #include "game.pb.h"
 
-#include <mutex>
 #include <unordered_map>
 #include <vector>
 
@@ -42,7 +41,6 @@ public:
 
     Q_INVOKABLE QVariant get(int row) const
     {
-        std::scoped_lock lk(m_);
         if (row < 0 || (size_t)row >= rows_.size())
             return {};
         const auto &r = rows_[row];
@@ -58,7 +56,6 @@ public:
     Q_INVOKABLE float angleRad(int row) const
     {
         constexpr float kDegToRad = 3.14159265358979323846f / 180.f;
-        std::scoped_lock lk(m_);
         if (row < 0 || (size_t)row >= rows_.size())
             return 0.f;
         return rows_[row].angle * kDegToRad;
@@ -68,7 +65,6 @@ public:
     {
         if (!idx.isValid())
             return {};
-        std::scoped_lock lk(m_);
         if (idx.row() < 0 || (size_t)idx.row() >= rows_.size())
             return {};
         const auto &r = rows_[idx.row()];
@@ -97,7 +93,6 @@ public:
         for (auto &c : snap.crates()) {
             newRows.push_back({c.crate_id(), c.x(), c.y(), c.angle()});
         }
-        std::scoped_lock lk(m_);
         beginResetModel();
         rows_.swap(newRows);
         index_.clear();
@@ -109,7 +104,6 @@ public:
 
     void applyDelta(const t2d::DeltaSnapshot &d)
     {
-        std::scoped_lock lk(m_);
         std::vector<int> removeIdx;
         removeIdx.reserve(d.removed_crates_size());
         for (auto rid : d.removed_crates()) {
@@ -131,6 +125,8 @@ public:
             for (int i = 0; i < (int)rows_.size(); ++i)
                 index_.emplace(rows_[i].id, i);
         }
+        std::vector<int> changed;
+        changed.reserve(d.crates_size());
         for (auto &c : d.crates()) {
             auto it = index_.find(c.crate_id());
             if (it != index_.end()) {
@@ -139,8 +135,7 @@ public:
                 row.x = c.x();
                 row.y = c.y();
                 row.angle = c.angle();
-                auto ix = index(i);
-                emit dataChanged(ix, ix);
+                changed.push_back(i);
             } else {
                 beginInsertRows({}, (int)rows_.size(), (int)rows_.size());
                 rows_.push_back({c.crate_id(), c.x(), c.y(), c.angle()});
@@ -148,10 +143,23 @@ public:
                 index_.emplace(c.crate_id(), (int)rows_.size() - 1);
             }
         }
+        if (!changed.empty()) {
+            std::sort(changed.begin(), changed.end());
+            int rs = changed.front();
+            int prev = rs;
+            for (size_t k = 1; k < changed.size(); ++k) {
+                int cur = changed[k];
+                if (cur != prev + 1) {
+                    emit dataChanged(index(rs), index(prev));
+                    rs = cur;
+                }
+                prev = cur;
+            }
+            emit dataChanged(index(rs), index(prev));
+        }
     }
 
 private:
-    mutable std::mutex m_;
     std::vector<QtCrateRow> rows_;
     std::unordered_map<uint32_t, int> index_;
 };
