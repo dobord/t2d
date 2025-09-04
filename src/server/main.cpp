@@ -574,6 +574,28 @@ int main(int argc, char **argv)
                     : 0.0;
                 j << ",\"snapshot_full_build_ns_mean\":" << fmean;
                 j << ",\"snapshot_delta_build_ns_mean\":" << dmean;
+                uint64_t fs = rtm.snapshot_full_samples.load(std::memory_order_relaxed);
+                if (fs > 0) {
+                    double ftanks_mean = (double)rtm.snapshot_full_tanks_accum.load(std::memory_order_relaxed) / fs;
+                    double fproj_mean =
+                        (double)rtm.snapshot_full_projectiles_accum.load(std::memory_order_relaxed) / fs;
+                    double fcrates_mean = (double)rtm.snapshot_full_crates_accum.load(std::memory_order_relaxed) / fs;
+                    double fammo_mean = (double)rtm.snapshot_full_ammo_accum.load(std::memory_order_relaxed) / fs;
+                    j << ",\"snapshot_full_tanks_mean\":" << ftanks_mean;
+                    j << ",\"snapshot_full_projectiles_mean\":" << fproj_mean;
+                    j << ",\"snapshot_full_crates_mean\":" << fcrates_mean;
+                    j << ",\"snapshot_full_ammo_mean\":" << fammo_mean;
+                }
+                uint64_t ds = rtm.snapshot_delta_samples.load(std::memory_order_relaxed);
+                if (ds > 0) {
+                    double dtanks_mean = (double)rtm.snapshot_delta_tanks_accum.load(std::memory_order_relaxed) / ds;
+                    double dproj_mean =
+                        (double)rtm.snapshot_delta_projectiles_accum.load(std::memory_order_relaxed) / ds;
+                    double dcrates_mean = (double)rtm.snapshot_delta_crates_accum.load(std::memory_order_relaxed) / ds;
+                    j << ",\"snapshot_delta_tanks_mean\":" << dtanks_mean;
+                    j << ",\"snapshot_delta_projectiles_mean\":" << dproj_mean;
+                    j << ",\"snapshot_delta_crates_mean\":" << dcrates_mean;
+                }
             }
             {
                 double log_lines_mean = 0.0;

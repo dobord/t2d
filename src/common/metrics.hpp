@@ -98,6 +98,16 @@ struct RuntimeCounters
     std::atomic<uint64_t> snapshot_full_build_count{0};
     std::atomic<uint64_t> snapshot_delta_build_ns_accum{0};
     std::atomic<uint64_t> snapshot_delta_build_count{0};
+    // Snapshot entity counters (latest full/delta counts accumulated)
+    std::atomic<uint64_t> snapshot_full_tanks_accum{0};
+    std::atomic<uint64_t> snapshot_full_projectiles_accum{0};
+    std::atomic<uint64_t> snapshot_full_crates_accum{0};
+    std::atomic<uint64_t> snapshot_full_ammo_accum{0};
+    std::atomic<uint64_t> snapshot_full_samples{0};
+    std::atomic<uint64_t> snapshot_delta_tanks_accum{0};
+    std::atomic<uint64_t> snapshot_delta_projectiles_accum{0};
+    std::atomic<uint64_t> snapshot_delta_crates_accum{0};
+    std::atomic<uint64_t> snapshot_delta_samples{0};
 #endif
 };
 
@@ -315,6 +325,29 @@ inline void add_snapshot_delta_build_time(uint64_t ns)
     rt.snapshot_delta_build_ns_accum.fetch_add(ns, std::memory_order_relaxed);
     rt.snapshot_delta_build_count.fetch_add(1, std::memory_order_relaxed);
 }
+
+inline void add_snapshot_full_entity_counts(uint32_t tanks, uint32_t projectiles, uint32_t crates, uint32_t ammo)
+{
+#    if T2D_PROFILING_ENABLED
+    auto &rt = runtime();
+    rt.snapshot_full_tanks_accum.fetch_add(tanks, std::memory_order_relaxed);
+    rt.snapshot_full_projectiles_accum.fetch_add(projectiles, std::memory_order_relaxed);
+    rt.snapshot_full_crates_accum.fetch_add(crates, std::memory_order_relaxed);
+    rt.snapshot_full_ammo_accum.fetch_add(ammo, std::memory_order_relaxed);
+    rt.snapshot_full_samples.fetch_add(1, std::memory_order_relaxed);
+#    endif
+}
+
+inline void add_snapshot_delta_entity_counts(uint32_t tanks, uint32_t projectiles, uint32_t crates)
+{
+#    if T2D_PROFILING_ENABLED
+    auto &rt = runtime();
+    rt.snapshot_delta_tanks_accum.fetch_add(tanks, std::memory_order_relaxed);
+    rt.snapshot_delta_projectiles_accum.fetch_add(projectiles, std::memory_order_relaxed);
+    rt.snapshot_delta_crates_accum.fetch_add(crates, std::memory_order_relaxed);
+    rt.snapshot_delta_samples.fetch_add(1, std::memory_order_relaxed);
+#    endif
+}
 #else
 inline void add_allocations_tick(uint64_t) {}
 
@@ -347,6 +380,10 @@ inline uint64_t projectile_pool_misses()
 inline void add_snapshot_full_build_time(uint64_t) {}
 
 inline void add_snapshot_delta_build_time(uint64_t) {}
+
+inline void add_snapshot_full_entity_counts(uint32_t, uint32_t, uint32_t, uint32_t) {}
+
+inline void add_snapshot_delta_entity_counts(uint32_t, uint32_t, uint32_t) {}
 #endif
 
 // Snapshot counters accessors

@@ -988,6 +988,12 @@ coro::task<void> run_match(std::shared_ptr<coro::io_scheduler> scheduler, std::s
                         t2d::metrics::add_full(ctx->snapshot_scratch.size());
 #if T2D_PROFILING_ENABLED
                         t2d::metrics::add_snapshot_scratch_usage(reused);
+                        // Record entity counts for correlation with build time.
+                        t2d::metrics::add_snapshot_full_entity_counts(
+                            static_cast<uint32_t>(snap->tanks_size()),
+                            static_cast<uint32_t>(snap->projectiles_size()),
+                            static_cast<uint32_t>(snap->crates_size()),
+                            static_cast<uint32_t>(snap->ammo_boxes_size()));
 #endif
                     }
                 }
@@ -1139,6 +1145,10 @@ coro::task<void> run_match(std::shared_ptr<coro::io_scheduler> scheduler, std::s
                         t2d::metrics::add_delta(ctx->snapshot_scratch.size());
 #if T2D_PROFILING_ENABLED
                         t2d::metrics::add_snapshot_scratch_usage(reused);
+                        t2d::metrics::add_snapshot_delta_entity_counts(
+                            static_cast<uint32_t>(delta->tanks_size()),
+                            static_cast<uint32_t>(delta->projectiles_size()),
+                            static_cast<uint32_t>(delta->crates_size()));
 #endif
                     }
                 }
