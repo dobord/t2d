@@ -79,7 +79,8 @@ struct MatchContext
 
     float projectile_max_lifetime_sec{5.0f}; // lifespan cap after spawn
 
-    std::vector<ProjectileSimple> projectiles;
+    // Active projectile slots referenced by index into projectiles_storage (no per-tick copy)
+    std::vector<uint32_t> projectile_indices;
     uint32_t next_projectile_id{1};
     // Projectile object pool (freelist indices into projectiles_storage)
     std::vector<ProjectileSimple> projectiles_storage; // stable capacity, entries reused

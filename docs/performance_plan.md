@@ -35,14 +35,14 @@ Focus (phase 1): Authoritative server runtime (tick loop, networking, snapshot g
 | Metric | Description | Collection Method | Baseline (TBD) | Target |
 |--------|-------------|-------------------|----------------|--------|
 | tick_duration_ns_mean | Avg server tick time | Existing histogram | 287453 (S2 baseline 20250826-180618) | < 2 ms (S2) |
-| tick_duration_ns_p99 | 99th percentile tick | Existing histogram | 250000 (recent 20250827-024349) | < 5 ms (S2) |
+| tick_duration_ns_p99 | 99th percentile tick | Existing histogram | 500000 (recent 20250904-163548) | < 5 ms (S2) |
 | snapshot_full_bytes_mean | Mean full snapshot size | Existing counter | 667.03 (S2 baseline 20250826-180618) | < 25 KB (target guess; refine) |
 | snapshot_delta_bytes_mean | Mean delta size | Existing counter | 499.94 (S2 baseline 20250826-180618) | < 4 KB (S2) |
-| CPU_user_pct | User CPU % process | perf / pidstat | 2.00 (recent 20250827-024349) | < 75% (S2) |
-| RSS_peak_MB | Peak resident memory | /proc/PID/statm sampling | 7.25 (recent 20250827-024349) | Stable (< +5% over 30 min) |
+| CPU_user_pct | User CPU % process | perf / pidstat | 2.61 (recent 20250904-163548) | < 75% (S2) |
+| RSS_peak_MB | Peak resident memory | /proc/PID/statm sampling | 7.88 (recent 20250904-163548) | Stable (< +5% over 30 min) |
 | allocations_per_tick | Dynamic allocations (instrumented) | Custom counter (profiling build) | – | Reduce 50% after phase 1 |
 | network_tx_bytes_per_sec | Outgoing bytes/sec | Metrics / tcpdump sample | – | N/A (observe) |
-| off_cpu_wait_ns_p99 | Scheduler idle wait between ticks (ns) | Runtime sampling (1ms buckets to 50ms + ring exact p99 in profiling) | 64000000 (recent 20250827-024349) | Keep near target tick interval; investigate if >> interval |
+| off_cpu_wait_ns_p99 | Scheduler idle wait between ticks (ns) | Runtime sampling (1ms buckets to 50ms + ring exact p99 in profiling) | 16491115 (recent 20250904-163548) | Keep near target tick interval; investigate if >> interval |
 
 ### 1.5 Performance SLA (Provisional)
 - Normal gameplay (S2): p99 tick < 5 ms; mean tick < 2 ms.
@@ -112,13 +112,13 @@ Planned Iterations (execute in order; commit after each with updated metrics):
   - [x] Metric: `snapshot_scratch_reuse_pct` = (reused_allocations / total_scratch_requests * 100) (profiling build only) added to `runtime_final` JSON.
   - [ ] Extend pooling to additional delta diff working vectors if allocation sampling later shows hotspots.
 3. Projectile Data Pooling
-  - [ ] Replace per-tick new/delete (or implicit vector growth) with object pool / free list for projectile structures.
-  - [ ] Pre-size pool using rolling high-water mark (HWM) heuristic (e.g. grow by 1.25x when exceeded, cap by config).
-  - [ ] Metric: `projectile_pool_hit_pct` & `projectile_pool_misses`.
+  - [x] Replace per-tick new/delete (or implicit vector growth) with object pool / free list for projectile structures.
+  - [x] Pre-size pool using rolling high-water mark (HWM) heuristic (e.g. grow by 1.25x when exceeded, cap by config). (Implemented simple growth + HWM metric; adaptive pre-grow TBD if needed.)
+  - [x] Metric: `projectile_pool_hit_pct` & `projectile_pool_misses`.
 4. Structured Logging Optimization
-  - [ ] Audit hot path INFO/DEBUG logs executed every tick; convert repeated string concatenations to structured logging with pre-built format/static keys.
-  - [ ] Precompute invariant strings (e.g. entity type labels) at initialization.
-  - [ ] Metric: `log_lines_per_tick_mean` (profiling build only) for before/after comparison.
+  - [x] Audit hot path INFO/DEBUG logs executed every tick; convert repeated string concatenations to structured logging with pre-built format/static keys (rate-limited with `T2D_LOG_EVERY_N`).
+  - [x] Precompute invariant strings (e.g. entity type labels) at initialization. (Not required—existing literals reused; no dynamic concat left in hot path.)
+  - [x] Metric: `log_lines_per_tick_mean` (profiling build only) for before/after comparison.
 5. Validation & Regression Guard
   - [ ] Re-run Scenario S2 & S3; record before/after for: allocations_per_tick_mean, allocations_per_tick_p95, tick_duration_ns_mean/p99, snapshot_full_mean_bytes.
   - [ ] Must show >=50% reduction in both allocations_per_tick_mean & p95 with <5% regression in tick_duration_ns_p99 (else refine / rollback specific change).
@@ -194,6 +194,11 @@ Template Row Format:
 Initial Table:
 | Date | Phase | Change | Before | After | % Delta | Scenario | Notes |
 |------|-------|--------|--------|-------|---------|----------|-------|
+| 2025-09-04 | Phase0 | 12-client baseline (3 runs aggregate) | – | avg_tick_ns=36124 (stdev 11963); p99_tick_ns=250000; full_snapshot_mean=436.2B; delta_snapshot_mean=64.7B; rss_peak_MB range=9.88–13.12; cpu_user_pct range=7.73–10.42 | – | 12-clients (test clients) | Post track/turret logic + resource embedding changes; high delta size variance (8–116B) due to gameplay randomness; scenario differs from historical S2 (not directly comparable). |
+| 2025-09-04 | Phase0 | S2 baseline (2 clients + bots, 3 runs) | tick_mean~287453 prev S2 (20250826) | avg_tick_ns=170,970 (stdev 7,017); p99_tick_ns=500000 (one run 1,000,000); full_snap_mean≈933B; delta_snap_mean≈792B; cpu_user_pct≈3.11–3.20; rss_peak_MB≈14.38–14.62 | tick_mean -40% vs old S2; snapshot means reduced | S2 (22 slots) | Bots fill after 2 clients; higher snapshot sizes than 12-client scenario (more entities); one elevated p99=1ms outlier. |
+| 2025-09-04 | Phase1 | Projectile pooling refactor (index indirection + free list) | avg_tick_ns=170,970; full≈933B; delta≈792B (pre-refactor S2 run) | avg_tick_ns=128,750 (single 30s run); p99_tick_ns=500000; full≈1,048B; delta≈698B; projectile_pool_hit_pct=15%; projectile_pool_misses=85 | tick_mean -24.7%; delta_mean -11.9%; full_mean +12.3% | S2 (short 30s) | Preliminary single-run after applying pooling; full snapshot mean slight increase (more active projectiles captured early); requires 3-run confirmation. |
+| 2025-09-04 | Phase1 | Logging rate-limit (drive/spawn/post_step0/penetration -> T2D_LOG_EVERY_N) | Pre-change avg_tick_ns≈170,970; log_lines_per_tick_mean≈(not previously measured) | avg_tick_ns≈122,439 (mean of 3 runs: 126,144 / 135,317 / 105,857); p99_tick_ns=500000; log_lines_per_tick_mean≈0.01; full_snap_mean≈~1,10KB; delta_snap_mean≈~0.58–0.64KB | tick_mean -28% vs earlier 170,970 ref; minimal logging overhead | S2 (3×60s) | Rate limiting drastically reduced log_lines_per_tick_mean to ~0.01; snapshot means stable; proceed to next Phase 1 validations. |
+| 2025-09-04 | Phase2 | Snapshot build baseline (pre-serialization optimizations) | n/a (no prior build timing metrics) | full_build_ns_mean≈61.0µs (runs: 74.24 / 49.37 / 61.25 µs); delta_build_ns_mean≈42.6µs (runs: 42.84 / 40.08 / 43.90 µs); avg_tick_ns≈165,077 (mean of 3 runs) | Establish baseline | S2 (3×60s) | Variation due to entity/projectile count fluctuations; will target >30% reduction full & delta build means. |
 
 ---
 ## 7. Operating Procedures (Quick Guides)
@@ -888,3 +893,260 @@ Baseline capture 20250827-024349:
   * cpuidle_idle_call (87.50%, samples=17500000)
   * cpuidle_enter_state (87.50%, samples=17500000)
   * cpuidle_enter (87.50%, samples=17500000)
+\n<!-- BASELINE_RUN_20250904-154358 -->
+Baseline capture 20250904-154358:
+- avg_tick_ns=36533 (~0.037 ms)
+- p99_tick_ns=250000 (~0.250 ms)
+- snapshot_full_bytes_total=43186 (count=99)
+- snapshot_delta_bytes_total=199486 (count=2925)
+- snapshot_full_mean_bytes=436.22
+- snapshot_delta_mean_bytes=68.20
+- wait_p99_ns=16587917 (~16.588 ms)
+- wait_mean_ns=16273125 (~16.273 ms)
+- cpu_user_pct=7.80
+- rss_peak_bytes=12451840 (~11.88 MB)
+- allocs_per_tick_mean=0.00
+- allocs_per_tick_p95=1
+- clients=12 duration=60s port=40000
+- snapshot_scratch_reuse_pct=99.90
+- projectile_pool_hit_pct=0.00
+- projectile_pool_misses=0
+- cpu_profile=baseline_artifacts/20250904-154358/cpu/cpu_flame.svg (if generated)
+- offcpu_profile=baseline_artifacts/20250904-154358/offcpu/offcpu_flame.svg (if generated)
+- top_cpu_symbols:
+  * t2d_server (100.00%, samples=922500000)
+  * start_thread (100.00%, samples=922500000)
+  * [libstdc++.so.6.0.33] (100.00%, samples=922500000)
+  * clone3 (100.00%, samples=922500000)
+  * entry_SYSCALL_64_after_hwframe (98.10%, samples=905000000)
+  * do_syscall_64 (98.10%, samples=905000000)
+  * x64_sys_call (97.56%, samples=900000000)
+  * __x64_sys_futex (96.48%, samples=890000000)
+  * do_futex (96.48%, samples=890000000)
+  * futex_wake (95.39%, samples=880000000)
+- top_offcpu_symbols:
+  * __schedule_[k] (200.00%, samples=88308)
+  * t2d_server (100.00%, samples=44154)
+  * entry_SYSCALL_64_after_hwframe_[k] (100.00%, samples=44154)
+  * do_syscall_64_[k] (100.00%, samples=44154)
+  * schedule_[k] (100.00%, samples=44152)
+  * x64_sys_call_[k] (99.95%, samples=44134)
+  * start_thread (99.94%, samples=44129)
+  * [libstdc++.so.6.0.33] (99.94%, samples=44129)
+  * clone3 (99.94%, samples=44129)
+  * __x64_sys_futex_[k] (89.21%, samples=39390)
+\n<!-- BASELINE_RUN_20250904-154812 -->
+Baseline capture 20250904-154812:
+- avg_tick_ns=23964 (~0.024 ms)
+- p99_tick_ns=250000 (~0.250 ms)
+- snapshot_full_bytes_total=41376 (count=99)
+- snapshot_delta_bytes_total=23415 (count=2925)
+- snapshot_full_mean_bytes=417.94
+- snapshot_delta_mean_bytes=8.01
+- wait_p99_ns=16603157 (~16.603 ms)
+- wait_mean_ns=16340061 (~16.340 ms)
+- cpu_user_pct=7.73
+- rss_peak_bytes=10354688 (~9.88 MB)
+- allocs_per_tick_mean=0.00
+- allocs_per_tick_p95=1
+- clients=12 duration=60s port=40000
+- snapshot_scratch_reuse_pct=99.90
+- projectile_pool_hit_pct=0.00
+- projectile_pool_misses=0
+- cpu_profile=baseline_artifacts/20250904-154812/cpu/cpu_flame.svg (if generated)
+- offcpu_profile=baseline_artifacts/20250904-154812/offcpu/offcpu_flame.svg (if generated)
+\n<!-- BASELINE_RUN_20250904-155000 -->
+Baseline capture 20250904-155000:
+- avg_tick_ns=47875 (~0.048 ms)
+- p99_tick_ns=250000 (~0.250 ms)
+- snapshot_full_bytes_total=44996 (count=99)
+- snapshot_delta_bytes_total=338985 (count=2925)
+- snapshot_full_mean_bytes=454.51
+- snapshot_delta_mean_bytes=115.89
+- wait_p99_ns=16586361 (~16.586 ms)
+- wait_mean_ns=16268871 (~16.269 ms)
+- cpu_user_pct=10.42
+- rss_peak_bytes=13762560 (~13.12 MB)
+- allocs_per_tick_mean=0.00
+- allocs_per_tick_p95=1
+- clients=12 duration=60s port=40000
+- snapshot_scratch_reuse_pct=99.90
+- projectile_pool_hit_pct=0.00
+- projectile_pool_misses=0
+- cpu_profile=baseline_artifacts/20250904-155000/cpu/cpu_flame.svg (if generated)
+- offcpu_profile=baseline_artifacts/20250904-155000/offcpu/offcpu_flame.svg (if generated)
+- top_cpu_symbols:
+  * [code] (362.50%, samples=72500000)
+  * swapper (87.50%, samples=17500000)
+  * start_secondary (87.50%, samples=17500000)
+  * secondary_startup_64_no_verify (87.50%, samples=17500000)
+  * pv_native_safe_halt (87.50%, samples=17500000)
+  * do_idle (87.50%, samples=17500000)
+  * cpu_startup_entry (87.50%, samples=17500000)
+  * cpuidle_idle_call (87.50%, samples=17500000)
+  * cpuidle_enter_state (87.50%, samples=17500000)
+  * cpuidle_enter (87.50%, samples=17500000)
+\n<!-- BASELINE_RUN_20250904-155356 -->
+Baseline capture 20250904-155356:
+- avg_tick_ns=0 (~0.000 ms)
+- p99_tick_ns=0 (~0.000 ms)
+- snapshot_full_bytes_total=0 (count=0)
+- snapshot_delta_bytes_total=0 (count=0)
+- snapshot_full_mean_bytes=0
+- snapshot_delta_mean_bytes=0
+- wait_p99_ns=0 (~0.000 ms)
+- wait_mean_ns=0 (~0.000 ms)
+- cpu_user_pct=0.05
+- rss_peak_bytes=6684672 (~6.38 MB)
+- allocs_per_tick_mean=0.00
+- allocs_per_tick_p95=0
+- clients=22 duration=60s port=40000
+- snapshot_scratch_reuse_pct=0.00
+- projectile_pool_hit_pct=0.00
+- projectile_pool_misses=0
+- cpu_profile=baseline_artifacts/20250904-155356/cpu/cpu_flame.svg (if generated)
+- offcpu_profile=baseline_artifacts/20250904-155356/offcpu/offcpu_flame.svg (if generated)
+\n<!-- BASELINE_RUN_20250904-155649 -->
+Baseline capture 20250904-155649:
+- avg_tick_ns=0 (~0.000 ms)
+- p99_tick_ns=0 (~0.000 ms)
+- snapshot_full_bytes_total=0 (count=0)
+- snapshot_delta_bytes_total=0 (count=0)
+- snapshot_full_mean_bytes=0
+- snapshot_delta_mean_bytes=0
+- wait_p99_ns=0 (~0.000 ms)
+- wait_mean_ns=0 (~0.000 ms)
+- cpu_user_pct=0.05
+- rss_peak_bytes=6553600 (~6.25 MB)
+- allocs_per_tick_mean=0.00
+- allocs_per_tick_p95=0
+- clients=2 duration=60s port=40000
+- snapshot_scratch_reuse_pct=0.00
+- projectile_pool_hit_pct=0.00
+- projectile_pool_misses=0
+- cpu_profile=baseline_artifacts/20250904-155649/cpu/cpu_flame.svg (if generated)
+- offcpu_profile=baseline_artifacts/20250904-155649/offcpu/offcpu_flame.svg (if generated)
+- top_cpu_symbols:
+  * swapper (80.00%, samples=10000000)
+  * start_secondary (80.00%, samples=10000000)
+  * secondary_startup_64_no_verify (80.00%, samples=10000000)
+  * pv_native_safe_halt (80.00%, samples=10000000)
+  * [perf-129855.map] (80.00%, samples=10000000)
+  * do_idle (80.00%, samples=10000000)
+  * cpu_startup_entry (80.00%, samples=10000000)
+  * cpuidle_idle_call (80.00%, samples=10000000)
+  * cpuidle_enter_state (80.00%, samples=10000000)
+  * cpuidle_enter (80.00%, samples=10000000)
+\n<!-- BASELINE_RUN_20250904-160041 -->
+Baseline capture 20250904-160041:
+- avg_tick_ns=162386 (~0.162 ms)
+- p99_tick_ns=500000 (~0.500 ms)
+- snapshot_full_bytes_total=56451 (count=58)
+- snapshot_delta_bytes_total=1399888 (count=1707)
+- snapshot_full_mean_bytes=973.29
+- snapshot_delta_mean_bytes=820.09
+- wait_p99_ns=16489191 (~16.489 ms)
+- wait_mean_ns=16164234 (~16.164 ms)
+- cpu_user_pct=3.03
+- rss_peak_bytes=15335424 (~14.62 MB)
+- allocs_per_tick_mean=0.00
+- allocs_per_tick_p95=1
+- clients=2 duration=60s port=40002
+- snapshot_scratch_reuse_pct=99.94
+- projectile_pool_hit_pct=0.00
+- projectile_pool_misses=18
+- cpu_profile=baseline_artifacts/20250904-160041/cpu/cpu_flame.svg (if generated)
+- offcpu_profile=baseline_artifacts/20250904-160041/offcpu/offcpu_flame.svg (if generated)
+- top_cpu_symbols:
+  * [code] (1268.42%, samples=1205000000)
+  * start_thread (65.79%, samples=62500000)
+  * __clone (60.53%, samples=57500000)
+  * ThreadPoolForeg (57.89%, samples=55000000)
+  * x64_sys_call (18.42%, samples=17500000)
+  * entry_SYSCALL_64_after_hwframe (18.42%, samples=17500000)
+  * do_syscall_64 (18.42%, samples=17500000)
+  * zap_page_range_single (15.79%, samples=15000000)
+  * __x64_sys_madvise (15.79%, samples=15000000)
+  * tlb_finish_mmu (15.79%, samples=15000000)
+\n<!-- BASELINE_RUN_20250904-160159 -->
+Baseline capture 20250904-160159:
+- avg_tick_ns=175988 (~0.176 ms)
+- p99_tick_ns=500000 (~0.500 ms)
+- snapshot_full_bytes_total=52312 (count=58)
+- snapshot_delta_bytes_total=1332025 (count=1707)
+- snapshot_full_mean_bytes=901.93
+- snapshot_delta_mean_bytes=780.33
+- wait_p99_ns=16470210 (~16.470 ms)
+- wait_mean_ns=16133744 (~16.134 ms)
+- cpu_user_pct=3.20
+- rss_peak_bytes=15204352 (~14.50 MB)
+- allocs_per_tick_mean=0.00
+- allocs_per_tick_p95=1
+- clients=2 duration=60s port=40002
+- snapshot_scratch_reuse_pct=99.94
+- projectile_pool_hit_pct=0.00
+- projectile_pool_misses=17
+- cpu_profile=baseline_artifacts/20250904-160159/cpu/cpu_flame.svg (if generated)
+- offcpu_profile=baseline_artifacts/20250904-160159/offcpu/offcpu_flame.svg (if generated)
+- top_cpu_symbols:
+  * [code] (828.57%, samples=145000000)
+  * swapper (71.43%, samples=12500000)
+  * start_secondary (71.43%, samples=12500000)
+  * secondary_startup_64_no_verify (71.43%, samples=12500000)
+  * pv_native_safe_halt (71.43%, samples=12500000)
+  * do_idle (71.43%, samples=12500000)
+  * cpu_startup_entry (71.43%, samples=12500000)
+  * cpuidle_idle_call (71.43%, samples=12500000)
+  * cpuidle_enter_state (71.43%, samples=12500000)
+  * cpuidle_enter (71.43%, samples=12500000)
+\n<!-- BASELINE_RUN_20250904-160325 -->
+Baseline capture 20250904-160325:
+- avg_tick_ns=174536 (~0.175 ms)
+- p99_tick_ns=1000000 (~1.000 ms)
+- snapshot_full_bytes_total=53612 (count=58)
+- snapshot_delta_bytes_total=1323989 (count=1706)
+- snapshot_full_mean_bytes=924.34
+- snapshot_delta_mean_bytes=776.08
+- wait_p99_ns=16471390 (~16.471 ms)
+- wait_mean_ns=16122911 (~16.123 ms)
+- cpu_user_pct=3.11
+- rss_peak_bytes=15073280 (~14.38 MB)
+- allocs_per_tick_mean=0.00
+- allocs_per_tick_p95=1
+- clients=2 duration=60s port=40002
+- snapshot_scratch_reuse_pct=99.94
+- projectile_pool_hit_pct=0.00
+- projectile_pool_misses=13
+- cpu_profile=baseline_artifacts/20250904-160325/cpu/cpu_flame.svg (if generated)
+- offcpu_profile=baseline_artifacts/20250904-160325/offcpu/offcpu_flame.svg (if generated)
+\n<!-- BASELINE_RUN_20250904-163548 -->
+Baseline capture 20250904-163548:
+- avg_tick_ns=128750 (~0.129 ms)
+- p99_tick_ns=500000 (~0.500 ms)
+- snapshot_full_bytes_total=29336 (count=28)
+- snapshot_delta_bytes_total=583661 (count=836)
+- snapshot_full_mean_bytes=1047.71
+- snapshot_delta_mean_bytes=698.16
+- wait_p99_ns=16491115 (~16.491 ms)
+- wait_mean_ns=16219752 (~16.220 ms)
+- cpu_user_pct=2.61
+- rss_peak_bytes=8257536 (~7.88 MB)
+- allocs_per_tick_mean=0.00
+- allocs_per_tick_p95=1
+- clients=2 duration=30s port=40002
+- snapshot_scratch_reuse_pct=99.88
+- projectile_pool_hit_pct=15.00
+- projectile_pool_misses=85
+- cpu_profile=baseline_artifacts/20250904-163548/cpu/cpu_flame.svg (if generated)
+- offcpu_profile=baseline_artifacts/20250904-163548/offcpu/offcpu_flame.svg (if generated)
+- top_cpu_symbols:
+  * swapper (100.00%, samples=20000000)
+  * secondary_startup_64_no_verify (100.00%, samples=20000000)
+  * pv_native_safe_halt (100.00%, samples=20000000)
+  * do_idle (100.00%, samples=20000000)
+  * cpu_startup_entry (100.00%, samples=20000000)
+  * cpuidle_idle_call (100.00%, samples=20000000)
+  * cpuidle_enter_state (100.00%, samples=20000000)
+  * cpuidle_enter (100.00%, samples=20000000)
+  * call_cpuidle (100.00%, samples=20000000)
+  * acpi_idle_enter (100.00%, samples=20000000)

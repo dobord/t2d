@@ -92,6 +92,13 @@ struct RuntimeCounters
     std::atomic<uint64_t> log_lines_total{0};
     std::atomic<uint64_t> log_lines_per_tick_accum{0};
     std::atomic<uint64_t> log_lines_per_tick_samples{0};
+    // Snapshot build timing (profiling builds)
+#if T2D_PROFILING_ENABLED
+    std::atomic<uint64_t> snapshot_full_build_ns_accum{0};
+    std::atomic<uint64_t> snapshot_full_build_count{0};
+    std::atomic<uint64_t> snapshot_delta_build_ns_accum{0};
+    std::atomic<uint64_t> snapshot_delta_build_count{0};
+#endif
 };
 
 inline RuntimeCounters &runtime()
@@ -294,6 +301,20 @@ inline uint64_t projectile_pool_misses()
 {
     return runtime().projectile_pool_misses.load(std::memory_order_relaxed);
 }
+
+inline void add_snapshot_full_build_time(uint64_t ns)
+{
+    auto &rt = runtime();
+    rt.snapshot_full_build_ns_accum.fetch_add(ns, std::memory_order_relaxed);
+    rt.snapshot_full_build_count.fetch_add(1, std::memory_order_relaxed);
+}
+
+inline void add_snapshot_delta_build_time(uint64_t ns)
+{
+    auto &rt = runtime();
+    rt.snapshot_delta_build_ns_accum.fetch_add(ns, std::memory_order_relaxed);
+    rt.snapshot_delta_build_count.fetch_add(1, std::memory_order_relaxed);
+}
 #else
 inline void add_allocations_tick(uint64_t) {}
 
@@ -322,6 +343,10 @@ inline uint64_t projectile_pool_misses()
 {
     return 0;
 }
+
+inline void add_snapshot_full_build_time(uint64_t) {}
+
+inline void add_snapshot_delta_build_time(uint64_t) {}
 #endif
 
 // Snapshot counters accessors

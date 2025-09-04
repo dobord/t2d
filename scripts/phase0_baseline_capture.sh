@@ -30,6 +30,7 @@ Environment overrides also respected: CLIENTS, DURATION, PORT, CPU_PROF_DUR, OFF
 EOF
 }
 
+CONFIG_ARG=""
 while [[ $# -gt 0 ]]; do
 	case $1 in
 	--clients)
@@ -38,6 +39,10 @@ while [[ $# -gt 0 ]]; do
 		;;
 	--duration)
 		DURATION=$2
+		shift 2
+		;;
+	--config)
+		CONFIG_ARG="--config $2"
 		shift 2
 		;;
 	--port)
@@ -73,7 +78,7 @@ mkdir -p "${RUN_DIR}" || true
 
 echo "[phase0] Starting load (clients=${CLIENTS} dur=${DURATION}s) in background"
 LOAD_LOG=${RUN_DIR}/phase0_load.log
-./scripts/load_run_baseline.sh --clients ${CLIENTS} --duration ${DURATION} --port ${PORT} >"${LOAD_LOG}" 2>&1 &
+./scripts/load_run_baseline.sh ${CONFIG_ARG} --clients ${CLIENTS} --duration ${DURATION} --port ${PORT} >"${LOAD_LOG}" 2>&1 &
 LOAD_PID=$!
 
 # Wait until server.pid appears

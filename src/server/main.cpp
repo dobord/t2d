@@ -563,6 +563,19 @@ int main(int argc, char **argv)
             j << ",\"projectile_pool_hit_pct\":" << t2d::metrics::projectile_pool_hit_pct();
             j << ",\"projectile_pool_misses\":" << t2d::metrics::projectile_pool_misses();
             {
+                auto &rtm = t2d::metrics::runtime();
+                uint64_t fcnt = rtm.snapshot_full_build_count.load(std::memory_order_relaxed);
+                uint64_t dcnt = rtm.snapshot_delta_build_count.load(std::memory_order_relaxed);
+                double fmean = fcnt
+                    ? (double)rtm.snapshot_full_build_ns_accum.load(std::memory_order_relaxed) / (double)fcnt
+                    : 0.0;
+                double dmean = dcnt
+                    ? (double)rtm.snapshot_delta_build_ns_accum.load(std::memory_order_relaxed) / (double)dcnt
+                    : 0.0;
+                j << ",\"snapshot_full_build_ns_mean\":" << fmean;
+                j << ",\"snapshot_delta_build_ns_mean\":" << dmean;
+            }
+            {
                 double log_lines_mean = 0.0;
                 auto log_samples = rt.log_lines_per_tick_samples.load(std::memory_order_relaxed);
                 if (log_samples > 0) {

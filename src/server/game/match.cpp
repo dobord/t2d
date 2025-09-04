@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: Apache-2.0
 #include "server/game/match.hpp"
 
+#include "common/log_rate_limit.hpp"
 #include "common/logger.hpp"
 #include "common/metrics.hpp"
 #include "server/game/physics.hpp"
@@ -57,11 +58,14 @@ static void process_contacts(
         auto &tank = ctx.tanks[tank_index];
         if (tank.hp == 0)
             continue;
-        auto pit =
-            std::find_if(ctx.projectiles.begin(), ctx.projectiles.end(), [&](auto &p) { return p.id == proj_id; });
-        if (pit == ctx.projectiles.end())
+        auto pit_idx = std::find_if(
+            ctx.projectile_indices.begin(),
+            ctx.projectile_indices.end(),
+            [&](uint32_t si)
+            { return si < ctx.projectiles_storage.size() && ctx.projectiles_storage[si].id == proj_id; });
+        if (pit_idx == ctx.projectile_indices.end())
             continue;
-        auto &proj = *pit;
+        auto &proj = ctx.projectiles_storage[*pit_idx];
         if (tank.entity_id == proj.owner)
             continue;
         // Penetration requirement: use PRE-STEP (pre-collision) projectile velocity.
@@ -89,7 +93,9 @@ static void process_contacts(
         float required = 0.6f * proj.initial_speed; // threshold updated from 0.4 to 0.6
         if (into_speed_pre + 1e-6f < required) {
             // Not enough pre-step normal speed: no penetration
-            t2d::log::trace(
+            T2D_LOG_EVERY_N(
+                trace,
+                60,
                 "[proj_penetration] proj={} tank={} into_pre={} center_into_pre={} speed_pre={} required={} initial={} "
                 "vdotn_pre={} n=({}, {}) a_is_proj={} result=NO",
                 proj.id,
@@ -105,7 +111,9 @@ static void process_contacts(
                 a_is_proj);
             continue;
         }
-        t2d::log::trace(
+        T2D_LOG_EVERY_N(
+            trace,
+            60,
             "[proj_penetration] proj={} tank={} into_pre={} center_into_pre={} speed_pre={} required={} initial={} "
             "vdotn_pre={} n=({}, {}) a_is_proj={} result=YES",
             proj.id,
@@ -313,7 +321,7 @@ static void process_contacts(
             }
         }
         ctx.removed_projectiles_since_full.push_back(proj_id);
-        ctx.projectiles.erase(pit);
+        ctx.projectile_indices.erase(pit_idx);
     }
     for (auto pid : to_destroy_projectiles) {
         auto it = projectile_bodies.find(pid);
@@ -495,7 +503,9 @@ coro::task<void> run_match(std::shared_ptr<coro::io_scheduler> scheduler, std::s
             if (!sess->is_bot
                 && (std::fabs(input.move_dir) > 0.01f || std::fabs(input.turn_dir) > 0.01f
                     || std::fabs(input.turret_turn) > 0.01f || input.fire || input.brake)) {
-                t2d::log::trace(
+                T2D_LOG_EVERY_N(
+                    trace,
+                    30,
                     "[drive] tick={} eid={} move={} turn={} turret={} fire={} brake={}",
                     ctx->server_tick,
                     adv.entity_id,
@@ -643,16 +653,21 @@ coro::task<void> run_match(std::shared_ptr<coro::io_scheduler> scheduler, std::s
                     adv, phys_world, ctx->projectile_speed, ctx->projectile_density, forward_offset, pid);
                 if (fired) {
                     // Obtain slot from pool
-                    bool hit = false, miss = false;
+                    // Pool acquisition stats only recorded under profiling build
+#if T2D_PROFILING_ENABLED
+                    bool hit = false;
+#endif
                     uint32_t slot_index;
                     if (!ctx->projectile_free_indices.empty()) {
                         slot_index = ctx->projectile_free_indices.back();
                         ctx->projectile_free_indices.pop_back();
+#if T2D_PROFILING_ENABLED
                         hit = true;
+#endif
                     } else {
                         slot_index = static_cast<uint32_t>(ctx->projectiles_storage.size());
                         ctx->projectiles_storage.push_back({});
-                        miss = true; // growth event
+                        // growth event (miss) recorded below if profiling
                     }
                     b2Transform xt = b2Body_GetTransform(adv.turret);
                     b2Vec2 dir{xt.q.c, xt.q.s};
@@ -671,11 +686,11 @@ coro::task<void> run_match(std::shared_ptr<coro::io_scheduler> scheduler, std::s
                     slot.owner = adv.entity_id;
                     slot.initial_speed = ctx->projectile_speed;
                     slot.age = 0.f;
-                    ctx->projectiles.push_back(slot); // copy lightweight POD
-                    if (ctx->projectiles.size() > ctx->projectile_pool_hwm)
-                        ctx->projectile_pool_hwm = static_cast<uint32_t>(ctx->projectiles.size());
+                    ctx->projectile_indices.push_back(slot_index);
+                    if (ctx->projectile_indices.size() > ctx->projectile_pool_hwm)
+                        ctx->projectile_pool_hwm = static_cast<uint32_t>(ctx->projectile_indices.size());
 #if T2D_PROFILING_ENABLED
-                    t2d::metrics::add_projectile_pool_request(hit, miss);
+                    t2d::metrics::add_projectile_pool_request(hit, !hit);
 #endif
                     projectile_bodies.emplace(fired, phys_world.projectile_bodies.back());
                     // Spawn trace log (diagnostic): log both intended muzzle velocity and actual body velocity
@@ -684,7 +699,9 @@ coro::task<void> run_match(std::shared_ptr<coro::io_scheduler> scheduler, std::s
                         if (b2Body_IsValid(pbid)) {
                             b2Vec2 bv = b2Body_GetLinearVelocity(pbid);
                             float body_speed = std::sqrt(bv.x * bv.x + bv.y * bv.y);
-                            t2d::log::trace(
+                            T2D_LOG_EVERY_N(
+                                trace,
+                                20,
                                 "[proj_spawn] proj={} owner={} pos=({}, {}) muzzle_v=({}, {}) body_v=({}, {}) "
                                 "body_speed={} initial={} forward_offset={}",
                                 fired,
@@ -721,7 +738,10 @@ coro::task<void> run_match(std::shared_ptr<coro::io_scheduler> scheduler, std::s
                 adv.fire_cooldown_cur = std::max(0.f, adv.fire_cooldown_cur - dt);
         }
         // Capture pre-step projectile state (position + velocity) for penetration logic before physics integration
-        for (auto &p : ctx->projectiles) {
+        for (auto si : ctx->projectile_indices) {
+            if (si >= ctx->projectiles_storage.size())
+                continue;
+            auto &p = ctx->projectiles_storage[si];
             auto itb = projectile_bodies.find(p.id);
             if (itb != projectile_bodies.end() && b2Body_IsValid(itb->second)) {
                 b2BodyId bid = itb->second;
@@ -732,7 +752,6 @@ coro::task<void> run_match(std::shared_ptr<coro::io_scheduler> scheduler, std::s
                 p.prev_vx = vpre.x;
                 p.prev_vy = vpre.y;
             } else {
-                // Fallback: use stored kinematic values
                 p.prev_x = p.x;
                 p.prev_y = p.y;
                 p.prev_vx = p.vx;
@@ -742,13 +761,18 @@ coro::task<void> run_match(std::shared_ptr<coro::io_scheduler> scheduler, std::s
         // Physics step (tanks + projectiles + crates) then process contacts (which will use pre-step projectile data)
         t2d::phys::step(phys_world, dt);
         // Post-first-step velocity trace: log velocity after first physics integration step (age==0 before increment)
-        for (auto &p : ctx->projectiles) {
-            if (p.age == 0.f) { // just spawned prior to this step
+        for (auto si : ctx->projectile_indices) {
+            if (si >= ctx->projectiles_storage.size())
+                continue;
+            auto &p = ctx->projectiles_storage[si];
+            if (p.age == 0.f) {
                 auto itb = projectile_bodies.find(p.id);
                 if (itb != projectile_bodies.end() && b2Body_IsValid(itb->second)) {
                     b2Vec2 vps = b2Body_GetLinearVelocity(itb->second);
                     float sp = std::sqrt(vps.x * vps.x + vps.y * vps.y);
-                    t2d::log::trace(
+                    T2D_LOG_EVERY_N(
+                        trace,
+                        20,
                         "[proj_post_step0] proj={} owner={} v=({}, {}) speed={} initial={}",
                         p.id,
                         p.owner,
@@ -791,14 +815,16 @@ coro::task<void> run_match(std::shared_ptr<coro::io_scheduler> scheduler, std::s
         // Sync tank state (position + angles) from advanced bodies
         // Angles & positions derived on snapshot build.
         // Sync projectile positions from physics bodies (remove invalid)
-        for (auto &p : ctx->projectiles) {
+        for (auto si : ctx->projectile_indices) {
+            if (si >= ctx->projectiles_storage.size())
+                continue;
+            auto &p = ctx->projectiles_storage[si];
             auto it = projectile_bodies.find(p.id);
             if (it != projectile_bodies.end()) {
                 auto pos = t2d::phys::get_body_position(it->second);
                 p.x = pos.x;
                 p.y = pos.y;
             } else {
-                // Fallback: if body missing keep manual update
                 p.x += p.vx * dt;
                 p.y += p.vy * dt;
             }
@@ -807,29 +833,29 @@ coro::task<void> run_match(std::shared_ptr<coro::io_scheduler> scheduler, std::s
         // Simple bounds cull for projectiles (world prototype area +/-100)
         {
             std::vector<size_t> to_remove_bounds;
-            for (size_t i = 0; i < ctx->projectiles.size(); ++i) {
-                auto &pr = ctx->projectiles[i];
+            for (size_t i = 0; i < ctx->projectile_indices.size(); ++i) {
+                uint32_t si = ctx->projectile_indices[i];
+                if (si >= ctx->projectiles_storage.size())
+                    continue;
+                auto &pr = ctx->projectiles_storage[si];
                 if (pr.age > ctx->projectile_max_lifetime_sec || std::fabs(pr.x) > 100.f || std::fabs(pr.y) > 100.f) {
                     to_remove_bounds.push_back(i);
                 }
             }
             if (!to_remove_bounds.empty()) {
                 for (auto it = to_remove_bounds.rbegin(); it != to_remove_bounds.rend(); ++it) {
-                    auto pid = ctx->projectiles[*it].id;
-                    auto body_it = projectile_bodies.find(pid);
-                    if (body_it != projectile_bodies.end()) {
-                        t2d::phys::destroy_body(body_it->second);
-                        projectile_bodies.erase(body_it);
-                    }
-                    ctx->removed_projectiles_since_full.push_back(pid);
-                    // Return storage slot to freelist (find in storage by id)
-                    for (uint32_t si = 0; si < ctx->projectiles_storage.size(); ++si) {
-                        if (ctx->projectiles_storage[si].id == pid) {
-                            ctx->projectile_free_indices.push_back(si);
-                            break;
+                    uint32_t si = ctx->projectile_indices[*it];
+                    if (si < ctx->projectiles_storage.size()) {
+                        auto pid = ctx->projectiles_storage[si].id;
+                        auto body_it = projectile_bodies.find(pid);
+                        if (body_it != projectile_bodies.end()) {
+                            t2d::phys::destroy_body(body_it->second);
+                            projectile_bodies.erase(body_it);
                         }
+                        ctx->removed_projectiles_since_full.push_back(pid);
+                        ctx->projectile_free_indices.push_back(si);
                     }
-                    ctx->projectiles.erase(ctx->projectiles.begin() + *it);
+                    ctx->projectile_indices.erase(ctx->projectile_indices.begin() + *it);
                 }
             }
         }
@@ -837,6 +863,7 @@ coro::task<void> run_match(std::shared_ptr<coro::io_scheduler> scheduler, std::s
         if (ctx->snapshot_interval_ticks > 0 && ctx->server_tick % ctx->snapshot_interval_ticks == 0) {
             bool send_full = (ctx->server_tick - ctx->last_full_snapshot_tick >= ctx->full_snapshot_interval_ticks);
             if (send_full) {
+                auto snap_start = std::chrono::steady_clock::now();
                 t2d::ServerMessage sm;
                 auto *snap = sm.mutable_snapshot();
                 snap->set_server_tick(static_cast<uint32_t>(ctx->server_tick));
@@ -930,7 +957,10 @@ coro::task<void> run_match(std::shared_ptr<coro::io_scheduler> scheduler, std::s
                         ctx->last_sent_crates.push_back({cr.id, xf.p.x, xf.p.y, ang_deg, true});
                     }
                 }
-                for (auto &p : ctx->projectiles) {
+                for (auto si : ctx->projectile_indices) {
+                    if (si >= ctx->projectiles_storage.size())
+                        continue;
+                    auto &p = ctx->projectiles_storage[si];
                     auto *ps = snap->add_projectiles();
                     ps->set_projectile_id(p.id);
 #if T2D_ENABLE_SNAPSHOT_QUANT
@@ -948,7 +978,9 @@ coro::task<void> run_match(std::shared_ptr<coro::io_scheduler> scheduler, std::s
                 }
                 // Approx size: serialize into reusable scratch buffer (size() after serialize provides byte count)
                 {
+#if T2D_PROFILING_ENABLED
                     bool reused = !ctx->snapshot_scratch.empty();
+#endif
                     if (!sm.SerializeToString(&ctx->snapshot_scratch)) {
                         // Fallback: should not happen; skip metrics if serialize fails
                     } else {
@@ -964,8 +996,15 @@ coro::task<void> run_match(std::shared_ptr<coro::io_scheduler> scheduler, std::s
 #endif
                 for (auto &pl : ctx->players)
                     t2d::mm::instance().push_message(pl, sm);
+#if T2D_PROFILING_ENABLED
+                auto snap_dur =
+                    std::chrono::duration_cast<std::chrono::nanoseconds>(std::chrono::steady_clock::now() - snap_start)
+                        .count();
+                t2d::metrics::add_snapshot_full_build_time((uint64_t)snap_dur);
+#endif
             } else {
                 // delta snapshot
+                auto snap_start = std::chrono::steady_clock::now();
                 t2d::ServerMessage sm;
                 auto *delta = sm.mutable_delta_snapshot();
                 delta->set_server_tick(static_cast<uint32_t>(ctx->server_tick));
@@ -1027,7 +1066,10 @@ coro::task<void> run_match(std::shared_ptr<coro::io_scheduler> scheduler, std::s
                 // new projectiles since base: naive include all with id > 0 created after base tick (simplify: send all
                 // projectiles whose id greater than count at last full snapshot) For prototype, just send all
                 // projectiles (client would de-dup by id)
-                for (auto &p : ctx->projectiles) {
+                for (auto si : ctx->projectile_indices) {
+                    if (si >= ctx->projectiles_storage.size())
+                        continue;
+                    auto &p = ctx->projectiles_storage[si];
                     auto *ps = delta->add_projectiles();
                     ps->set_projectile_id(p.id);
 #if T2D_ENABLE_SNAPSHOT_QUANT
@@ -1086,7 +1128,9 @@ coro::task<void> run_match(std::shared_ptr<coro::io_scheduler> scheduler, std::s
                     delta->add_removed_crates(cid);
                 // Deltas for ammo boxes omitted (they are static until picked up; appear only in full snapshots)
                 {
+#if T2D_PROFILING_ENABLED
                     bool reused = !ctx->snapshot_scratch.empty();
+#endif
                     if (!sm.SerializeToString(&ctx->snapshot_scratch)) {
                         // skip metrics if failure
                     } else {
@@ -1101,6 +1145,12 @@ coro::task<void> run_match(std::shared_ptr<coro::io_scheduler> scheduler, std::s
 #endif
                 for (auto &pl : ctx->players)
                     t2d::mm::instance().push_message(pl, sm);
+#if T2D_PROFILING_ENABLED
+                auto snap_dur =
+                    std::chrono::duration_cast<std::chrono::nanoseconds>(std::chrono::steady_clock::now() - snap_start)
+                        .count();
+                t2d::metrics::add_snapshot_delta_build_time((uint64_t)snap_dur);
+#endif
             }
             if (send_full) {
                 // Clear removed lists after full snapshot baseline
@@ -1201,7 +1251,7 @@ coro::task<void> run_match(std::shared_ptr<coro::io_scheduler> scheduler, std::s
             co_return;
         }
         // Record runtime metrics
-        t2d::metrics::runtime().projectiles_active.store(ctx->projectiles.size(), std::memory_order_relaxed);
+        t2d::metrics::runtime().projectiles_active.store(ctx->projectile_indices.size(), std::memory_order_relaxed);
         auto tick_ns = std::chrono::duration_cast<std::chrono::nanoseconds>(clock::now() - tick_start).count();
         t2d::metrics::add_tick_duration(static_cast<uint64_t>(tick_ns));
 #if T2D_PROFILING_ENABLED
