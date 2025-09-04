@@ -173,6 +173,8 @@ struct ServerConfig
     bool persist_destroyed_tanks{false};
     uint32_t track_break_hits{1};
     uint32_t turret_disable_front_hits{2};
+    // Optional fixed seed to produce deterministic bot spawn & rng; 0 means random each match
+    uint32_t fixed_match_seed{0};
 };
 
 static ServerConfig load_config(const std::string &path)
@@ -271,6 +273,9 @@ static ServerConfig load_config(const std::string &path)
     if (root["turret_disable_front_hits"]) {
         cfg.turret_disable_front_hits = root["turret_disable_front_hits"].as<uint32_t>();
     }
+    if (root["fixed_match_seed"]) {
+        cfg.fixed_match_seed = root["fixed_match_seed"].as<uint32_t>();
+    }
     return cfg;
 }
 
@@ -293,7 +298,7 @@ int main(int argc, char **argv)
     uint16_t port_override = 0;
     int duration_override_sec = 0; // 0 means run until signal
     bool auto_test_match = false; // enqueue bots immediately to form a match
-    // Simple arg parsing: first non-flag = config path; recognize --no-bot-fire / --no-bot-ai
+    // Simple arg parsing: first non-flag = config path; recognize --no-bot-fire / --no-bot-ai / --fixed-seed
     for (int i = 1; i < argc; ++i) {
         std::string a = argv[i];
         if (a == "--no-bot-fire") {
@@ -315,6 +320,12 @@ int main(int argc, char **argv)
             }
         } else if (a == "--auto-test-match") {
             auto_test_match = true;
+        } else if (a == "--fixed-seed" && i + 1 < argc) {
+            try {
+                cfg.fixed_match_seed = static_cast<uint32_t>(std::stoul(argv[++i]));
+            } catch (...) {
+                t2d::log::warn("Invalid --fixed-seed value '{}' ignoring", argv[i]);
+            }
         } else if (!a.empty() && a[0] != '-') {
             config_path = a;
         }
@@ -367,6 +378,9 @@ int main(int argc, char **argv)
     t2d::log::info("Tick rate: {} Hz", cfg.tick_rate);
     t2d::log::info("Listening on port: {}", cfg.listen_port);
     t2d::log::info("Auth mode: {}", cfg.auth_mode);
+    if (cfg.fixed_match_seed > 0) {
+        t2d::log::info("Fixed match seed active: {}", cfg.fixed_match_seed);
+    }
     if (cfg.disable_bot_fire) {
         t2d::log::info("Bot firing disabled (--no-bot-fire)");
     }
@@ -404,7 +418,10 @@ int main(int argc, char **argv)
             cfg.map_width,
             cfg.map_height,
             cfg.force_line_spawn,
-            cfg.persist_destroyed_tanks}));
+            cfg.persist_destroyed_tanks,
+            cfg.track_break_hits,
+            cfg.turret_disable_front_hits,
+            cfg.fixed_match_seed}));
     // Launch heartbeat monitor
     scheduler->spawn(heartbeat_monitor(scheduler, cfg.heartbeat_timeout_seconds));
     // Launch resource sampler (profiling / production lightweight)
@@ -540,6 +557,9 @@ int main(int argc, char **argv)
             j << ",\"wait_mean_ns\":" << wait_mean_ns_final;
             j << ",\"cpu_user_pct\":" << cpu_pct;
             j << ",\"rss_peak_bytes\":" << rt.rss_peak_bytes.load(std::memory_order_relaxed);
+            if (cfg.fixed_match_seed > 0) {
+                j << ",\"fixed_match_seed\":" << cfg.fixed_match_seed;
+            }
             j << ",\"allocs_per_tick_mean\":" << allocs_per_tick_mean;
             uint64_t allocs_p95 = t2d::metrics::approx_allocations_per_tick_p95();
             j << ",\"allocs_per_tick_p95\":" << allocs_p95;

@@ -119,7 +119,7 @@ coro::task<void> run_matchmaker(std::shared_ptr<coro::io_scheduler> scheduler, M
             // form match using first max_players
             std::vector<std::shared_ptr<Session>> group(queued.begin(), queued.begin() + cfg.max_players);
             mgr.pop_from_queue(group);
-            uint32_t seed = random_seed();
+            uint32_t seed = cfg.fixed_seed > 0 ? cfg.fixed_seed : random_seed();
             auto ctx = std::make_shared<t2d::game::MatchContext>();
             ctx->match_id = "m_" + std::to_string(seed);
             ctx->tick_rate = cfg.tick_rate;

@@ -40,6 +40,8 @@ struct MatchConfig
     // Damage system thresholds
     uint32_t track_break_hits{1}; // hits to a side before that track breaks
     uint32_t turret_disable_front_hits{2}; // frontal hits to disable turret motor
+    // Optional fixed seed override; when >0 use this instead of random_seed()
+    uint32_t fixed_seed{0};
 };
 
 coro::task<void> run_matchmaker(std::shared_ptr<coro::io_scheduler> scheduler, MatchConfig cfg);
